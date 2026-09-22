@@ -72,6 +72,17 @@ inline void set_button(lv_obj_t *button_obj, lv_obj_t *label_obj, bool active,
     lv_label_set_text(label_obj, active ? on_text : off_text);
 }
 
+inline void set_enabled(lv_obj_t *obj, bool enabled) {
+    if (!obj) return;
+    if (enabled) {
+        lv_obj_remove_state(obj, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
+    } else {
+        lv_obj_add_state(obj, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(obj, LV_OPA_50, LV_PART_MAIN);
+    }
+}
+
 inline lv_obj_t *chip(lv_obj_t *parent, const char *text, int x, int y, uint32_t color) {
     lv_obj_t *c = lv_obj_create(parent);
     lv_obj_set_pos(c, x, y);
@@ -97,6 +108,11 @@ inline void style_slider(lv_obj_t *slider) {
 
 inline void add_preview_badge(lv_obj_t *parent) {
     lv_obj_t *b = chip(parent, "UI PREVIEW", 1092, 18, ACCENT_SOFT);
+    lv_obj_set_width(b, 160);
+}
+
+inline void add_live_badge(lv_obj_t *parent) {
+    lv_obj_t *b = chip(parent, "HA LIVE", 1092, 18, SUCCESS);
     lv_obj_set_width(b, 160);
 }
 }

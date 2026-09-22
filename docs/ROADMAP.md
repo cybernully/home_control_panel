@@ -18,22 +18,21 @@
 - Security/alarm and sensor UI.
 - Real local backlight control in Settings.
 
-The non-settings controls are deliberately local UI state in this release.  They
-do not claim to represent Home Assistant entity state yet.
+## 1.2.0 - Home Assistant area discovery + room bindings
 
-## 1.2.0 - Home Assistant discovery + bindings
+- Home Assistant area registry lookup.
+- Area target extraction using Home Assistant's area/device/entity relationships.
+- Filtered `subscribe_entities` live-state subscription.
+- PSRAM-backed room state cache.
+- Automatic classification of light/switch/fan/cover/scene entities.
+- UI state driven by Home Assistant rather than local preview state.
+- Light/switch/fan/cover service calls.
+- Area-wide light brightness and all-lights actions.
+- Area scene discovery and activation.
+- Manual rediscovery/status from Settings.
+- One worker remains responsible for all Home Assistant network work.
 
-- area registry
-- device registry
-- entity registry
-- state fetch/cache
-- entity classification
-- PSRAM-backed state model
-- area filtering
-- light/switch/fan/cover service calls
-- UI state driven by Home Assistant rather than local preview state
-
-Goal: a room profile should eventually need little more than:
+A room profile now needs little more than:
 
 ```json
 {
@@ -69,11 +68,11 @@ Goal: a room profile should eventually need little more than:
 
 ## Calendar functionality
 
-Family Calendar remains independent.  Selected calendar/weather functionality
+Family Calendar remains independent. Selected calendar/weather functionality
 can be ported as modules without merging the two projects.
 
 ## OTA
 
-Do not import unvalidated OTA code into the base.  Once the hardened calendar
+Do not import unvalidated OTA code into the base. Once the hardened calendar
 OTA path is proven on-device, port that known-good implementation here with
 interruption diagnostics.
