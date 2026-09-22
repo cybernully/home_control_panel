@@ -1,7 +1,7 @@
 #pragma once
 
 #define APP_NAME "Home Control Panel"
-#define APP_VERSION "1.0.0"
+#define APP_VERSION "1.1.0"
 #define APP_DISPLAY_ROTATION 90
 #define APP_DEFAULT_BACKLIGHT 80
 #define APP_DEFAULT_SCREEN_TIMEOUT_SECONDS 120U

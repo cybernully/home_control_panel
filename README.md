@@ -1,61 +1,46 @@
 # Home Control Panel
 
-**Version 1.0.0**
+**Version 1.1.0**
 
-A clean ESP32-P4 / LVGL base firmware for multiple wall displays.  The project
-uses one source tree and runtime panel configuration, with two PlatformIO build
-environments for the two known JC8012P4A1C hardware generations.
+ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
+Version 1.1.0 adds the first real on-screen control UI while retaining the
+working dual-board hardware split established in 1.0.0.
 
 ## Supported hardware
 
-| Environment | Rear label / batch | PlatformIO board | Notes |
-|---|---|---|---|
-| `jc8012p4a1c_2624` | 10153001 / 2624 | `esp32-p4` | Existing/original panel target |
-| `jc8012p4a1c_2635` | 10153001-V3 / 2635 | `esp32-p4_r3` | Production ESP32-P4 v3.x; tested unit reports v3.2 |
+| Environment | Rear label / batch | PlatformIO board |
+|---|---|---|
+| `jc8012p4a1c_2624` | 10153001 / 2624 | `esp32-p4` |
+| `jc8012p4a1c_2635` | 10153001-V3 / 2635 | `esp32-p4_r3` |
 
-Both use the same application code and the same `JC8012P4A1-V2` JD9365 panel
-initialization/profile.  The display bootstrap selects the MIPI-DSI PHY PLL
-reference source from the actual ESP32-P4 silicon revision at runtime.
+The source tree is shared, but each silicon generation gets its own firmware
+build.  The current default PlatformIO environment is the V3/2635 development
+panel:
 
-The important distinction is compile-time: the 2624 and 2635 use different
-PlatformIO ESP32-P4 board targets, so they produce two `firmware.bin` files.
+```ini
+[platformio]
+default_envs = jc8012p4a1c_2635
+```
 
-## Why this is separate from Family Calendar
+Select the 2624 environment before using VS Code's Upload action on an older
+panel.
 
-Family Calendar remains its own project and can continue evolving independently.
-This project reuses the hardware, networking, LVGL memory, battery and UI-thread
-lessons from the calendar without turning that application into a universal
-controller.
+## What's visible in 1.1.0
 
-## v1.0.0 foundation
+The `room` profile now has touch-active screens instead of placeholder text:
 
-- One source tree for all control panels.
-- Board-specific firmware builds for 2624 and 2635 P4 silicon.
-- Per-device profile + Home Assistant area + module configuration.
-- Structured non-secret configuration in SPIFFS `/panel.json`.
-- Home Assistant URL/token in NVS; the token is never returned by the management API.
-- One low-priority Home Assistant worker.
-- UI-first startup: LVGL renders before ESP-Hosted/TLS work begins.
-- Lazy persistent module pages.
-- Web management for device identity, profile, area, modules and HA credentials.
-- Battery monitoring on GPIO52.
-- Proven JC8012P4A1C framebuffer/touch path.
-- PSRAM-first LVGL allocator.
-- Dual 6 MB application slots retained for future OTA.
+- **Overview** - area, light, climate and HA status cards plus quick actions.
+- **Room** - Main Lights, Lamps, Ceiling Fan and Shades cards; brightness;
+  Relax/Bright/Movie scene buttons.
+- **Media** - Previous/Play/Next, volume and source controls.
+- **Climate** - current temperature, setpoint +/- and mode selection.
+- **Security** - alarm mode controls plus lock/garage/motion/smoke status cards.
+- **Settings** - live/persistent display brightness, panel identity and HA status.
 
-The feature modules are intentionally boundaries/placeholders in this base:
-
-`overview, calendar, weather, room, rooms, media, climate, security, settings`
-
-## Profiles
-
-**Calendar:** `overview,calendar,weather,security,settings`
-
-**Room controller:** `overview,room,media,climate,security,settings`
-
-**Whole home:** `overview,rooms,media,climate,security,settings`
-
-**Custom:** starts with `overview,settings`, then you choose modules.
+The UI controls are intentionally usable locally so touch and layout can be
+validated now.  Except for display brightness, they are **not yet bound to Home
+Assistant entities**.  1.2.0 will add HA area/entity discovery, state caching and
+service calls through the existing single HA worker.
 
 ## First setup
 
@@ -65,34 +50,22 @@ cp include/app_secrets.example.h include/app_secrets.h
 
 Edit Wi-Fi and web-management credentials in `include/app_secrets.h`.
 
-## Build and upload the 2624
+The `.gitignore` excludes the expected secrets filename plus common alternate
+spellings so credentials are not accidentally committed.
 
-```bash
-~/.platformio/penv/bin/pio run -e jc8012p4a1c_2624
-~/.platformio/penv/bin/pio run -e jc8012p4a1c_2624 -t upload
-```
-
-Firmware output:
-
-```text
-.pio/build/jc8012p4a1c_2624/firmware.bin
-```
-
-## Build and upload the 2635 / V3
+## Build/upload 2635 / V3
 
 ```bash
 ~/.platformio/penv/bin/pio run -e jc8012p4a1c_2635
 ~/.platformio/penv/bin/pio run -e jc8012p4a1c_2635 -t upload
 ```
 
-Firmware output:
+## Build/upload 2624
 
-```text
-.pio/build/jc8012p4a1c_2635/firmware.bin
+```bash
+~/.platformio/penv/bin/pio run -e jc8012p4a1c_2624
+~/.platformio/penv/bin/pio run -e jc8012p4a1c_2624 -t upload
 ```
-
-The 2635 first flash uses the production-silicon `esp32-p4_r3` target and the
-55.03.39 pioarduino platform that successfully flashed the v3.2 device.
 
 ## Build both
 
@@ -100,16 +73,24 @@ The 2635 first flash uses the production-silicon `esp32-p4_r3` target and the
 ./scripts/build_all.sh
 ```
 
-## Configuration
+## Profiles
 
-On first boot, firmware creates `/panel.json` automatically if SPIFFS is empty.
-The same runtime profiles/configuration work on either board build.
+**Room:** `overview,room,media,climate,security,settings`
 
-## OTA
+**Calendar:** `overview,calendar,weather,security,settings`
 
-OTA is intentionally not included in the 1.0.0 base yet.  Once the hardened
-Family Calendar OTA path is proven, the known-good implementation can be ported
-without changing the dual-board architecture.
+**Whole home:** `overview,rooms,media,climate,security,settings`
 
-See `docs/ARCHITECTURE.md`, `docs/HARDWARE.md`, `docs/CONFIGURATION.md`, and
-`docs/ROADMAP.md`.
+**Custom:** starts with `overview,settings`.
+
+## Architecture rules retained
+
+- UI first, network second.
+- One Home Assistant worker; no second concurrent HTTPS worker.
+- LVGL calls stay on the UI/main thread.
+- Module pages are created lazily and then retained.
+- PSRAM-first LVGL allocation.
+- Family Calendar remains a separate project.
+
+See `docs/RELEASE_1.1.0.md`, `docs/ARCHITECTURE.md`, `docs/HARDWARE.md`,
+`docs/CONFIGURATION.md`, and `docs/ROADMAP.md`.
