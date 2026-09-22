@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "device_id": "panel-01",
+  "display_name": "Living Room Panel",
+  "profile": "room",
+  "area_id": "living_room",
+  "modules": ["overview", "room", "media", "climate", "security", "settings"],
+  "backlight": 80,
+  "dark_mode": true,
+  "screen_timeout_seconds": 120
+}
