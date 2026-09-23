@@ -52,6 +52,7 @@ private:
     // created Media page performs its first update.
     HomeAssistantMediaSnapshot *media_cache_ = nullptr;
     HomeAssistantMediaFavorite *favorite_cache_ = nullptr;
+    HomeAssistantMediaArtworkInfo *artwork_info_cache_ = nullptr;
 
     lv_obj_t *player_name_ = nullptr;
     lv_obj_t *track_label_ = nullptr;

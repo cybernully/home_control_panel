@@ -63,13 +63,25 @@ bool MediaModule::allocate_work_buffers() {
         allocated_now = allocated_now || favorite_cache_ != nullptr;
     }
 
-    if (allocated_now && media_cache_ && favorite_cache_) {
+    if (!artwork_info_cache_) {
+        artwork_info_cache_ = static_cast<HomeAssistantMediaArtworkInfo *>(
+            heap_caps_calloc(2, sizeof(HomeAssistantMediaArtworkInfo),
+                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (!artwork_info_cache_) {
+            artwork_info_cache_ = static_cast<HomeAssistantMediaArtworkInfo *>(
+                calloc(2, sizeof(HomeAssistantMediaArtworkInfo)));
+        }
+        allocated_now = allocated_now || artwork_info_cache_ != nullptr;
+    }
+
+    if (allocated_now && media_cache_ && favorite_cache_ && artwork_info_cache_) {
         Serial0.printf("[Media] Work buffers ready: %u bytes (PSRAM preferred)\n",
                        static_cast<unsigned>(
                            HA_MAX_MEDIA_PLAYERS * sizeof(HomeAssistantMediaSnapshot) +
-                           HA_MAX_MEDIA_FAVORITES * sizeof(HomeAssistantMediaFavorite)));
+                           HA_MAX_MEDIA_FAVORITES * sizeof(HomeAssistantMediaFavorite) +
+                           2 * sizeof(HomeAssistantMediaArtworkInfo)));
     }
-    return media_cache_ && favorite_cache_;
+    return media_cache_ && favorite_cache_ && artwork_info_cache_;
 }
 
 void MediaModule::create(lv_obj_t *parent) {
@@ -217,9 +229,10 @@ void MediaModule::clear_artwork() {
 }
 
 void MediaModule::refresh_artwork() {
-    if (!artwork_image_ || !selected_entity_id_[0]) return;
+    if (!artwork_image_ || !selected_entity_id_[0] || !artwork_info_cache_) return;
 
-    HomeAssistantMediaArtworkInfo info = {};
+    HomeAssistantMediaArtworkInfo &info = artwork_info_cache_[0];
+    memset(&info, 0, sizeof(info));
     home_assistant_get_media_artwork_info(info);
     if (!info.generation || info.generation == artwork_generation_ ||
         !same_text(info.entity_id, selected_entity_id_) || info.data_size == 0) {
@@ -247,7 +260,8 @@ void MediaModule::refresh_artwork() {
         artwork_capacity_ = info.data_size;
     }
 
-    HomeAssistantMediaArtworkInfo copied = {};
+    HomeAssistantMediaArtworkInfo &copied = artwork_info_cache_[1];
+    memset(&copied, 0, sizeof(copied));
     if (!home_assistant_copy_media_artwork(artwork_buffer_, artwork_capacity_, copied) ||
         copied.generation != info.generation ||
         !same_text(copied.entity_id, selected_entity_id_)) {

@@ -10,10 +10,16 @@
 #include "ui_shell.h"
 #include "web_manager.h"
 
+// LVGL's JPEG/PNG decoder runs synchronously on Arduino's loopTask.  The
+// framework default is too small for the UI call chain plus decoder workspace.
+SET_LOOP_TASK_STACK_SIZE(APP_LOOP_TASK_STACK_BYTES);
+
 void setup() {
     Serial0.begin(115200);
     delay(250);
     Serial0.printf("\n%s v%s starting...\n", APP_NAME, APP_VERSION);
+    Serial0.printf("[Runtime] loopTask stack: %u bytes\n",
+                   static_cast<unsigned>(APP_LOOP_TASK_STACK_BYTES));
 
     esp_chip_info_t chip_info = {};
     esp_chip_info(&chip_info);

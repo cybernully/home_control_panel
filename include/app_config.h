@@ -1,10 +1,11 @@
 #pragma once
 
 #define APP_NAME "Home Control Panel"
-#define APP_VERSION "1.3.0"
+#define APP_VERSION "1.3.2"
 #define APP_DISPLAY_ROTATION 90
 #define APP_DEFAULT_BACKLIGHT 80
 #define APP_DEFAULT_SCREEN_TIMEOUT_SECONDS 120U
+#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)
 #define APP_TIMEZONE_POSIX "CST6CDT,M3.2.0,M11.1.0"
 
 #define PANEL_CONFIG_PATH "/panel.json"
