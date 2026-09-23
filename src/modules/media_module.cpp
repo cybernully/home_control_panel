@@ -6,6 +6,7 @@
 #include <JPEGDEC.h>
 #include <esp_heap_caps.h>
 #include <new>
+#include <stb_image.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -161,6 +162,7 @@ void MediaModule::create(lv_obj_t *parent) {
     artwork_placeholder_ = label(artwork_box_, "MEDIA", &lv_font_montserrat_24, MUTED);
     lv_obj_center(artwork_placeholder_);
     artwork_image_ = lv_image_create(artwork_box_);
+    lv_image_set_antialias(artwork_image_, true);
     lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
 
     track_label_ = label(now, "Nothing playing", &lv_font_montserrat_24, TEXT);
@@ -311,11 +313,15 @@ bool MediaModule::decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
     const int source_width = jpeg_decoder_->getWidth();
     const int source_height = jpeg_decoder_->getHeight();
     progressive = jpeg_decoder_->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+    if (progressive) {
+        jpeg_decoder_->close();
+        return decode_progressive_jpeg_artwork(info, decoded_width, decoded_height);
+    }
     const int longest_side = source_width > source_height ? source_width : source_height;
 
-    int divisor = progressive ? 8 : 1;
-    int options = progressive ? JPEG_SCALE_EIGHTH : 0;
-    if (!progressive && longest_side > 256) {
+    int divisor = 1;
+    int options = 0;
+    if (longest_side > 256) {
         if (longest_side <= 512) {
             divisor = 2;
             options = JPEG_SCALE_HALF;
@@ -372,6 +378,85 @@ bool MediaModule::decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
 
     decoded_width = target.width;
     decoded_height = target.height;
+    return true;
+}
+
+bool MediaModule::decode_progressive_jpeg_artwork(
+    const HomeAssistantMediaArtworkInfo &info,
+    uint16_t &decoded_width, uint16_t &decoded_height) {
+    int source_width = 0;
+    int source_height = 0;
+    int source_channels = 0;
+    if (!stbi_info_from_memory(artwork_buffer_, static_cast<int>(info.data_size),
+                               &source_width, &source_height, &source_channels) ||
+        source_width <= 0 || source_height <= 0 ||
+        source_width > 1024 || source_height > 1024) {
+        Serial0.printf("[Media] Progressive JPEG dimensions rejected: %dx%d\n",
+                       source_width, source_height);
+        return false;
+    }
+
+    int loaded_width = 0;
+    int loaded_height = 0;
+    int loaded_channels = 0;
+    stbi_uc *rgb = stbi_load_from_memory(
+        artwork_buffer_, static_cast<int>(info.data_size),
+        &loaded_width, &loaded_height, &loaded_channels, 3);
+    if (!rgb) {
+        Serial0.printf("[Media] Full progressive JPEG decode failed: %s\n",
+                       stbi_failure_reason() ? stbi_failure_reason() : "unknown error");
+        return false;
+    }
+
+    uint32_t output_width = static_cast<uint32_t>(loaded_width);
+    uint32_t output_height = static_cast<uint32_t>(loaded_height);
+    if (output_width > 256U || output_height > 256U) {
+        if (output_width >= output_height) {
+            output_height = (output_height * 256U + output_width / 2U) / output_width;
+            output_width = 256U;
+        } else {
+            output_width = (output_width * 256U + output_height / 2U) / output_height;
+            output_height = 256U;
+        }
+    }
+    if (output_width == 0) output_width = 1;
+    if (output_height == 0) output_height = 1;
+
+    const size_t required = static_cast<size_t>(output_width) * output_height * sizeof(uint16_t);
+    if (artwork_pixels_capacity_ < required) {
+        uint8_t *next = static_cast<uint8_t *>(
+            heap_caps_malloc(required, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (!next) next = static_cast<uint8_t *>(malloc(required));
+        if (!next) {
+            stbi_image_free(rgb);
+            return false;
+        }
+        if (artwork_pixels_) free(artwork_pixels_);
+        artwork_pixels_ = next;
+        artwork_pixels_capacity_ = required;
+    }
+
+    auto *pixels = reinterpret_cast<uint16_t *>(artwork_pixels_);
+    for (uint32_t y = 0; y < output_height; ++y) {
+        const uint32_t source_y = y * static_cast<uint32_t>(loaded_height) / output_height;
+        for (uint32_t x = 0; x < output_width; ++x) {
+            const uint32_t source_x = x * static_cast<uint32_t>(loaded_width) / output_width;
+            const stbi_uc *source = rgb +
+                (source_y * static_cast<uint32_t>(loaded_width) + source_x) * 3U;
+            pixels[y * output_width + x] =
+                static_cast<uint16_t>(((source[0] & 0xF8U) << 8U) |
+                                      ((source[1] & 0xFCU) << 3U) |
+                                      (source[2] >> 3U));
+        }
+    }
+    stbi_image_free(rgb);
+
+    decoded_width = static_cast<uint16_t>(output_width);
+    decoded_height = static_cast<uint16_t>(output_height);
+    Serial0.printf("[Media] Progressive JPEG decoded full resolution: %dx%d -> %ux%u\n",
+                   loaded_width, loaded_height,
+                   static_cast<unsigned>(decoded_width),
+                   static_cast<unsigned>(decoded_height));
     return true;
 }
 
@@ -459,7 +544,10 @@ void MediaModule::refresh_artwork() {
     const uint32_t sx = shown_width ? (202U * 256U) / shown_width : 256U;
     const uint32_t sy = shown_height ? (202U * 256U) / shown_height : 256U;
     uint32_t scale = sx < sy ? sx : sy;
-    if (scale > 256U) scale = 256U;
+    // Progressive JPEGs are decoded as a 1/8-size first-scan thumbnail.
+    // LVGL scale values above 256 enlarge an image; allow enough enlargement
+    // for a 32x32 thumbnail to fill the 202x202 artwork viewport.
+    if (scale > 4096U) scale = 4096U;
     if (scale < 16U) scale = 16U;
     lv_image_set_scale(artwork_image_, scale);
     lv_obj_center(artwork_image_);
@@ -469,7 +557,7 @@ void MediaModule::refresh_artwork() {
     artwork_generation_ = copied.generation;
     Serial0.printf("[Media] Artwork shown: %s%s, %u bytes, %ux%u, scale=%u/256\n",
                    copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
-                   progressive_jpeg ? " progressive thumbnail" : "",
+                   progressive_jpeg ? " progressive full" : "",
                    static_cast<unsigned>(copied.data_size),
                    static_cast<unsigned>(shown_width),
                    static_cast<unsigned>(shown_height),

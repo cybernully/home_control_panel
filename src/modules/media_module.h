@@ -87,6 +87,8 @@ private:
     bool decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
                              uint16_t &decoded_width, uint16_t &decoded_height,
                              bool &progressive);
+    bool decode_progressive_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
+                                         uint16_t &decoded_width, uint16_t &decoded_height);
     void clear_artwork();
     void refresh_artwork();
     void set_status(const char *text);

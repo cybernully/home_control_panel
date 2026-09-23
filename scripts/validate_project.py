@@ -6,12 +6,13 @@ required=[
     "platformio.ini","partitions.csv","include/app_config.h","include/board_lvgl.h",
     "include/config_service.h","include/module.h","include/module_registry.h",
     "include/home_assistant.h","include/web_manager.h","src/main.cpp","src/board_lvgl.cpp",
-    "src/lvgl_memory.cpp","src/config_service.cpp","src/module_registry.cpp",
+    "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/config_service.cpp","src/module_registry.cpp",
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
-    "docs/RELEASE_1.3.4.md"
+    "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
+    "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
 if missing:
@@ -21,7 +22,7 @@ assert cfg["schema"]==1
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.3.4"' in app
+assert '#define APP_VERSION "1.3.6"' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_MAX_MEDIA_PLAYERS 4' in app
@@ -47,8 +48,14 @@ for feature in ["media_player/browse_media","media_play_pause","volume_set","sel
 media=(root/"src/modules/media_module.cpp").read_text()
 for feature in ["home_assistant_get_media_players","home_assistant_request_media_artwork","home_assistant_queue_media_source"]:
     assert feature in media
-for feature in ["decode_jpeg_artwork", "LV_COLOR_FORMAT_RGB565", "set_media_label_text"]:
+for feature in ["decode_jpeg_artwork", "decode_progressive_jpeg_artwork",
+                "LV_COLOR_FORMAT_RGB565", "set_media_label_text",
+                "progressive full"]:
     assert feature in media
+assert "if (scale > 4096U) scale = 4096U;" in media
+stb_impl=(root/"src/stb_image_impl.cpp").read_text()
+for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM"]:
+    assert feature in stb_impl
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.3.4 structure validation passed.")
+print("Home Control Panel v1.3.6 structure validation passed.")
