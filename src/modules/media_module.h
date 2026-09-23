@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+class JPEGDEC;
+
 class MediaModule final : public PanelModule {
 public:
     const char *id() const override { return "media"; }
@@ -74,11 +76,17 @@ private:
     lv_obj_t *artwork_placeholder_ = nullptr;
     uint8_t *artwork_buffer_ = nullptr;
     size_t artwork_capacity_ = 0;
+    uint8_t *artwork_pixels_ = nullptr;
+    size_t artwork_pixels_capacity_ = 0;
+    JPEGDEC *jpeg_decoder_ = nullptr;
     uint32_t artwork_generation_ = 0;
     lv_image_dsc_t artwork_dsc_ = {};
 
     void select_player(const char *entity_id);
     bool allocate_work_buffers();
+    bool decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
+                             uint16_t &decoded_width, uint16_t &decoded_height,
+                             bool &progressive);
     void clear_artwork();
     void refresh_artwork();
     void set_status(const char *text);

@@ -1,11 +1,20 @@
 # Home Control Panel
 
-**Version 1.3.3**
+**Version 1.3.4**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Maintenance update 1.3.4
+
+Version 1.3.4 bypasses LVGL's failing Tiny JPEG streaming path and decodes
+Home Assistant JPEG artwork directly into a PSRAM-backed RGB565 image with
+JPEGDEC.  Baseline JPEGs are rendered at up to 256 pixels on their longest
+side.  Progressive JPEGs use JPEGDEC's supported 1/8-size first-scan thumbnail.
+It also converts en and em dashes in live media text to ASCII so the built-in
+Montserrat fonts do not emit missing-glyph warnings.
 
 ## Maintenance update 1.3.3
 

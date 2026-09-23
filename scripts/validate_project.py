@@ -10,7 +10,8 @@ required=[
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
-    "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md"
+    "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
+    "docs/RELEASE_1.3.4.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
 if missing:
@@ -20,7 +21,7 @@ assert cfg["schema"]==1
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.3.3"' in app
+assert '#define APP_VERSION "1.3.4"' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_MAX_MEDIA_PLAYERS 4' in app
@@ -34,8 +35,9 @@ assert "[env:jc8012p4a1c_2624]" in pio and "board = esp32-p4\n" in pio
 assert "[env:jc8012p4a1c_2635]" in pio and "board = esp32-p4_r3" in pio
 assert "55.03.39" in pio
 assert "links2004/WebSockets@2.7.3" in pio
-assert "-DLV_USE_TJPGD=1" in pio and "-DLV_USE_LODEPNG=1" in pio
-assert "-DLV_USE_FS_MEMFS=1" in pio and "-DLV_FS_MEMFS_LETTER=77" in pio
+assert "JPEGDEC.git#430cf789ec96a28fd65c38f0cc3818ab4728fe57" in pio
+assert "-DLV_USE_LODEPNG=1" in pio
+assert "-DLV_USE_FS_MEMFS=1" not in pio
 registry=(root/"src/module_registry.cpp").read_text()
 for name in ["OverviewModule","RoomModule","MediaModule","ClimateModule","SecurityModule","SettingsModule"]:
     assert name in registry
@@ -45,7 +47,8 @@ for feature in ["media_player/browse_media","media_play_pause","volume_set","sel
 media=(root/"src/modules/media_module.cpp").read_text()
 for feature in ["home_assistant_get_media_players","home_assistant_request_media_artwork","home_assistant_queue_media_source"]:
     assert feature in media
-assert "lv_image_decoder_get_info" in media
+for feature in ["decode_jpeg_artwork", "LV_COLOR_FORMAT_RGB565", "set_media_label_text"]:
+    assert feature in media
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.3.3 structure validation passed.")
+print("Home Control Panel v1.3.4 structure validation passed.")

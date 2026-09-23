@@ -3,7 +3,9 @@
 #include "module_ui.h"
 
 #include <Arduino.h>
+#include <JPEGDEC.h>
 #include <esp_heap_caps.h>
+#include <new>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,6 +35,63 @@ const char *media_title_or_state(const HomeAssistantMediaSnapshot &media) {
     if (strcmp(media.state, "idle") == 0) return "Nothing playing";
     if (strcmp(media.state, "unavailable") == 0) return "Player unavailable";
     return "No media title";
+}
+
+void set_media_label_text(lv_obj_t *label_obj, const char *text) {
+    if (!label_obj) return;
+    const uint8_t *src = reinterpret_cast<const uint8_t *>(text ? text : "");
+    char normalized[256] = {};
+    size_t out = 0;
+    while (*src && out + 1 < sizeof(normalized)) {
+        // The built-in Montserrat fonts do not contain en/em dash glyphs.
+        if (src[0] == 0xE2 && src[1] && src[2] && src[1] == 0x80 &&
+            (src[2] == 0x93 || src[2] == 0x94)) {
+            normalized[out++] = '-';
+            src += 3;
+            continue;
+        }
+        normalized[out++] = static_cast<char>(*src++);
+    }
+    normalized[out] = '\0';
+    lv_label_set_text(label_obj, normalized);
+}
+
+struct ArtworkDecodeTarget {
+    uint16_t *pixels = nullptr;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    bool valid = true;
+};
+
+int copy_jpeg_pixels(JPEGDRAW *draw) {
+    if (!draw || !draw->pUser || !draw->pPixels) return 0;
+    auto *target = static_cast<ArtworkDecodeTarget *>(draw->pUser);
+    if (!target->pixels || draw->x < 0 || draw->y < 0 ||
+        draw->x >= target->width || draw->y >= target->height) {
+        target->valid = false;
+        return 0;
+    }
+
+    uint32_t copy_width = draw->iWidthUsed > 0
+                              ? static_cast<uint32_t>(draw->iWidthUsed)
+                              : static_cast<uint32_t>(draw->iWidth);
+    uint32_t copy_height = static_cast<uint32_t>(draw->iHeight);
+    if (copy_width > static_cast<uint32_t>(draw->iWidth)) {
+        copy_width = static_cast<uint32_t>(draw->iWidth);
+    }
+    if (static_cast<uint32_t>(draw->x) + copy_width > target->width) {
+        copy_width = target->width - static_cast<uint32_t>(draw->x);
+    }
+    if (static_cast<uint32_t>(draw->y) + copy_height > target->height) {
+        copy_height = target->height - static_cast<uint32_t>(draw->y);
+    }
+
+    for (uint32_t row = 0; row < copy_height; ++row) {
+        memcpy(target->pixels + (static_cast<uint32_t>(draw->y) + row) * target->width + draw->x,
+               draw->pPixels + row * draw->iWidth,
+               copy_width * sizeof(uint16_t));
+    }
+    return 1;
 }
 
 }  // namespace
@@ -207,7 +266,7 @@ void MediaModule::create(lv_obj_t *parent) {
 }
 
 void MediaModule::set_status(const char *text) {
-    if (status_label_) lv_label_set_text(status_label_, text ? text : "");
+    set_media_label_text(status_label_, text);
 }
 
 void MediaModule::select_player(const char *entity_id) {
@@ -228,6 +287,94 @@ void MediaModule::clear_artwork() {
     artwork_generation_ = 0;
 }
 
+bool MediaModule::decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
+                                      uint16_t &decoded_width, uint16_t &decoded_height,
+                                      bool &progressive) {
+    decoded_width = 0;
+    decoded_height = 0;
+    progressive = false;
+
+    if (!jpeg_decoder_) {
+        void *storage = heap_caps_malloc(sizeof(JPEGDEC), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!storage) storage = malloc(sizeof(JPEGDEC));
+        if (!storage) return false;
+        jpeg_decoder_ = new (storage) JPEGDEC();
+    }
+
+    if (!jpeg_decoder_->openRAM(artwork_buffer_, static_cast<int>(info.data_size),
+                                copy_jpeg_pixels)) {
+        Serial0.printf("[Media] JPEGDEC open failed: error=%d\n",
+                       jpeg_decoder_->getLastError());
+        return false;
+    }
+
+    const int source_width = jpeg_decoder_->getWidth();
+    const int source_height = jpeg_decoder_->getHeight();
+    progressive = jpeg_decoder_->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+    const int longest_side = source_width > source_height ? source_width : source_height;
+
+    int divisor = progressive ? 8 : 1;
+    int options = progressive ? JPEG_SCALE_EIGHTH : 0;
+    if (!progressive && longest_side > 256) {
+        if (longest_side <= 512) {
+            divisor = 2;
+            options = JPEG_SCALE_HALF;
+        } else if (longest_side <= 1024) {
+            divisor = 4;
+            options = JPEG_SCALE_QUARTER;
+        } else {
+            divisor = 8;
+            options = JPEG_SCALE_EIGHTH;
+        }
+    }
+
+    const int output_width = (source_width + divisor - 1) / divisor;
+    const int output_height = (source_height + divisor - 1) / divisor;
+    if (source_width <= 0 || source_height <= 0 || output_width <= 0 || output_height <= 0 ||
+        output_width > 512 || output_height > 512) {
+        Serial0.printf("[Media] JPEG dimensions rejected: source=%dx%d output=%dx%d\n",
+                       source_width, source_height, output_width, output_height);
+        jpeg_decoder_->close();
+        return false;
+    }
+
+    const size_t required = static_cast<size_t>(output_width) * output_height * sizeof(uint16_t);
+    if (artwork_pixels_capacity_ < required) {
+        uint8_t *next = static_cast<uint8_t *>(
+            heap_caps_malloc(required, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (!next) next = static_cast<uint8_t *>(malloc(required));
+        if (!next) {
+            jpeg_decoder_->close();
+            return false;
+        }
+        if (artwork_pixels_) free(artwork_pixels_);
+        artwork_pixels_ = next;
+        artwork_pixels_capacity_ = required;
+    }
+    memset(artwork_pixels_, 0, required);
+
+    ArtworkDecodeTarget target = {
+        reinterpret_cast<uint16_t *>(artwork_pixels_),
+        static_cast<uint16_t>(output_width),
+        static_cast<uint16_t>(output_height),
+        true,
+    };
+    jpeg_decoder_->setUserPointer(&target);
+    jpeg_decoder_->setPixelType(RGB565_LITTLE_ENDIAN);
+    const bool decoded = jpeg_decoder_->decode(0, 0, options) != 0;
+    const int decode_error = jpeg_decoder_->getLastError();
+    jpeg_decoder_->close();
+    if (!decoded || !target.valid) {
+        Serial0.printf("[Media] JPEGDEC decode failed: error=%d callback=%s\n",
+                       decode_error, target.valid ? "ok" : "invalid");
+        return false;
+    }
+
+    decoded_width = target.width;
+    decoded_height = target.height;
+    return true;
+}
+
 void MediaModule::refresh_artwork() {
     if (!artwork_image_ || !selected_entity_id_[0] || !artwork_info_cache_) return;
 
@@ -246,6 +393,7 @@ void MediaModule::refresh_artwork() {
     const void *old_src = lv_image_get_src(artwork_image_);
     if (old_src) lv_image_cache_drop(old_src);
     lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
+    if (artwork_placeholder_) lv_obj_remove_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
 
     if (artwork_capacity_ < info.data_size) {
         uint8_t *next = static_cast<uint8_t *>(
@@ -268,11 +416,23 @@ void MediaModule::refresh_artwork() {
         return;
     }
 
-    if (copied.format == HomeAssistantArtworkFormat::Png ||
-        copied.format == HomeAssistantArtworkFormat::Jpeg) {
-        // Both enabled LVGL decoders accept a persistent RAW variable image.
-        // This avoids LVGL 9.3's opaque/broken MEMFS path handling and keeps
-        // the encoded bytes in PSRAM for as long as the widget references them.
+    bool progressive_jpeg = false;
+    if (copied.format == HomeAssistantArtworkFormat::Jpeg) {
+        uint16_t decoded_width = 0;
+        uint16_t decoded_height = 0;
+        if (!decode_jpeg_artwork(copied, decoded_width, decoded_height, progressive_jpeg)) {
+            set_status("JPEG artwork downloaded, but decoding failed.");
+            return;
+        }
+        memset(&artwork_dsc_, 0, sizeof(artwork_dsc_));
+        artwork_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        artwork_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+        artwork_dsc_.header.w = decoded_width;
+        artwork_dsc_.header.h = decoded_height;
+        artwork_dsc_.header.stride = decoded_width * sizeof(uint16_t);
+        artwork_dsc_.data_size = static_cast<uint32_t>(decoded_width) * decoded_height * sizeof(uint16_t);
+        artwork_dsc_.data = artwork_pixels_;
+    } else if (copied.format == HomeAssistantArtworkFormat::Png) {
         memset(&artwork_dsc_, 0, sizeof(artwork_dsc_));
         artwork_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
         artwork_dsc_.header.cf = LV_COLOR_FORMAT_RAW;
@@ -280,22 +440,24 @@ void MediaModule::refresh_artwork() {
         artwork_dsc_.header.h = copied.height;
         artwork_dsc_.data_size = copied.data_size;
         artwork_dsc_.data = artwork_buffer_;
-
-        lv_image_header_t decoded_header = {};
-        if (lv_image_decoder_get_info(&artwork_dsc_, &decoded_header) != LV_RESULT_OK) {
-            Serial0.printf("[Media] Artwork decoder rejected %s variable image\n",
-                           copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG");
-            set_status("Artwork downloaded, but the image decoder rejected it.");
-            return;
-        }
-        lv_image_set_src(artwork_image_, &artwork_dsc_);
     } else {
         Serial0.println("[Media] Artwork ignored: unsupported cached format");
         return;
     }
 
-    const uint32_t sx = copied.width ? (202U * 256U) / copied.width : 256U;
-    const uint32_t sy = copied.height ? (202U * 256U) / copied.height : 256U;
+    lv_image_header_t decoded_header = {};
+    if (lv_image_decoder_get_info(&artwork_dsc_, &decoded_header) != LV_RESULT_OK) {
+        Serial0.printf("[Media] Artwork decoder rejected %s variable image\n",
+                       copied.format == HomeAssistantArtworkFormat::Jpeg ? "RGB565 JPEG" : "PNG");
+        set_status("Artwork decoded, but LVGL rejected the image buffer.");
+        return;
+    }
+    lv_image_set_src(artwork_image_, &artwork_dsc_);
+
+    const uint32_t shown_width = artwork_dsc_.header.w;
+    const uint32_t shown_height = artwork_dsc_.header.h;
+    const uint32_t sx = shown_width ? (202U * 256U) / shown_width : 256U;
+    const uint32_t sy = shown_height ? (202U * 256U) / shown_height : 256U;
     uint32_t scale = sx < sy ? sx : sy;
     if (scale > 256U) scale = 256U;
     if (scale < 16U) scale = 16U;
@@ -305,11 +467,12 @@ void MediaModule::refresh_artwork() {
     if (artwork_placeholder_) lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(artwork_image_);
     artwork_generation_ = copied.generation;
-    Serial0.printf("[Media] Artwork shown: %s, %u bytes, %ux%u, scale=%u/256\n",
+    Serial0.printf("[Media] Artwork shown: %s%s, %u bytes, %ux%u, scale=%u/256\n",
                    copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
+                   progressive_jpeg ? " progressive thumbnail" : "",
                    static_cast<unsigned>(copied.data_size),
-                   static_cast<unsigned>(copied.width),
-                   static_cast<unsigned>(copied.height),
+                   static_cast<unsigned>(shown_width),
+                   static_cast<unsigned>(shown_height),
                    static_cast<unsigned>(scale));
 }
 
@@ -363,10 +526,10 @@ void MediaModule::update() {
             control.bound = true;
             snprintf(control.entity_id, sizeof(control.entity_id), "%s",
                      media_cache_[i].entity_id);
-            lv_label_set_text(control.label,
-                              media_cache_[i].name[0]
-                                  ? media_cache_[i].name
-                                  : media_cache_[i].entity_id);
+            set_media_label_text(control.label,
+                                 media_cache_[i].name[0]
+                                     ? media_cache_[i].name
+                                     : media_cache_[i].entity_id);
             set_enabled(control.button, media_cache_[i].available);
             lv_obj_set_style_bg_color(control.button,
                                       lv_color_hex(i == selected ? ACCENT : CARD_ALT), LV_PART_MAIN);
@@ -380,26 +543,26 @@ void MediaModule::update() {
     }
 
     const HomeAssistantMediaSnapshot &active = media_cache_[selected];
-    lv_label_set_text(player_name_, active.name[0] ? active.name : active.entity_id);
-    lv_label_set_text(track_label_, media_title_or_state(active));
+    set_media_label_text(player_name_, active.name[0] ? active.name : active.entity_id);
+    set_media_label_text(track_label_, media_title_or_state(active));
 
     char artist[128] = {};
     if (active.artist[0]) snprintf(artist, sizeof(artist), "%s", active.artist);
     else if (active.playlist[0]) snprintf(artist, sizeof(artist), "Playlist: %s", active.playlist);
     else snprintf(artist, sizeof(artist), "No artist metadata");
-    lv_label_set_text(artist_label_, artist);
+    set_media_label_text(artist_label_, artist);
 
     char album[128] = {};
     if (active.album[0]) snprintf(album, sizeof(album), "Album: %s", active.album);
     else if (active.source[0]) snprintf(album, sizeof(album), "Source: %s", active.source);
-    lv_label_set_text(album_label_, album);
+    set_media_label_text(album_label_, album);
 
     char state[160];
     snprintf(state, sizeof(state), "State: %s%s%s",
              active.state[0] ? active.state : "unknown",
              active.source[0] ? " | Source: " : "",
              active.source[0] ? active.source : "");
-    lv_label_set_text(state_label_, state);
+    set_media_label_text(state_label_, state);
 
     set_enabled(play_button_, active.available);
     set_enabled(prev_button_, active.available);
@@ -426,7 +589,7 @@ void MediaModule::update() {
         if (i < active.source_count) {
             control.bound = true;
             snprintf(control.source, sizeof(control.source), "%s", active.sources[i]);
-            lv_label_set_text(control.label, control.source);
+            set_media_label_text(control.label, control.source);
             set_enabled(control.button, active.available);
             lv_obj_set_style_bg_color(control.button,
                                       lv_color_hex(same_text(active.source, control.source) ? ACCENT : CARD_ALT),
@@ -450,7 +613,7 @@ void MediaModule::update() {
             same_text(favorite_cache_[i].entity_id, selected_entity_id_)) {
             control.bound = true;
             control.favorite = favorite_cache_[i];
-            lv_label_set_text(control.label, favorite_cache_[i].title);
+            set_media_label_text(control.label, favorite_cache_[i].title);
             set_enabled(control.button, active.available);
         } else {
             control.bound = false;
