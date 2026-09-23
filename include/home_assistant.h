@@ -122,6 +122,7 @@ bool home_assistant_queue_media_play_pause(const char *entity_id);
 bool home_assistant_queue_media_previous(const char *entity_id);
 bool home_assistant_queue_media_next(const char *entity_id);
 bool home_assistant_queue_media_volume(const char *entity_id, uint8_t volume_pct);
+bool home_assistant_queue_media_volume_step(const char *entity_id, bool increase);
 bool home_assistant_queue_media_mute(const char *entity_id, bool muted);
 bool home_assistant_queue_media_source(const char *entity_id, const char *source);
 bool home_assistant_queue_media_favorite(const HomeAssistantMediaFavorite &favorite);

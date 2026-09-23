@@ -56,6 +56,8 @@ enum class HaActionType : uint8_t {
     MediaPrevious,
     MediaNext,
     MediaVolume,
+    MediaVolumeUp,
+    MediaVolumeDown,
     MediaMute,
     MediaSource,
     MediaFavorite,
@@ -1350,6 +1352,12 @@ void process_action_worker(const HaAction &action) {
                 service = "volume_set";
                 doc["volume_level"] = static_cast<float>(action.value) / 100.0f;
                 break;
+            case HaActionType::MediaVolumeUp:
+                service = "volume_up";
+                break;
+            case HaActionType::MediaVolumeDown:
+                service = "volume_down";
+                break;
             case HaActionType::MediaMute:
                 service = "volume_mute";
                 doc["is_volume_muted"] = action.flag;
@@ -1944,6 +1952,14 @@ bool home_assistant_queue_media_volume(const char *entity_id, uint8_t volume_pct
     HaAction action = {};
     action.type = HaActionType::MediaVolume;
     action.value = static_cast<uint8_t>(constrain(static_cast<int>(volume_pct), 0, 100));
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    return queue_action(action);
+}
+
+bool home_assistant_queue_media_volume_step(const char *entity_id, bool increase) {
+    if (!entity_id || !entity_id[0]) return false;
+    HaAction action = {};
+    action.type = increase ? HaActionType::MediaVolumeUp : HaActionType::MediaVolumeDown;
     copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
     return queue_action(action);
 }

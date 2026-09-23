@@ -1,11 +1,30 @@
 # Home Control Panel
 
-**Version 1.3.6**
+**Version 1.3.8**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Maintenance update 1.3.8
+
+Version 1.3.8 refines the Media dashboard after the full-card artwork design in
+v1.3.7.  Artwork now occupies a dedicated 320x320 well on the left while the
+title, metadata, playback controls, and status return to a focused right-hand
+column.  Images preserve their aspect ratio, are centered, and may be reduced
+to fit, but are never enlarged beyond their decoded resolution.  This avoids
+wide cropping and keeps 256x256 Home Assistant artwork pixel-sharp.
+
+## Maintenance update 1.3.7
+
+Version 1.3.7 redesigns the Media dashboard around a full-card, cover-cropped
+artwork background with a translucent readability layer and a clearer metadata
+hierarchy.  Playback controls are larger and centered.  Volume retains its
+slider while adding dedicated decrement and increment buttons backed by Home
+Assistant's native `volume_down` and `volume_up` services, and mute is now a
+compact secondary control.  The page continues to reuse one PSRAM-backed RGB565
+artwork buffer and adds no second decoded image.
 
 ## Maintenance update 1.3.6
 

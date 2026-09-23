@@ -68,6 +68,8 @@ private:
     lv_obj_t *next_button_ = nullptr;
     lv_obj_t *volume_slider_ = nullptr;
     lv_obj_t *volume_label_ = nullptr;
+    lv_obj_t *volume_down_button_ = nullptr;
+    lv_obj_t *volume_up_button_ = nullptr;
     lv_obj_t *mute_button_ = nullptr;
     lv_obj_t *mute_label_ = nullptr;
 
@@ -100,6 +102,8 @@ private:
     static void volume_pressed_cb(lv_event_t *e);
     static void volume_changed_cb(lv_event_t *e);
     static void volume_released_cb(lv_event_t *e);
+    static void volume_down_cb(lv_event_t *e);
+    static void volume_up_cb(lv_event_t *e);
     static void mute_cb(lv_event_t *e);
     static void source_cb(lv_event_t *e);
     static void favorite_cb(lv_event_t *e);

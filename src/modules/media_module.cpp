@@ -152,55 +152,60 @@ void MediaModule::create(lv_obj_t *parent) {
     add_live_badge(parent);
 
     lv_obj_t *now = card(parent, 24, 92, 760, 394);
-    player_name_ = label(now, "Discovering media players...", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(player_name_, 18, 18);
-    lv_obj_set_width(player_name_, 710);
-    lv_label_set_long_mode(player_name_, LV_LABEL_LONG_DOT);
-
-    artwork_box_ = card(now, 18, 54, 214, 214);
+    artwork_box_ = card(now, 20, 36, 320, 320);
     lv_obj_set_style_bg_color(artwork_box_, lv_color_hex(CARD_ALT), LV_PART_MAIN);
-    artwork_placeholder_ = label(artwork_box_, "MEDIA", &lv_font_montserrat_24, MUTED);
+    lv_obj_set_style_border_width(artwork_box_, 0, LV_PART_MAIN);
+
+    artwork_placeholder_ = label(artwork_box_, "NO ARTWORK", &lv_font_montserrat_14, MUTED);
     lv_obj_center(artwork_placeholder_);
+
     artwork_image_ = lv_image_create(artwork_box_);
+    lv_obj_set_style_radius(artwork_image_, 12, LV_PART_MAIN);
     lv_image_set_antialias(artwork_image_, true);
+    lv_obj_remove_flag(artwork_image_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
 
+    player_name_ = label(now, "Discovering media players...", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(player_name_, 366, 30);
+    lv_obj_set_width(player_name_, 366);
+    lv_label_set_long_mode(player_name_, LV_LABEL_LONG_DOT);
+
     track_label_ = label(now, "Nothing playing", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(track_label_, 254, 58);
-    lv_obj_set_width(track_label_, 478);
+    lv_obj_set_pos(track_label_, 366, 70);
+    lv_obj_set_width(track_label_, 366);
     lv_label_set_long_mode(track_label_, LV_LABEL_LONG_DOT);
 
     artist_label_ = label(now, "", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(artist_label_, 254, 100);
-    lv_obj_set_width(artist_label_, 478);
+    lv_obj_set_pos(artist_label_, 366, 111);
+    lv_obj_set_width(artist_label_, 366);
     lv_label_set_long_mode(artist_label_, LV_LABEL_LONG_DOT);
 
     album_label_ = label(now, "", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(album_label_, 254, 132);
-    lv_obj_set_width(album_label_, 478);
+    lv_obj_set_pos(album_label_, 366, 144);
+    lv_obj_set_width(album_label_, 366);
     lv_label_set_long_mode(album_label_, LV_LABEL_LONG_DOT);
 
     state_label_ = label(now, "Waiting for Home Assistant", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(state_label_, 254, 166);
-    lv_obj_set_width(state_label_, 478);
+    lv_obj_set_pos(state_label_, 366, 177);
+    lv_obj_set_width(state_label_, 366);
     lv_label_set_long_mode(state_label_, LV_LABEL_LONG_DOT);
 
-    prev_button_ = button(now, "PREV", 254, 214, 138, 70, CARD_ALT);
+    prev_button_ = button(now, "PREV", 366, 224, 104, 68, CARD_ALT);
     lv_obj_add_event_cb(prev_button_, previous_cb, LV_EVENT_CLICKED, this);
     set_enabled(prev_button_, false);
 
-    play_button_ = button(now, "PLAY", 404, 214, 176, 70, ACCENT);
+    play_button_ = button(now, "PLAY", 482, 224, 134, 68, ACCENT);
     play_label_ = lv_obj_get_child(play_button_, 0);
     lv_obj_add_event_cb(play_button_, play_cb, LV_EVENT_CLICKED, this);
     set_enabled(play_button_, false);
 
-    next_button_ = button(now, "NEXT", 592, 214, 138, 70, CARD_ALT);
+    next_button_ = button(now, "NEXT", 628, 224, 104, 68, CARD_ALT);
     lv_obj_add_event_cb(next_button_, next_cb, LV_EVENT_CLICKED, this);
     set_enabled(next_button_, false);
 
     status_label_ = label(now, "Waiting for media discovery...", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(status_label_, 254, 314);
-    lv_obj_set_width(status_label_, 478);
+    lv_obj_set_pos(status_label_, 366, 317);
+    lv_obj_set_width(status_label_, 366);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_WRAP);
 
     lv_obj_t *right = card(parent, 804, 92, 448, 394);
@@ -223,9 +228,15 @@ void MediaModule::create(lv_obj_t *parent) {
     volume_label_ = label(right, "--", &lv_font_montserrat_20, TEXT);
     lv_obj_align(volume_label_, LV_ALIGN_TOP_RIGHT, -20, 184);
 
+    volume_down_button_ = button(right, "-", 24, 220, 64, 64, CARD_ALT);
+    lv_obj_set_style_text_font(lv_obj_get_child(volume_down_button_, 0),
+                               &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_add_event_cb(volume_down_button_, volume_down_cb, LV_EVENT_CLICKED, this);
+    set_enabled(volume_down_button_, false);
+
     volume_slider_ = lv_slider_create(right);
-    lv_obj_set_pos(volume_slider_, 24, 228);
-    lv_obj_set_size(volume_slider_, 400, 28);
+    lv_obj_set_pos(volume_slider_, 104, 238);
+    lv_obj_set_size(volume_slider_, 236, 28);
     lv_slider_set_range(volume_slider_, 0, 100);
     lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
     style_slider(volume_slider_);
@@ -234,7 +245,13 @@ void MediaModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(volume_slider_, volume_changed_cb, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_add_event_cb(volume_slider_, volume_released_cb, LV_EVENT_RELEASED, this);
 
-    mute_button_ = button(right, "MUTE", 24, 288, 400, 66, CARD_ALT);
+    volume_up_button_ = button(right, "+", 356, 220, 68, 64, CARD_ALT);
+    lv_obj_set_style_text_font(lv_obj_get_child(volume_up_button_, 0),
+                               &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_add_event_cb(volume_up_button_, volume_up_cb, LV_EVENT_CLICKED, this);
+    set_enabled(volume_up_button_, false);
+
+    mute_button_ = button(right, "MUTE", 274, 304, 150, 54, CARD_ALT);
     mute_label_ = lv_obj_get_child(mute_button_, 0);
     lv_obj_add_event_cb(mute_button_, mute_cb, LV_EVENT_CLICKED, this);
     set_enabled(mute_button_, false);
@@ -538,16 +555,14 @@ void MediaModule::refresh_artwork() {
         return;
     }
     lv_image_set_src(artwork_image_, &artwork_dsc_);
-
     const uint32_t shown_width = artwork_dsc_.header.w;
     const uint32_t shown_height = artwork_dsc_.header.h;
-    const uint32_t sx = shown_width ? (202U * 256U) / shown_width : 256U;
-    const uint32_t sy = shown_height ? (202U * 256U) / shown_height : 256U;
+    const uint32_t sx = shown_width ? (304U * 256U) / shown_width : 256U;
+    const uint32_t sy = shown_height ? (304U * 256U) / shown_height : 256U;
     uint32_t scale = sx < sy ? sx : sy;
-    // Progressive JPEGs are decoded as a 1/8-size first-scan thumbnail.
-    // LVGL scale values above 256 enlarge an image; allow enough enlargement
-    // for a 32x32 thumbnail to fill the 202x202 artwork viewport.
-    if (scale > 4096U) scale = 4096U;
+    // Preserve native artwork pixels.  Images may be reduced to fit the well,
+    // but are never enlarged beyond their decoded resolution.
+    if (scale > 256U) scale = 256U;
     if (scale < 16U) scale = 16U;
     lv_image_set_scale(artwork_image_, scale);
     lv_obj_center(artwork_image_);
@@ -588,6 +603,8 @@ void MediaModule::update() {
         set_enabled(prev_button_, false);
         set_enabled(next_button_, false);
         set_enabled(volume_slider_, false);
+        set_enabled(volume_down_button_, false);
+        set_enabled(volume_up_button_, false);
         set_enabled(mute_button_, false);
         for (auto &p : players_) { p.bound = false; set_enabled(p.button, false); lv_label_set_text(p.label, "Available slot"); }
         for (auto &s : sources_) { s.bound = false; set_enabled(s.button, false); lv_label_set_text(s.label, "--"); }
@@ -659,6 +676,8 @@ void MediaModule::update() {
     lv_obj_set_style_bg_color(play_button_, lv_color_hex(is_playing_state(active.state) ? ACCENT : CARD_ALT), LV_PART_MAIN);
 
     set_enabled(volume_slider_, active.available && active.supports_volume);
+    set_enabled(volume_down_button_, active.available && active.supports_volume);
+    set_enabled(volume_up_button_, active.available && active.supports_volume);
     if (!volume_dragging_) lv_slider_set_value(volume_slider_, active.volume_pct, LV_ANIM_OFF);
     char volume[20];
     if (active.supports_volume) {
@@ -787,6 +806,24 @@ void MediaModule::volume_released_cb(lv_event_t *e) {
                          self->selected_entity_id_, static_cast<uint8_t>(constrain(value, 0, 100)))
                          ? "Volume queued; waiting for Home Assistant."
                          : "Could not queue volume change.");
+}
+
+void MediaModule::volume_down_cb(lv_event_t *e) {
+    auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
+    if (!self || !self->selected_entity_id_[0]) return;
+    self->set_status(home_assistant_queue_media_volume_step(
+                         self->selected_entity_id_, false)
+                         ? "Volume down queued; waiting for Home Assistant."
+                         : "Could not queue volume down.");
+}
+
+void MediaModule::volume_up_cb(lv_event_t *e) {
+    auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
+    if (!self || !self->selected_entity_id_[0]) return;
+    self->set_status(home_assistant_queue_media_volume_step(
+                         self->selected_entity_id_, true)
+                         ? "Volume up queued; waiting for Home Assistant."
+                         : "Could not queue volume up.");
 }
 
 void MediaModule::mute_cb(lv_event_t *e) {
