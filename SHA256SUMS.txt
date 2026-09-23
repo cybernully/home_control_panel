@@ -2,7 +2,7 @@
 67cca8c6c85c4698d0b5592a07a40ef2c16e9270cbe2773c6798944272525125  ./.gitignore.optional
 e83693f24d4429dcd13634ada54f2b9d235f885be3fd08697d8d6635c36122fc  ./.vscode/extensions.json
 e6a4642c3a95d0269e82e62753052f324b8f410a6b5047d0ecfa45084981a18f  ./.vscode/extensions.json.optional
-c54fa4b67d83f594bed51f1e2cc6d3e35fd115176a384a5c07f427f4d51d11ac  ./README.md
+c921f5b19b5e6377eb6789621ac67bb8a53ee506d3cf9c3cef2ed5b77bd0b9a8  ./README.md
 12ea6b5e774863cd6c577b57879fff60a1580916db756f29e0d365d71f0cfa0b  ./data/hosted/esp32c6-v2.12.3.bin
 76115a45c23750fe4afdfd3d20d7eac4469c2f28c556dd6bb03e50582bc0cc91  ./data/panel.json
 43a692be4befc6f1d6824a1833b5fb7280cf5bf2d96aee9a364be85f70032521  ./docs/ARCHITECTURE.md
@@ -12,8 +12,9 @@ b38e2c3098d4a144eb89a1084a093e8d6876890efd7ed9a7be2fef1e6a5827df  ./docs/RELEASE
 0290234709872e76df2b96c3ac5039f49dfb9c80037970d9c3936f8c1dddf02f  ./docs/RELEASE_1.2.0.md
 f39c115cf99b8f5989ac1ee2bef1690043ba0d6af57f69319324b89b17c36567  ./docs/RELEASE_1.3.0.md
 365cad9cb34c023c585bdda52031fccab7198fcf51653e92a9eb4cfa76c0195a  ./docs/RELEASE_1.3.2.md
+23ebe5ffe0e9378a2c825d4a68125469f8d06da59b04369efcab201f08a2713c  ./docs/RELEASE_1.3.3.md
 cc75d9f83073dd1eb15c259b110d35629380d05bbf1fbc056f873efab9469ffc  ./docs/ROADMAP.md
-f405e816f6355eca08057f25ec4827426cc49621727a9f29eb2a2d9fb7066e8d  ./include/app_config.h
+ae153722b584f043051abf2b88ce66088a0697dd5ecd4926275fe7df494d8ee8  ./include/app_config.h
 d6eb587141513c6aee3d6a2575d829b2a9a0a1946e846a9c38d5c404bf5e9712  ./include/app_secrets.example.h
 b92d50e74d54d79a834002d32f42fa7b803c281e1b49215b5195c17e0b66cf52  ./include/battery_service.h
 3f8ab4d2e9ed56b59f8d905f3a4f56d4f73eee57cb49b71644e0c48dfcbe85f4  ./include/board_lvgl.h
@@ -44,11 +45,11 @@ cb98271eb34087ab58a10ea36d4711b8efbdc58c5444148bc5d843a64de6ca0c  ./lib/JC8012P4
 da3e81d0124bc04ac57b8314c2e92fd8c0fd94aa9649935d3299c299de954dae  ./lib/JC8012P4A1C_display/src/gsl_point_id.h
 80431a22e34f0f5d081f6ac0effd331e130a44cdb40652f366c5dd2caa20f6e1  ./lib/JC8012P4A1C_display/src/pins_config.h
 cca916297e361a6c44ac25be8d4ca5be6669db769d5b85b9e48e2754a429e1c7  ./partitions.csv
-9c48ccf2f0b5c41dc09ae6465e9cb68558a1fc542aea27ad01982022b6787c0e  ./platformio.ini
+4835ae847839ad110eb4a5b31fa096a9761e8687be16dc2b91fd6ae00c4c3300  ./platformio.ini
 aa3ec69a57f727e81a6df1aab800f94058e8d1f4e6044847717c1f714b0188c1  ./scripts/bootstrap_jd9365.py
 7049fdedbda2d7ed22a00e181019ce400f814d375866a6c56f8c9565d8a5bff6  ./scripts/build_all.sh
 cb289c15c1ad66bef372bc94e2bed49d4a77721e4e33d87f520479c9284fe57d  ./scripts/fetch_hosted_c6.py
-b09c6418d8c685b412c992327504d25c731182b4e5ce35b4fac55b621d54deca  ./scripts/validate_project.py
+3b42df3d104d9e9f896527742596203ff89b9f2a5a770c7c37a71cce2f54eabc  ./scripts/validate_project.py
 9126a474657df57e8aedabaf4318e3749173797d01972db8eaa3a5b1d2b154b8  ./src/battery_service.cpp
 878203288522ace0a7a5f36d09b336c37e0c6bde30e1ad13636b7dd40feec74e  ./src/board_lvgl.cpp
 89cb06b1b161d5e4e067889a7a279c49d37f0c3558f9c80b71a36aabbdd9d4f2  ./src/config_service.cpp
@@ -61,7 +62,7 @@ b09c6418d8c685b412c992327504d25c731182b4e5ce35b4fac55b621d54deca  ./scripts/vali
 4b2f5a831c6ebc4f8825879b222ee20ecd310e479f100476ccb9ae12f7ed44bc  ./src/modules/climate_module.h
 8be2ef19614711f0950575273e29164fcef3ef00baf098744e5a16ce378ec0bf  ./src/modules/info_module.cpp
 f7aa291a6e2952e3613682df0420fe1cfc87311c7db516b73ffa12ec6a9cd5a3  ./src/modules/info_module.h
-0d19f87bef07f566e099dea9c8f76fb7313061023de4796fdd43b23b3f160499  ./src/modules/media_module.cpp
+6e5f95a9b6b542af671fe337e05221c0f81bbf97b8be6c3ac36fcaab0625dd99  ./src/modules/media_module.cpp
 a8320f0892aad25a30ebf832a6ca2fdc0f741e7097f4a04c07f298c14644514c  ./src/modules/media_module.h
 08d187c921d07f9b3c8090e1416b08a97aa79ae357007058c05560ec61680adb  ./src/modules/module_ui.h
 198aba8cc61b878d92e896778ad66f6244618cfd07d0c9a86e567e91c5af6467  ./src/modules/overview_module.cpp

@@ -280,6 +280,14 @@ void MediaModule::refresh_artwork() {
         artwork_dsc_.header.h = copied.height;
         artwork_dsc_.data_size = copied.data_size;
         artwork_dsc_.data = artwork_buffer_;
+
+        lv_image_header_t decoded_header = {};
+        if (lv_image_decoder_get_info(&artwork_dsc_, &decoded_header) != LV_RESULT_OK) {
+            Serial0.printf("[Media] Artwork decoder rejected %s variable image\n",
+                           copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG");
+            set_status("Artwork downloaded, but the image decoder rejected it.");
+            return;
+        }
         lv_image_set_src(artwork_image_, &artwork_dsc_);
     } else {
         Serial0.println("[Media] Artwork ignored: unsupported cached format");
@@ -295,6 +303,7 @@ void MediaModule::refresh_artwork() {
     lv_obj_center(artwork_image_);
     lv_obj_remove_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
     if (artwork_placeholder_) lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(artwork_image_);
     artwork_generation_ = copied.generation;
     Serial0.printf("[Media] Artwork shown: %s, %u bytes, %ux%u, scale=%u/256\n",
                    copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
