@@ -4,7 +4,6 @@
 
 #include <Arduino.h>
 #include <esp_heap_caps.h>
-#include <lvgl_private.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -255,7 +254,11 @@ void MediaModule::refresh_artwork() {
         return;
     }
 
-    if (copied.format == HomeAssistantArtworkFormat::Png) {
+    if (copied.format == HomeAssistantArtworkFormat::Png ||
+        copied.format == HomeAssistantArtworkFormat::Jpeg) {
+        // Both enabled LVGL decoders accept a persistent RAW variable image.
+        // This avoids LVGL 9.3's opaque/broken MEMFS path handling and keeps
+        // the encoded bytes in PSRAM for as long as the widget references them.
         memset(&artwork_dsc_, 0, sizeof(artwork_dsc_));
         artwork_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
         artwork_dsc_.header.cf = LV_COLOR_FORMAT_RAW;
@@ -264,29 +267,8 @@ void MediaModule::refresh_artwork() {
         artwork_dsc_.data_size = copied.data_size;
         artwork_dsc_.data = artwork_buffer_;
         lv_image_set_src(artwork_image_, &artwork_dsc_);
-    } else if (copied.format == HomeAssistantArtworkFormat::Jpeg) {
-        if (!artwork_jpeg_path_) {
-            artwork_jpeg_path_ = static_cast<lv_fs_path_ex_t *>(
-                calloc(1, sizeof(lv_fs_path_ex_t)));
-        }
-        if (!artwork_jpeg_path_) {
-            set_status("JPEG artwork path could not be allocated.");
-            return;
-        }
-        // LVGL 9.3's helper has four parameters and creates a path without an
-        // extension.  TJpgDec selects its decoder by extension, so append one
-        // inside the path object's own bounded buffer after the helper runs.
-        lv_fs_make_path_from_buffer(artwork_jpeg_path_,
-                                    static_cast<char>(LV_FS_MEMFS_LETTER),
-                                    artwork_buffer_, copied.data_size);
-        const size_t path_len = strlen(artwork_jpeg_path_->path);
-        if (path_len + 4 >= sizeof(artwork_jpeg_path_->path)) {
-            set_status("JPEG artwork path is too long.");
-            return;
-        }
-        memcpy(artwork_jpeg_path_->path + path_len, ".jpg", 5);
-        lv_image_set_src(artwork_image_, reinterpret_cast<const char *>(artwork_jpeg_path_));
     } else {
+        Serial0.println("[Media] Artwork ignored: unsupported cached format");
         return;
     }
 
@@ -300,6 +282,12 @@ void MediaModule::refresh_artwork() {
     lv_obj_remove_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
     if (artwork_placeholder_) lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     artwork_generation_ = copied.generation;
+    Serial0.printf("[Media] Artwork shown: %s, %u bytes, %ux%u, scale=%u/256\n",
+                   copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
+                   static_cast<unsigned>(copied.data_size),
+                   static_cast<unsigned>(copied.width),
+                   static_cast<unsigned>(copied.height),
+                   static_cast<unsigned>(scale));
 }
 
 void MediaModule::update() {
@@ -452,7 +440,11 @@ void MediaModule::update() {
     if (active.entity_picture[0]) {
         if (!same_text(requested_picture_, active.entity_picture)) {
             snprintf(requested_picture_, sizeof(requested_picture_), "%s", active.entity_picture);
-            home_assistant_request_media_artwork(active.entity_id);
+            if (!home_assistant_request_media_artwork(active.entity_id)) {
+                requested_picture_[0] = '\0';
+                Serial0.printf("[Media] Artwork request could not be queued for %s\n",
+                               active.entity_id);
+            }
         }
     } else {
         requested_picture_[0] = '\0';

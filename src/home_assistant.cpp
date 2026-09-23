@@ -42,7 +42,7 @@ struct HaEntityModel {
     char media_album[96];
     char media_playlist[96];
     char media_source[64];
-    char entity_picture[224];
+    char entity_picture[HA_MEDIA_ARTWORK_URL_LEN];
     uint8_t media_source_count;
     char media_sources[HA_MAX_MEDIA_SOURCES][HA_MEDIA_SOURCE_NAME_LEN];
 };
@@ -124,7 +124,7 @@ char g_media_browse_content_type[HA_MEDIA_CONTENT_TYPE_LEN] = {};
 
 bool g_artwork_requested = false;
 char g_artwork_request_entity_id[96] = {};
-char g_artwork_request_url[224] = {};
+char g_artwork_request_url[HA_MEDIA_ARTWORK_URL_LEN] = {};
 uint8_t *g_artwork_data = nullptr;
 HomeAssistantMediaArtworkInfo g_artwork_info = {};
 
@@ -1090,7 +1090,11 @@ bool read_artwork_response(HTTPClient &http, uint8_t *&data, size_t &size) {
     data = nullptr;
     size = 0;
     const int declared = http.getSize();
-    if (declared > static_cast<int>(HA_MEDIA_ARTWORK_MAX_BYTES)) return false;
+    if (declared > static_cast<int>(HA_MEDIA_ARTWORK_MAX_BYTES)) {
+        Serial0.printf("[HA] Media artwork rejected: Content-Length %d exceeds %u bytes\n",
+                       declared, static_cast<unsigned>(HA_MEDIA_ARTWORK_MAX_BYTES));
+        return false;
+    }
 
     const size_t capacity = declared > 0 ? static_cast<size_t>(declared)
                                          : static_cast<size_t>(HA_MEDIA_ARTWORK_MAX_BYTES);
@@ -1125,6 +1129,8 @@ bool read_artwork_response(HTTPClient &http, uint8_t *&data, size_t &size) {
                           (declared < 0 || remaining == 0) &&
                           !(size == capacity && stream->available() > 0);
     if (!complete) {
+        Serial0.printf("[HA] Media artwork read incomplete: declared=%d received=%u\n",
+                       declared, static_cast<unsigned>(size));
         free(data);
         data = nullptr;
         size = 0;
@@ -1158,6 +1164,15 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
     HTTPClient http;
     http.setConnectTimeout(HA_HTTP_CONNECT_TIMEOUT_MS);
     http.setTimeout(HA_MEDIA_ARTWORK_TIMEOUT_MS);
+    // Arduino's redirect implementation reuses request headers.  Follow
+    // redirects only for unauthenticated external artwork so an HA bearer
+    // token can never be forwarded to a different redirect host.
+    http.setFollowRedirects(add_auth ? HTTPC_DISABLE_FOLLOW_REDIRECTS
+                                     : HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+    Serial0.printf("[HA] Media artwork download: entity=%s url_chars=%u auth=%s\n",
+                   entity_id, static_cast<unsigned>(url.length()),
+                   add_auth ? "yes" : "no");
 
     uint8_t *downloaded = nullptr;
     size_t downloaded_size = 0;
@@ -1168,14 +1183,20 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
 #if HA_TLS_ALLOW_INSECURE
         client.setInsecure();
 #endif
-        if (!http.begin(client, url)) return -101;
+        if (!http.begin(client, url)) {
+            Serial0.printf("[HA] Media artwork HTTP begin failed for %s\n", entity_id);
+            return -101;
+        }
         if (add_auth && token[0]) http.addHeader("Authorization", String("Bearer ") + token);
         code = http.GET();
         if (code >= 200 && code < 300) read_artwork_response(http, downloaded, downloaded_size);
         http.end();
     } else {
         WiFiClient client;
-        if (!http.begin(client, url)) return -101;
+        if (!http.begin(client, url)) {
+            Serial0.printf("[HA] Media artwork HTTP begin failed for %s\n", entity_id);
+            return -101;
+        }
         if (add_auth && token[0]) http.addHeader("Authorization", String("Bearer ") + token);
         code = http.GET();
         if (code >= 200 && code < 300) read_artwork_response(http, downloaded, downloaded_size);
@@ -1183,6 +1204,8 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
     }
 
     if (code < 200 || code >= 300 || !downloaded || downloaded_size == 0) {
+        Serial0.printf("[HA] Media artwork download failed: entity=%s http=%d bytes=%u\n",
+                       entity_id, code, static_cast<unsigned>(downloaded_size));
         if (downloaded) free(downloaded);
         return code > 0 ? code : -102;
     }
@@ -1191,6 +1214,17 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
     const HomeAssistantArtworkFormat format =
         detect_artwork_format(downloaded, downloaded_size, width, height);
     if (format == HomeAssistantArtworkFormat::None) {
+        Serial0.printf("[HA] Media artwork format unsupported: %u bytes, magic="
+                       "%02X %02X %02X %02X %02X %02X %02X %02X\n",
+                       static_cast<unsigned>(downloaded_size),
+                       downloaded_size > 0 ? downloaded[0] : 0,
+                       downloaded_size > 1 ? downloaded[1] : 0,
+                       downloaded_size > 2 ? downloaded[2] : 0,
+                       downloaded_size > 3 ? downloaded[3] : 0,
+                       downloaded_size > 4 ? downloaded[4] : 0,
+                       downloaded_size > 5 ? downloaded[5] : 0,
+                       downloaded_size > 6 ? downloaded[6] : 0,
+                       downloaded_size > 7 ? downloaded[7] : 0);
         free(downloaded);
         return -104;
     }
@@ -1214,7 +1248,8 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
     xSemaphoreGive(g_artwork_mutex);
 
     if (old) free(old);
-    Serial0.printf("[HA] Media artwork cached: %u bytes, %ux%u\n",
+    Serial0.printf("[HA] Media artwork cached: %s, %u bytes, %ux%u\n",
+                   format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
                    static_cast<unsigned>(downloaded_size),
                    static_cast<unsigned>(width), static_cast<unsigned>(height));
     return code;
@@ -1485,7 +1520,7 @@ void worker_task(void *) {
 
         if (http_ready) {
             char artwork_entity[96] = {};
-            char artwork_url[224] = {};
+            char artwork_url[HA_MEDIA_ARTWORK_URL_LEN] = {};
             if (take_artwork_request_worker(artwork_entity, sizeof(artwork_entity),
                                             artwork_url, sizeof(artwork_url))) {
                 download_artwork_worker(artwork_entity, artwork_url);
@@ -1835,7 +1870,7 @@ bool home_assistant_request_media_artwork(const char *entity_id) {
     if (!entity_id || !entity_id[0] || !g_worker || !configured_snapshot()) return false;
 
     bool found = false;
-    char picture[224] = {};
+    char picture[HA_MEDIA_ARTWORK_URL_LEN] = {};
     portENTER_CRITICAL(&g_mux);
     for (size_t i = 0; i < g_entity_count; ++i) {
         if (strcmp(g_entities[i].entity_id, entity_id) == 0 &&
@@ -1852,6 +1887,10 @@ bool home_assistant_request_media_artwork(const char *entity_id) {
         g_artwork_requested = true;
     }
     portEXIT_CRITICAL(&g_mux);
+    if (found) {
+        Serial0.printf("[HA] Media artwork queued: entity=%s picture_chars=%u\n",
+                       entity_id, static_cast<unsigned>(strlen(picture)));
+    }
     return found;
 }
 

@@ -1,13 +1,19 @@
 # Release 1.3.0 - Home Assistant Media Bindings
 
-## LVGL 9.3 build compatibility
+## LVGL 9.3 artwork compatibility
 
-The corrected release keeps `lv_fs_path_ex_t` opaque in `media_module.h` and
-uses LVGL's private type definition only inside `media_module.cpp`.  JPEG MEMFS
-paths use the four-argument LVGL 9.3 helper and append the `.jpg` decoder hint
-within the path object's bounded buffer.  This resolves the incomplete-type
-failure in `module_registry.cpp` and `media_module.cpp` without changing the
-configured LVGL version.
+The corrected release no longer stores or constructs LVGL's opaque
+`lv_fs_path_ex_t` type.  JPEG and PNG artwork now use persistent RAW variable
+image descriptors backed by PSRAM, which resolves both the original
+incomplete-type build failure and the unreliable LVGL 9.3 MEMFS image-source
+path.
+
+Home Assistant artwork URLs now have 512-byte storage so signed media-proxy
+URLs are not cut off at 223 characters.  Unauthenticated external artwork
+requests follow HTTP redirects; authenticated Home Assistant requests do not,
+so a bearer token cannot cross to another redirect host.  Queue, download,
+format, cache, and display results are reported to the serial console without
+printing the token-bearing URL.
 
 ## Media-page stack protection fix
 
@@ -70,9 +76,9 @@ size limit. Home Assistant-relative image URLs use the configured HA credentials
 credentials are not sent to unrelated external image hosts. Completed artwork is
 kept in PSRAM and copied to a UI-owned PSRAM buffer before LVGL uses it.
 
-LVGL 9.3's built-in LodePNG and TJpgDec decoders are enabled. PNG uses an in-memory
-image descriptor; JPEG uses LVGL's MEMFS path so normal JFIF and Exif JPEG streams
-can be decoded without writing image files to flash.
+LVGL 9.3's built-in LodePNG and TJpgDec decoders are enabled.  Both PNG and JPEG
+use an in-memory image descriptor, so normal supported streams can be decoded
+without writing image files to flash.
 
 ## Architecture preserved
 

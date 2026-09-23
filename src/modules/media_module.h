@@ -39,7 +39,7 @@ private:
     };
 
     char selected_entity_id_[96] = {};
-    char requested_picture_[224] = {};
+    char requested_picture_[HA_MEDIA_ARTWORK_URL_LEN] = {};
     bool volume_dragging_ = false;
 
     PlayerControl players_[HA_MAX_MEDIA_PLAYERS];
@@ -75,10 +75,6 @@ private:
     size_t artwork_capacity_ = 0;
     uint32_t artwork_generation_ = 0;
     lv_image_dsc_t artwork_dsc_ = {};
-    // LVGL 9.3 intentionally exposes lv_fs_path_ex_t as an opaque public type.
-    // Keep only a pointer here so translation units that include this header do
-    // not require LVGL's private structure definition.
-    lv_fs_path_ex_t *artwork_jpeg_path_ = nullptr;
 
     void select_player(const char *entity_id);
     bool allocate_work_buffers();

@@ -7,5 +7,3 @@
 .vscode/ipch
 compile_commands.json
 include/app_secrets.h
-include/appsecrets.h
-include/*secrets*.h

@@ -66,7 +66,7 @@ struct HomeAssistantMediaSnapshot {
     char album[96];
     char playlist[96];
     char source[64];
-    char entity_picture[224];
+    char entity_picture[HA_MEDIA_ARTWORK_URL_LEN];
     uint8_t volume_pct;
     bool volume_muted;
     bool available;
@@ -90,7 +90,7 @@ struct HomeAssistantMediaArtworkInfo {
     uint16_t height;
     HomeAssistantArtworkFormat format;
     char entity_id[96];
-    char picture_url[224];
+    char picture_url[HA_MEDIA_ARTWORK_URL_LEN];
 };
 
 void home_assistant_begin();
