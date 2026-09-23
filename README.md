@@ -1,10 +1,11 @@
 # Home Control Panel
 
-**Version 1.2.0**
+**Version 1.3.0**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
-Version 1.2.0 turns the room and overview screens into live Home Assistant
-controls while retaining the dual-board hardware split established in 1.0.0.
+Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
+artwork, sources, and browse-media favorites/playlists while retaining the dual-board
+hardware split established in 1.0.0.
 
 ## Supported hardware
 
@@ -25,26 +26,23 @@ default_envs = jc8012p4a1c_2635
 Select the 2624 environment before using VS Code's Upload action on an older
 panel.
 
-## What's new in 1.2.0
+## What's new in 1.3.0
 
-The `room` profile now discovers and controls Home Assistant entities assigned
-to the configured area:
+The `media` module now binds to real `media_player` entities assigned to the
+configured Home Assistant area:
 
-- resolves the configured Home Assistant area;
-- resolves devices/entities in that area without downloading every registry
-  entry to the panel;
-- subscribes only to supported room entities for live state;
-- stores the room state model in PSRAM;
-- discovers `light`, `switch`, `fan`, `cover`, and `scene` entities;
-- drives the Room and Overview UI from Home Assistant state instead of local
-  preview values;
-- sends light/switch/fan/cover/scene service calls through the existing single
-  Home Assistant worker;
-- provides area-wide light brightness and all-lights controls;
-- adds a Settings **Rediscover Area** action and discovery status.
+- discovers up to four area media players through the existing 1.2 area lookup;
+- shows live player state, title, artist, album, playlist, source, mute, and volume;
+- supports play/pause, previous, next, volume, mute, and source selection;
+- uses Home Assistant `media_player/browse_media` to surface up to three playable
+  favorites/playlists when the integration exposes browse media;
+- downloads `entity_picture` artwork on the existing single HA worker, caches the
+  encoded image in PSRAM, and renders JPEG/PNG artwork with LVGL;
+- never changes media state optimistically: the screen waits for the subscribed
+  Home Assistant state update after commands.
 
-Media, climate, and security remain preview-only in this release. Their real
-bindings remain scheduled for later roadmap releases.
+The 1.2 room/light/scene bindings remain unchanged. Climate and security remain
+preview-only until their later roadmap release.
 
 ## Home Assistant configuration
 
@@ -133,5 +131,5 @@ spellings so credentials are not accidentally committed.
 - PSRAM-first LVGL allocation and a PSRAM-backed Home Assistant state cache.
 - Family Calendar remains a separate project.
 
-See `docs/RELEASE_1.2.0.md`, `docs/ARCHITECTURE.md`, `docs/HARDWARE.md`,
+See `docs/RELEASE_1.3.0.md`, `docs/ARCHITECTURE.md`, `docs/HARDWARE.md`,
 `docs/CONFIGURATION.md`, and `docs/ROADMAP.md`.

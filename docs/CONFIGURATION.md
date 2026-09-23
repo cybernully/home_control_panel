@@ -16,22 +16,24 @@ Room panel example:
 }
 ```
 
-In 1.2.0, `area_id` is active Home Assistant configuration rather than just
+Since 1.2.0, `area_id` is active Home Assistant configuration rather than just
 display metadata. The panel first matches it against the Home Assistant area
 registry. You can provide either the actual area ID (`living_room`) or the
 exact area name (`Living Room`). Once resolved, Home Assistant is asked for the
 entities referenced by that area.
 
-Supported live room entities in 1.2.0 are:
+Supported live area entities in 1.3.0 are:
 
 - `light`
 - `switch`
 - `fan`
 - `cover`
 - `scene`
+- `media_player`
 
-Media, climate, and security remain preview modules until their roadmap
-releases.
+Media players are live in 1.3.0, including transport, volume, sources, artwork,
+and browse-media shortcuts when the integration exposes them. Climate and
+security remain preview modules until their roadmap releases.
 
 Home Assistant URL/token are stored separately in NVS namespace `panel_ha`.
 The token is write-only from the local web manager and is not stored in

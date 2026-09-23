@@ -43,11 +43,14 @@ A room profile now needs little more than:
 
 ## 1.3.0 - Media bindings
 
-- media player discovery
-- now playing and artwork
-- play/pause, previous/next
-- volume/mute
-- source and favorites/playlists
+- Area `media_player` discovery on the existing HA WebSocket subscription.
+- Live now-playing title, artist, album, playlist, source and player state.
+- PSRAM-backed Home Assistant `entity_picture` artwork cache with JPEG/PNG rendering.
+- Play/pause, previous/next, volume and mute service calls.
+- Source selection from `source_list`.
+- `media_player/browse_media` favorites/playlists with `play_media` actions.
+- Up to four selectable media players per panel area.
+- Same single HA worker; no second HTTP/TLS task.
 
 ## 1.4.0 - Whole Home
 

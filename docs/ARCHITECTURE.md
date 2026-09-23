@@ -33,7 +33,7 @@ from Family Calendar.
   deleting/rebuilding screens.
 - Network/worker code never calls LVGL.
 
-## Home Assistant - 1.2.0
+## Home Assistant - 1.3.0
 
 `home_assistant.cpp` owns the **only Home Assistant network worker**.
 
@@ -50,7 +50,7 @@ config/area_registry/list
 extract_from_target(area)
         |
         v
-filter: light / switch / fan / cover / scene
+filter: light / switch / fan / cover / scene / media_player
         |
         v
 subscribe_entities(filtered IDs)
@@ -103,6 +103,14 @@ Assistant's state subscription to confirm the resulting state.
 The existing one-second REST inter-request spacing remains in force. WebSocket
 processing and REST service calls therefore share the same worker rather than
 creating concurrent Home Assistant networking tasks.
+
+### Media artwork
+
+Media metadata stays in the PSRAM-backed HA entity cache. When the selected
+`media_player` exposes `entity_picture`, the HA worker fetches the encoded image
+with a bounded 256 KB limit. The UI copies a completed cache generation into its
+own PSRAM buffer and LVGL decodes JPEG/PNG on the UI thread. Network code never
+calls LVGL and LVGL never reads a buffer while the worker is replacing it.
 
 ## Configuration
 
