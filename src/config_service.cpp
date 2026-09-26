@@ -1,3 +1,5 @@
+#include <memory>
+#include <new>
 #include "config_service.h"
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
@@ -63,6 +65,13 @@ bool save_internal(const PanelConfig &cfg) {
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
     }
+    JsonArray room = doc["room_controls"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.room_control_count; ++i) {
+        JsonObject item = room.add<JsonObject>();
+        item["entity_id"] = cfg.room_controls[i].entity_id;
+        item["label"] = cfg.room_controls[i].label;
+        item["placement"] = cfg.room_controls[i].placement;
+    }
     const size_t written = serializeJsonPretty(doc, f);
     f.close();
     return written > 0;
@@ -99,7 +108,9 @@ bool config_service_begin() {
     f.close();
     if (err) { Serial0.printf("[Config] panel.json parse failed: %s\n", err.c_str()); return false; }
 
-    PanelConfig loaded = {};
+    std::unique_ptr<PanelConfig> loaded_storage(new (std::nothrow) PanelConfig{});
+    if (!loaded_storage) { return false; }
+    PanelConfig &loaded = *loaded_storage;
     copy_text(loaded.device_id, sizeof(loaded.device_id), doc["device_id"] | g_config.device_id);
     copy_text(loaded.display_name, sizeof(loaded.display_name), doc["display_name"] | g_config.display_name);
     copy_text(loaded.profile, sizeof(loaded.profile), doc["profile"] | g_config.profile);
@@ -130,6 +141,13 @@ bool config_service_begin() {
             copy_text(shortcut.media_content_type, sizeof(shortcut.media_content_type), content_type);
         }
     }
+    if (!doc["room_controls"].isNull()) {
+        String json, error;
+        serializeJson(doc["room_controls"], json);
+        if (!config_service_parse_room_controls(json, loaded, error)) {
+            Serial0.printf("[Config] Invalid room preferences: %s\n", error.c_str());
+        }
+    }
     g_config = loaded;
     Serial0.printf("[Config] %s profile=%s area=%s modules=%u media_shortcuts=%u\n",
                    g_config.device_id, g_config.profile, g_config.area_id,
@@ -141,7 +159,10 @@ bool config_service_begin() {
 const PanelConfig &config_service_get() { return g_config; }
 
 bool config_service_save(const PanelConfig &config) {
-    PanelConfig clean = config;
+    std::unique_ptr<PanelConfig> clean_storage(new (std::nothrow) PanelConfig(config));
+    if (!clean_storage) { return false; }
+    PanelConfig &clean = *clean_storage;
+    if (clean.room_control_count > HA_MAX_AREA_ENTITIES) return false;
     clean.backlight = constrain(static_cast<int>(clean.backlight), 10, 100);
     if (clean.media_shortcut_count > PANEL_MAX_MEDIA_SHORTCUTS) {
         clean.media_shortcut_count = PANEL_MAX_MEDIA_SHORTCUTS;

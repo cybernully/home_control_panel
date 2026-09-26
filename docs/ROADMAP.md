@@ -52,7 +52,14 @@ A room profile now needs little more than:
 - Up to four selectable media players per panel area.
 - Same single HA worker; no second HTTP/TLS task.
 
-## 1.4.0 - Whole Home
+## 1.4.0 - Room refinement
+
+- Explicit favorites, persistent visibility, names and ordering.
+- Touch-friendly Lights, Devices, Shades and Scenes bubble popups.
+- All cached room controls accessible through pagination.
+- Individual brightness and font-safe en/em dash handling.
+
+## Future - Whole Home
 
 - area browser
 - aggregate status

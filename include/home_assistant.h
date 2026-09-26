@@ -130,3 +130,10 @@ bool home_assistant_queue_media_favorite(const HomeAssistantMediaFavorite &favor
 bool home_assistant_set_credentials(const char *base_url, const char *token);
 String home_assistant_base_url();
 bool home_assistant_token_configured();
+
+// All discovered controllable room entities and scenes, without UI slot limits.
+size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t max_count);
+
+bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct);
+
+bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySnapshot &out);

@@ -4,9 +4,17 @@
   "display_name": "Living Room Panel",
   "profile": "room",
   "area_id": "living_room",
-  "modules": ["overview", "room", "media", "climate", "security", "settings"],
+  "modules": [
+    "overview",
+    "room",
+    "media",
+    "climate",
+    "security",
+    "settings"
+  ],
   "media_shortcuts": [],
   "backlight": 80,
   "dark_mode": true,
-  "screen_timeout_seconds": 120
+  "screen_timeout_seconds": 120,
+  "room_controls": []
 }

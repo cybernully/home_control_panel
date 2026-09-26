@@ -50,6 +50,7 @@ struct HaEntityModel {
 enum class HaActionType : uint8_t {
     Toggle,
     AreaBrightness,
+    LightBrightness,
     AllLights,
     Scene,
     MediaPlayPause,
@@ -1309,6 +1310,17 @@ void process_action_worker(const HaAction &action) {
 
         code = http_post_service(model->domain, service, entity_target_body(model->entity_id));
         snprintf(description, sizeof(description), "%s %s", model->name, service);
+    } else if (action.type == HaActionType::LightBrightness) {
+        HaEntityModel *model = find_entity_worker(action.entity_id);
+        if (!model || !model->available || strcmp(model->domain, "light") != 0 || !model->supports_brightness) {
+            record_action_result("Light no longer available", -103); return;
+        }
+        JsonDocument doc;
+        doc["entity_id"] = model->entity_id;
+        if (action.value) doc["brightness_pct"] = action.value;
+        String body; serializeJson(doc, body);
+        code = http_post_service("light", action.value ? "turn_on" : "turn_off", body);
+        snprintf(description, sizeof(description), "%s brightness", model->name);
     } else if (action.type == HaActionType::AreaBrightness) {
         const bool turn_off = action.value == 0;
         code = http_post_service("light", turn_off ? "turn_off" : "turn_on",
@@ -2031,4 +2043,39 @@ bool home_assistant_token_configured() {
     const bool configured = g_token[0] != '\0';
     portEXIT_CRITICAL(&g_mux);
     return configured;
+}
+
+size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t max_count) {
+    if (!out || !max_count || !g_entities) return 0;
+    size_t count = 0;
+    portENTER_CRITICAL(&g_mux);
+    for (size_t i = 0; i < g_entity_count && count < max_count; ++i) {
+        if (is_control_domain(g_entities[i].domain) || strcmp(g_entities[i].domain, "scene") == 0)
+            snapshot_entity(g_entities[i], out[count++]);
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return count;
+}
+
+bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct) {
+    if (!entity_id || strncmp(entity_id, "light.", 6) != 0) return false;
+    HaAction action = {};
+    action.type = HaActionType::LightBrightness;
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    action.value = constrain(static_cast<int>(brightness_pct), 0, 100);
+    return queue_action(action);
+}
+
+bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySnapshot &out) {
+    if (!entity_id || !g_entities) return false;
+    bool found = false;
+    portENTER_CRITICAL(&g_mux);
+    for (size_t i = 0; i < g_entity_count; ++i) {
+        if (strcmp(entity_id, g_entities[i].entity_id) == 0 &&
+            (is_control_domain(g_entities[i].domain) || strcmp(g_entities[i].domain, "scene") == 0)) {
+            snapshot_entity(g_entities[i], out); found = true; break;
+        }
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return found;
 }

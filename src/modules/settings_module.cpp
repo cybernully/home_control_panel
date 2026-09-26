@@ -1,3 +1,5 @@
+#include <memory>
+#include <new>
 #include "settings_module.h"
 
 #include "app_config.h"
@@ -89,7 +91,9 @@ void SettingsModule::backlight_changed_cb(lv_event_t *e) {
 void SettingsModule::backlight_released_cb(lv_event_t *e) {
     const int value = static_cast<int>(
         lv_slider_get_value(static_cast<lv_obj_t *>(lv_event_get_target(e))));
-    PanelConfig cfg = config_service_get();
+    std::unique_ptr<PanelConfig> cfg_storage(new (std::nothrow) PanelConfig(config_service_get()));
+    if (!cfg_storage) { return; }
+    PanelConfig &cfg = *cfg_storage;
     cfg.backlight = static_cast<uint8_t>(value);
     config_service_save(cfg);
 }

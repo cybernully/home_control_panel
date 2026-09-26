@@ -109,3 +109,14 @@ Whole-home panel:
 ```
 
 The local web-management page writes the same configuration format to SPIFFS.
+
+## Room layout (1.4.0)
+
+`room_controls` is an optional array of up to 48 entity preferences. Each entry
+has `entity_id`, `label` (empty uses the HA name), and `placement` (0 grouped,
+1 favorite, 2 hidden). Array order controls display order. Six favorites maximum;
+labels have a 63-byte UTF-8 limit. Use the authenticated web manager's Room
+controls editor; changes apply live after Save. Existing files without this
+array load with all supported controls grouped and no favorites.
+
+See [release 1.4.0](RELEASE_1.4.0.md) for examples and hidden-control semantics.

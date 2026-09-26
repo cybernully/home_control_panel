@@ -1,3 +1,6 @@
+#include <memory>
+#include <algorithm>
+#include <new>
 #include "web_manager.h"
 
 #include "app_config.h"
@@ -72,11 +75,16 @@ h3{margin-top:24px}
       <div><label>Base URL</label><input id="ha_url" placeholder="https://homeassistant.local:8123"></div>
       <div><label>Access token</label><input id="ha_token" type="password" placeholder="Leave blank to keep existing token"></div>
     </div>
+    <h3>Room controls</h3>
+    <p class="muted">Choose up to six favorites. Grouped controls live in Lights, Devices, Shades or Scenes. Hidden controls disappear only from this panel's Room screen; scenes and other dashboards can still operate them. Use arrows to set order. Names may use up to 63 UTF-8 bytes.</p>
+    <button type="button" onclick="refreshRoom()">Refresh discovered controls</button>
+    <div id="room_fields" style="margin-top:12px"></div>
+    <p id="room_hint" class="muted"></p>
     <h3>Media shortcuts</h3>
     <p class="muted">Configure up to three one-touch media actions. The target media player must be assigned to this panel's Home Assistant area.</p>
     <div id="shortcut_fields"></div>
     <p class="muted">The token is stored in NVS and is never returned to this page. Media shortcuts update after saving; profile and module changes require a reboot.</p>
-    <button type="submit">Save configuration</button>
+    <button type="submit" disabled>Save configuration</button>
   </form>
 </div>
 </div>
@@ -85,12 +93,22 @@ const $=id=>document.getElementById(id);
 async function j(url,opt){const r=await fetch(url,opt);let x={};try{x=await r.json()}catch(e){}if(!r.ok)throw new Error(x.error||('HTTP '+r.status));return x}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function shortcutFields(i,s={}){return `<div class="shortcut"><strong>Shortcut ${i+1}</strong><div class="grid"><div><label>Button label</label><input id="shortcut_label_${i}" maxlength="39" value="${esc(s.label)}" placeholder="Skiing"></div><div><label>Media player entity</label><input id="shortcut_entity_${i}" maxlength="95" value="${esc(s.entity_id)}" placeholder="media_player.office_echo_studio"></div><div><label>Media content ID</label><input id="shortcut_id_${i}" maxlength="191" value="${esc(s.media_content_id)}" placeholder="play my skiing playlist"></div><div><label>Media content type</label><input id="shortcut_type_${i}" maxlength="47" value="${esc(s.media_content_type)}" placeholder="AMAZON_MUSIC"></div></div></div>`}
+let roomRows=[];
+function readRoom(){roomRows.forEach((r,i)=>{r.label=$('room_label_'+i).value;r.placement=Number($('room_place_'+i).value)})}
+function renderRoom(){
+ $('room_fields').innerHTML=roomRows.map((r,i)=>`<div class="shortcut"><strong>${esc(r.name||r.entity_id)}</strong><div class="muted">${esc(r.entity_id)}${r.discovered?'':' — not currently discovered'}</div><div class="grid"><div><label for="room_label_${i}">Display name</label><input id="room_label_${i}" maxlength="63" value="${esc(r.label)}" placeholder="Use Home Assistant name"></div><div><label for="room_place_${i}">Placement</label><select id="room_place_${i}">${['Grouped','Favorite','Hidden'].map((n,v)=>`<option value="${v}" ${r.placement===v?'selected':''}>${n}</option>`).join('')}</select></div><div class="row"><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} up" onclick="moveRoom(${i},-1)" ${i===0?'disabled':''}>Up</button><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} down" onclick="moveRoom(${i},1)" ${i===roomRows.length-1?'disabled':''}>Down</button><button type="button" onclick="resetRoom(${i})">Reset</button></div></div></div>`).join('');
+ $('room_hint').textContent=roomRows.length?'Room changes apply after saving. Reset restores the HA name and grouped placement.':'No room controls discovered yet. Check the area and Home Assistant connection, then refresh.';
+}
+function moveRoom(i,d){readRoom();const j=i+d;if(j<0||j>=roomRows.length)return;[roomRows[i],roomRows[j]]=[roomRows[j],roomRows[i]];renderRoom()}
+function resetRoom(i){readRoom();if(!roomRows[i].discovered)roomRows.splice(i,1);else{roomRows[i].label='';roomRows[i].placement=0}renderRoom()}
+async function discoverRoom(){const entities=await j('/api/room/entities');roomRows.forEach(r=>r.discovered=false);entities.forEach(e=>{const old=roomRows.find(r=>r.entity_id===e.entity_id);if(old){old.name=e.name;old.discovered=true}else roomRows.push({...e,label:'',placement:0,discovered:true})});renderRoom()}
+async function refreshRoom(){readRoom();try{await discoverRoom()}catch(e){$('msg').textContent=e.message}}
 async function status(){try{const s=await j('/api/status');$('ver').textContent='v'+s.version;const p=[['Device',s.device_id],['Profile',s.profile],['Area',s.area||'(none)'],['IP',s.ip],['RSSI',s.rssi+' dBm'],['Battery',s.battery_valid?(s.battery_percent+'% / '+Number(s.battery_voltage).toFixed(3)+' V'):'unavailable'],['Home Assistant',s.ha_message],['Modules',s.modules]];$('stats').innerHTML=p.map(x=>`<div class="stat"><div class="k">${esc(x[0])}</div><div class="v">${esc(x[1])}</div></div>`).join('')}catch(e){}}
-async function load(){const c=await j('/api/config');for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url'])$(id).value=c[id]??'';const shortcuts=c.media_shortcuts||[];$('shortcut_fields').innerHTML=Array.from({length:3},(_,i)=>shortcutFields(i,shortcuts[i]||{})).join('')}
-$('cfg').addEventListener('submit',async e=>{e.preventDefault();const p=new URLSearchParams();for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url','ha_token'])p.set(id,$(id).value);for(let i=0;i<3;i++){p.set(`shortcut_label_${i}`,$(`shortcut_label_${i}`).value);p.set(`shortcut_entity_${i}`,$(`shortcut_entity_${i}`).value);p.set(`shortcut_id_${i}`,$(`shortcut_id_${i}`).value);p.set(`shortcut_type_${i}`,$(`shortcut_type_${i}`).value)}try{const r=await j('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});$('msg').textContent=r.message;$('ha_token').value=''}catch(e){$('msg').textContent=e.message}});
+async function load(){const c=await j('/api/config');for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url'])$(id).value=c[id]??'';roomRows=(c.room_controls||[]).map(r=>({...r,discovered:false}));renderRoom();await discoverRoom();const shortcuts=c.media_shortcuts||[];$('shortcut_fields').innerHTML=Array.from({length:3},(_,i)=>shortcutFields(i,shortcuts[i]||{})).join('');$('cfg').querySelector('button[type=submit]').disabled=false}
+$('cfg').addEventListener('submit',async e=>{e.preventDefault();const p=new URLSearchParams();for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url','ha_token'])p.set(id,$(id).value);for(let i=0;i<3;i++){p.set(`shortcut_label_${i}`,$(`shortcut_label_${i}`).value);p.set(`shortcut_entity_${i}`,$(`shortcut_entity_${i}`).value);p.set(`shortcut_id_${i}`,$(`shortcut_id_${i}`).value);p.set(`shortcut_type_${i}`,$(`shortcut_type_${i}`).value)}readRoom();p.set('room_controls',JSON.stringify(roomRows.map(({entity_id,label,placement})=>({entity_id,label,placement}))));try{const r=await j('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});$('msg').textContent=r.message;$('ha_token').value=''}catch(e){$('msg').textContent=e.message}});
 async function testHA(){try{const r=await j('/api/ha/test',{method:'POST'});$('msg').textContent=r.queued?'HA test queued on the single worker.':'HA test could not be queued.'}catch(e){$('msg').textContent=e.message}}
 async function reboot(){try{await j('/api/reboot',{method:'POST'});$('msg').textContent='Rebootingâ€¦'}catch(e){$('msg').textContent=e.message}}
-status();load().catch(()=>{});setInterval(status,5000);
+status();load().catch(e=>{$('msg').textContent='Could not load configuration: '+e.message;$('cfg').querySelector('button[type=submit]').disabled=true});setInterval(status,5000);
 </script>
 </body>
 </html>)HTML";
@@ -164,6 +182,13 @@ void handle_get_config() {
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
     }
+    JsonArray room = doc["room_controls"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.room_control_count; ++i) {
+        JsonObject item = room.add<JsonObject>();
+        item["entity_id"] = cfg.room_controls[i].entity_id;
+        item["label"] = cfg.room_controls[i].label;
+        item["placement"] = cfg.room_controls[i].placement;
+    }
     send_json(doc);
 }
 
@@ -221,7 +246,9 @@ bool parse_media_shortcuts(PanelConfig &config, String &error) {
 
 void handle_save_config() {
     if (!ensure_auth()) return;
-    PanelConfig next = config_service_get();
+    std::unique_ptr<PanelConfig> next_storage(new (std::nothrow) PanelConfig(config_service_get()));
+    if (!next_storage) { send_error(503, "Insufficient memory."); return; }
+    PanelConfig &next = *next_storage;
     String device = g_server.arg("device_id");
     String name = g_server.arg("display_name");
     String profile = g_server.arg("profile");
@@ -258,6 +285,11 @@ void handle_save_config() {
         config_service_set_profile_defaults(next);
     }
 
+    String room_error;
+    if (g_server.hasArg("room_controls") &&
+        !config_service_parse_room_controls(g_server.arg("room_controls"), next, room_error)) {
+        send_error(400, room_error.c_str()); return;
+    }
     String shortcut_error;
     if (!parse_media_shortcuts(next, shortcut_error)) {
         send_error(400, shortcut_error.c_str());
@@ -278,7 +310,26 @@ void handle_save_config() {
     JsonDocument doc;
     doc["ok"] = true;
     doc["reboot_required"] = true;
-    doc["message"] = "Saved. Media shortcuts are active now; reboot to apply profile or module changes.";
+    doc["message"] = "Saved. Room controls and media shortcuts are active now; reboot to apply profile or module changes.";
+    send_json(doc);
+}
+
+void handle_room_entities() {
+    if (!ensure_auth()) return;
+    std::unique_ptr<HomeAssistantEntitySnapshot[]> entities(new (std::nothrow) HomeAssistantEntitySnapshot[HA_MAX_AREA_ENTITIES]);
+    if (!entities) { send_error(503, "Insufficient memory."); return; }
+    const size_t count = home_assistant_get_room_entities(entities.get(), HA_MAX_AREA_ENTITIES);
+    std::sort(entities.get(), entities.get() + count, [](const HomeAssistantEntitySnapshot &a, const HomeAssistantEntitySnapshot &b) {
+        const int names = strcmp(a.name, b.name);
+        return names ? names < 0 : strcmp(a.entity_id, b.entity_id) < 0;
+    });
+    JsonDocument doc;
+    JsonArray list = doc.to<JsonArray>();
+    for (size_t i = 0; i < count; ++i) {
+        JsonObject item = list.add<JsonObject>();
+        item["entity_id"] = entities[i].entity_id;
+        item["name"] = entities[i].name;
+    }
     send_json(doc);
 }
 
@@ -307,6 +358,7 @@ void register_routes() {
         g_server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
     });
     g_server.on("/api/status", HTTP_GET, handle_status);
+    g_server.on("/api/room/entities", HTTP_GET, handle_room_entities);
     g_server.on("/api/config", HTTP_GET, handle_get_config);
     g_server.on("/api/config", HTTP_POST, handle_save_config);
     g_server.on("/api/ha/test", HTTP_POST, handle_ha_test);

@@ -2,6 +2,7 @@
 
 #include "config_service.h"
 #include "module_ui.h"
+#include "display_text.h"
 
 #include <Arduino.h>
 #include <JPEGDEC.h>
@@ -41,20 +42,8 @@ const char *media_title_or_state(const HomeAssistantMediaSnapshot &media) {
 
 void set_media_label_text(lv_obj_t *label_obj, const char *text) {
     if (!label_obj) return;
-    const uint8_t *src = reinterpret_cast<const uint8_t *>(text ? text : "");
-    char normalized[256] = {};
-    size_t out = 0;
-    while (*src && out + 1 < sizeof(normalized)) {
-        // The built-in Montserrat fonts do not contain en/em dash glyphs.
-        if (src[0] == 0xE2 && src[1] && src[2] && src[1] == 0x80 &&
-            (src[2] == 0x93 || src[2] == 0x94)) {
-            normalized[out++] = '-';
-            src += 3;
-            continue;
-        }
-        normalized[out++] = static_cast<char>(*src++);
-    }
-    normalized[out] = '\0';
+    char normalized[256];
+    panel_display_text(normalized, sizeof(normalized), text);
     lv_label_set_text(label_obj, normalized);
 }
 
