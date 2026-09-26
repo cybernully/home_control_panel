@@ -8,6 +8,7 @@
 #include "config_service.h"
 #include "home_assistant.h"
 #include "network_service.h"
+#include "web_ui.h"
 
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
@@ -23,6 +24,7 @@ bool g_mdns_started = false;
 uint32_t g_last_mdns_attempt_ms = 0;
 uint32_t g_reboot_at_ms = 0;
 
+#if 0 // Replaced by the tabbed 1.5.0 editor in include/web_ui.h.
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html>
 <head>
@@ -112,6 +114,7 @@ status();load().catch(e=>{$('msg').textContent='Could not load configuration: '+
 </script>
 </body>
 </html>)HTML";
+#endif
 
 bool ensure_auth() {
     if (g_server.authenticate(WEB_MANAGER_USER, WEB_MANAGER_PASSWORD)) return true;
@@ -172,6 +175,7 @@ void handle_get_config() {
     doc["modules"] = config_service_modules_csv();
     doc["backlight"] = cfg.backlight;
     doc["timeout"] = cfg.screen_timeout_seconds;
+    doc["explicit_layout"] = cfg.explicit_layout;
     doc["ha_url"] = home_assistant_base_url();
     doc["ha_token_configured"] = home_assistant_token_configured();
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -189,7 +193,45 @@ void handle_get_config() {
         item["label"] = cfg.room_controls[i].label;
         item["placement"] = cfg.room_controls[i].placement;
     }
+    JsonArray players = doc["media_players"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
+    JsonArray widgets = doc["overview_widgets"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
+        JsonObject item = widgets.add<JsonObject>();
+        item["type"] = cfg.overview_widgets[i].type;
+        item["span"] = cfg.overview_widgets[i].span;
+        item["height"] = cfg.overview_widgets[i].height;
+    }
+    JsonArray quick_actions = doc["overview_quick_actions"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i) {
+        JsonObject item = quick_actions.add<JsonObject>();
+        item["label"] = cfg.overview_quick_actions[i].label;
+        item["type"] = cfg.overview_quick_actions[i].type;
+        item["entity_id"] = cfg.overview_quick_actions[i].entity_id;
+    }
     send_json(doc);
+}
+
+bool parse_media_players(PanelConfig &config, String &error) {
+    if (!g_server.hasArg("media_players")) return true;
+    JsonDocument doc;
+    if (deserializeJson(doc, g_server.arg("media_players")) || !doc.is<JsonArray>() ||
+        doc.size() > PANEL_MAX_MEDIA_PLAYERS) {
+        error = "Media players must be an array of at most four media_player entity IDs.";
+        return false;
+    }
+    config.media_player_count = 0;
+    memset(config.media_players, 0, sizeof(config.media_players));
+    for (JsonVariant item : doc.as<JsonArray>()) {
+        const char *id = item.as<const char *>();
+        if (!id || strncmp(id, "media_player.", 13) != 0 || strlen(id) >= PANEL_MEDIA_ENTITY_ID_LEN) {
+            error = "Media player IDs must begin with media_player."; return false;
+        }
+        for (uint8_t i = 0; i < config.media_player_count; ++i)
+            if (strcmp(config.media_players[i], id) == 0) { error = "Media player IDs must be unique."; return false; }
+        snprintf(config.media_players[config.media_player_count++], PANEL_MEDIA_ENTITY_ID_LEN, "%s", id);
+    }
+    return true;
 }
 
 bool parse_media_shortcuts(PanelConfig &config, String &error) {
@@ -290,27 +332,50 @@ void handle_save_config() {
         !config_service_parse_room_controls(g_server.arg("room_controls"), next, room_error)) {
         send_error(400, room_error.c_str()); return;
     }
+    String widgets_error;
+    if (g_server.hasArg("overview_widgets") &&
+        !config_service_parse_overview_widgets(g_server.arg("overview_widgets"), next, widgets_error)) {
+        send_error(400, widgets_error.c_str()); return;
+    }
+    String quick_actions_error;
+    if (g_server.hasArg("overview_quick_actions") &&
+        !config_service_parse_overview_quick_actions(g_server.arg("overview_quick_actions"), next, quick_actions_error)) {
+        send_error(400, quick_actions_error.c_str()); return;
+    }
     String shortcut_error;
     if (!parse_media_shortcuts(next, shortcut_error)) {
         send_error(400, shortcut_error.c_str());
         return;
     }
+    String players_error;
+    if (!parse_media_players(next, players_error)) {
+        send_error(400, players_error.c_str()); return;
+    }
+    const String ha_url = g_server.arg("ha_url");
+    if (!ha_url.isEmpty() && !ha_url.startsWith("http://") && !ha_url.startsWith("https://")) {
+        send_error(400, "Home Assistant URL must begin with http:// or https://."); return;
+    }
+    // The 1.5 editor is the explicit opt-in migration point for installations
+    // that previously showed every supported entity in the configured area.
+    next.explicit_layout = true;
     if (!config_service_save(next)) {
         send_error(500, "Could not save panel configuration.");
         return;
     }
 
-    const String ha_url = g_server.arg("ha_url");
     const String ha_token = g_server.arg("ha_token");
     if (!home_assistant_set_credentials(ha_url.c_str(), ha_token.c_str())) {
         send_error(400, "Home Assistant URL must begin with http:// or https://.");
         return;
     }
+    const bool discovery_queued = home_assistant_request_discovery();
 
     JsonDocument doc;
     doc["ok"] = true;
     doc["reboot_required"] = true;
-    doc["message"] = "Saved. Room controls and media shortcuts are active now; reboot to apply profile or module changes.";
+    doc["message"] = discovery_queued ?
+        "Saved. Home Assistant is refreshing its explicit layout; reboot to apply Overview widgets, quick actions, or tab-order changes." :
+        "Saved. Reboot the panel to reconnect and apply the Overview and explicit layouts.";
     send_json(doc);
 }
 
@@ -330,6 +395,35 @@ void handle_room_entities() {
         item["entity_id"] = entities[i].entity_id;
         item["name"] = entities[i].name;
     }
+    send_json(doc);
+}
+
+void handle_ha_entities() {
+    if (!ensure_auth()) return;
+    std::unique_ptr<HomeAssistantEntitySnapshot[]> entities(
+        new (std::nothrow) HomeAssistantEntitySnapshot[HA_MAX_AREA_ENTITIES]);
+    if (!entities) { send_error(503, "Insufficient memory."); return; }
+    const size_t room_count = home_assistant_get_layout_entities(entities.get(), HA_MAX_AREA_ENTITIES);
+    HomeAssistantDiscoveryStatus discovery = {};
+    home_assistant_get_discovery_status(discovery);
+    JsonDocument doc;
+    doc["complete"] = discovery.discovery_complete;
+    doc["message"] = discovery.message;
+    JsonArray list = doc["entities"].to<JsonArray>();
+    for (size_t i = 0; i < room_count; ++i) {
+        JsonObject item = list.add<JsonObject>();
+        item["entity_id"] = entities[i].entity_id; item["name"] = entities[i].name;
+        item["domain"] = entities[i].domain; item["available"] = entities[i].available;
+        item["brightness"] = entities[i].supports_brightness; item["position"] = entities[i].supports_position;
+    }
+    send_json(doc);
+}
+
+void handle_ha_discover() {
+    if (!ensure_auth()) return;
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["queued"] = home_assistant_request_full_discovery();
     send_json(doc);
 }
 
@@ -359,6 +453,8 @@ void register_routes() {
     });
     g_server.on("/api/status", HTTP_GET, handle_status);
     g_server.on("/api/room/entities", HTTP_GET, handle_room_entities);
+    g_server.on("/api/ha/entities", HTTP_GET, handle_ha_entities);
+    g_server.on("/api/ha/discover", HTTP_POST, handle_ha_discover);
     g_server.on("/api/config", HTTP_GET, handle_get_config);
     g_server.on("/api/config", HTTP_POST, handle_save_config);
     g_server.on("/api/ha/test", HTTP_POST, handle_ha_test);

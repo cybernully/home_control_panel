@@ -11,3 +11,7 @@ output = root / '.test-build/room_config_test.exe'
 subprocess.run(compiler + ['-std=c++17', '-Itests/host', '-Iinclude', '-I.test-deps',
     'tests/room_config_test.cpp', 'src/room_config.cpp', '-o', str(output)], check=True)
 subprocess.run([str(output)], check=True)
+output = root / '.test-build/overview_config_test.exe'
+subprocess.run(compiler + ['-std=c++17', '-Itests/host', '-Iinclude', '-I.test-deps',
+    'tests/overview_config_test.cpp', 'src/overview_config.cpp', '-o', str(output)], check=True)
+subprocess.run([str(output)], check=True)

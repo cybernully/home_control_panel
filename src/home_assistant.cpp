@@ -100,6 +100,7 @@ bool g_ws_authenticated = false;
 bool g_health_requested = false;
 bool g_health_in_progress = false;
 bool g_discovery_requested = false;
+bool g_full_discovery_requested = false;
 bool g_reconnect_requested = false;
 bool g_network_ready = false;
 bool g_action_in_flight = false;
@@ -294,7 +295,9 @@ bool is_control_domain(const char *domain) {
 bool is_supported_domain(const char *domain) {
     return is_control_domain(domain) ||
            strcmp(domain, "scene") == 0 ||
-           strcmp(domain, "media_player") == 0;
+           strcmp(domain, "media_player") == 0 ||
+           strcmp(domain, "weather") == 0 ||
+           strcmp(domain, "calendar") == 0;
 }
 
 void fallback_name_from_id(const char *entity_id, char *out, size_t out_len) {
@@ -529,6 +532,29 @@ void send_extract_target_worker() {
     }
 }
 
+bool is_layout_entity(const char *entity_id) {
+    if (!entity_id || !entity_id[0]) return false;
+    const PanelConfig &cfg = config_service_get();
+    if (!cfg.explicit_layout) return true;
+    for (uint8_t i = 0; i < cfg.room_control_count; ++i)
+        if (strcmp(cfg.room_controls[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.media_player_count; ++i)
+        if (strcmp(cfg.media_players[i], entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i)
+        if (strcmp(cfg.media_shortcuts[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
+        if (cfg.overview_quick_actions[i].entity_id[0] &&
+            strcmp(cfg.overview_quick_actions[i].entity_id, entity_id) == 0) return true;
+    const char *dot = strchr(entity_id, '.');
+    const size_t domain_len = dot ? static_cast<size_t>(dot - entity_id) : 0;
+    for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
+        const char *widget = cfg.overview_widgets[i].type;
+        if ((domain_len == 7 && strncmp(entity_id, "weather", 7) == 0 && strcmp(widget, "weather") == 0) ||
+            (domain_len == 8 && strncmp(entity_id, "calendar", 8) == 0 && strcmp(widget, "calendar") == 0)) return true;
+    }
+    return false;
+}
+
 void send_subscribe_entities_worker() {
     if (g_entity_count == 0) {
         portENTER_CRITICAL(&g_mux);
@@ -742,6 +768,7 @@ void handle_extract_result_worker(JsonDocument &doc) {
         char domain[16] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
         if (!is_supported_domain(domain)) continue;
+        if (!g_full_discovery_requested && !is_layout_entity(entity_id)) continue;
 
         portENTER_CRITICAL(&g_mux);
         if (g_entity_count >= HA_MAX_AREA_ENTITIES) {
@@ -1881,9 +1908,22 @@ void home_assistant_get_status(HomeAssistantStatus &out) {
 bool home_assistant_request_discovery() {
     if (!g_worker || !configured_snapshot()) return false;
     portENTER_CRITICAL(&g_mux);
+    g_full_discovery_requested = false;
     g_discovery_requested = true;
     g_discovery.discovery_complete = false;
     copy_text(g_discovery.message, sizeof(g_discovery.message), "Discovery requested...");
+    portEXIT_CRITICAL(&g_mux);
+    return true;
+}
+
+bool home_assistant_request_full_discovery() {
+    if (!g_worker || !configured_snapshot()) return false;
+    portENTER_CRITICAL(&g_mux);
+    g_full_discovery_requested = true;
+    g_discovery_requested = true;
+    g_discovery.discovery_complete = false;
+    copy_text(g_discovery.message, sizeof(g_discovery.message),
+              "Full area scan requested for the web layout editor...");
     portEXIT_CRITICAL(&g_mux);
     return true;
 }
@@ -2219,6 +2259,16 @@ size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t
         if (is_control_domain(g_entities[i].domain) || strcmp(g_entities[i].domain, "scene") == 0)
             snapshot_entity(g_entities[i], out[count++]);
     }
+    portEXIT_CRITICAL(&g_mux);
+    return count;
+}
+
+size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size_t max_count) {
+    if (!out || !max_count || !g_entities) return 0;
+    size_t count = 0;
+    portENTER_CRITICAL(&g_mux);
+    for (size_t i = 0; i < g_entity_count && count < max_count; ++i)
+        snapshot_entity(g_entities[i], out[count++]);
     portEXIT_CRITICAL(&g_mux);
     return count;
 }

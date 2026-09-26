@@ -1,207 +1,85 @@
 #include "overview_module.h"
-
 #include "config_service.h"
 #include "home_assistant.h"
 #include "module_ui.h"
 #include "network_service.h"
-
 #include <Arduino.h>
+#include <string.h>
 
 using namespace module_ui;
-
 namespace {
-
-void add_metric(lv_obj_t *parent, int x, const char *name, const char *value,
-                lv_obj_t **value_out) {
-    lv_obj_t *card_obj = card(parent, x, 92, 286, 145);
-    lv_obj_t *n = label(card_obj, name, &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(n, 18, 18);
-    lv_obj_t *v = label(card_obj, value, &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(v, 18, 52);
-    lv_obj_set_width(v, 250);
-    lv_label_set_long_mode(v, LV_LABEL_LONG_DOT);
-    if (value_out) *value_out = v;
+const char *widget_title(const char *type) {
+    if (strcmp(type,"home_status")==0) return "HOME STATUS"; if (strcmp(type,"lights")==0) return "LIGHTS";
+    if (strcmp(type,"area")==0) return "AREA"; if (strcmp(type,"network")==0) return "NETWORK";
+    if (strcmp(type,"quick_actions")==0) return "QUICK ACTIONS"; if (strcmp(type,"weather")==0) return "WEATHER";
+    if (strcmp(type,"calendar")==0) return "CALENDAR"; return "PANEL TIP";
+}
+const HomeAssistantEntitySnapshot *first_domain(const HomeAssistantEntitySnapshot *items,size_t count,const char *domain) {
+    for(size_t i=0;i<count;++i) if(strcmp(items[i].domain,domain)==0) return &items[i]; return nullptr;
+}
+void set_text(lv_obj_t *object,const char *text){if(object)lv_label_set_text(object,text?text:"");}
+bool find_slot(bool occupied[4][4],int span,int height,int &column,int &row) {
+    for(row=0;row+height<=4;++row) for(column=0;column+span<=4;++column) {
+        bool free=true; for(int y=row;y<row+height;++y) for(int x=column;x<column+span;++x) if(occupied[y][x]) free=false;
+        if(!free) continue;
+        for(int y=row;y<row+height;++y) for(int x=column;x<column+span;++x) occupied[y][x]=true;
+        return true;
+    } return false;
+}
 }
 
-}  // namespace
-
 void OverviewModule::create(lv_obj_t *parent) {
-    box(parent, BG, 0, 0);
-
-    const PanelConfig &cfg = config_service_get();
-    char sub[120];
-    snprintf(sub, sizeof(sub), "Your home at a glance - %s", cfg.display_name);
-    module_ui::title(parent, "Home", sub);
-    add_live_badge(parent);
-
-    lv_obj_t *hero = card(parent, 24, 92, 778, 154);
-    lv_obj_t *eyebrow = label(hero, "HOME STATUS", &lv_font_montserrat_14, ACCENT);
-    lv_obj_set_pos(eyebrow, 20, 18);
-    hero_title_ = label(hero, "Connecting to Home Assistant...", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(hero_title_, 20, 48);
-    lv_obj_set_width(hero_title_, 730);
-    lv_label_set_long_mode(hero_title_, LV_LABEL_LONG_DOT);
-    action_status_ = label(hero, "Waiting for live area data.", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(action_status_, 20, 96);
-    lv_obj_set_width(action_status_, 730);
-    lv_label_set_long_mode(action_status_, LV_LABEL_LONG_DOT);
-
-    lv_obj_t *area = card(parent, 826, 92, 200, 76);
-    lv_obj_t *area_name = label(area, "AREA", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(area_name, 16, 10);
-    area_value_ = label(area, cfg.area_id[0] ? cfg.area_id : "Not set", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(area_value_, 16, 36);
-    lv_obj_set_width(area_value_, 168);
-    lv_label_set_long_mode(area_value_, LV_LABEL_LONG_DOT);
-
-    lv_obj_t *lights = card(parent, 1044, 92, 208, 76);
-    lv_obj_t *lights_name = label(lights, "LIGHTS", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(lights_name, 16, 10);
-    lights_value_ = label(lights, "Discovering...", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(lights_value_, 16, 36);
-    lv_obj_set_width(lights_value_, 176);
-    lv_label_set_long_mode(lights_value_, LV_LABEL_LONG_DOT);
-
-    lv_obj_t *network = card(parent, 826, 170, 426, 76);
-    lv_obj_t *network_name = label(network, "NETWORK", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(network_name, 16, 10);
-    network_value_ = label(network, "Checking...", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(network_value_, 16, 36);
-
-    lv_obj_t *quick = card(parent, 24, 266, 1228, 242);
-    lv_obj_t *qh = label(quick, "Quick actions", &lv_font_montserrat_20, TEXT);
-    lv_obj_set_pos(qh, 18, 16);
-
-    lv_obj_t *qs = label(
-        quick,
-        "Control the room now. Home Assistant confirms every action before the display changes.",
-        &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(qs, 18, 46);
-
-    for (int i = 0; i < 4; ++i) {
-        actions_[i].owner = this;
-        actions_[i].is_all_lights = i == 0;
-        const char *initial = i == 0 ? "All Lights" : "Waiting...";
-        actions_[i].button = button(quick, initial, 18 + i * 295, 86, 276, 82,
-                                    i == 0 ? ACCENT : CARD_ALT);
-        actions_[i].label = lv_obj_get_child(actions_[i].button, 0);
-        lv_obj_add_event_cb(actions_[i].button, action_cb, LV_EVENT_CLICKED, &actions_[i]);
-        if (i > 0) set_enabled(actions_[i].button, false);
+    box(parent,BG,0,0); const PanelConfig &cfg=config_service_get(); char sub[120];
+    snprintf(sub,sizeof(sub),"Your home at a glance - %s",cfg.display_name); module_ui::title(parent,"Home",sub); add_live_badge(parent);
+    bool occupied[4][4]={}; widget_count_=0; action_count_=0; action_status_=nullptr;
+    for(uint8_t source=0;source<cfg.overview_widget_count;++source) {
+        const PanelOverviewWidget &configured=cfg.overview_widgets[source]; int column=0,row=0;
+        if(!find_slot(occupied,configured.span,configured.height,column,row)) continue;
+        const int width=configured.span*307-12, height=configured.height*132-12;
+        lv_obj_t *tile=card(parent,24+column*307,92+row*132,width,height);
+        Widget &widget=widgets_[widget_count_++]; snprintf(widget.type,sizeof(widget.type),"%s",configured.type);
+        lv_obj_t *name=label(tile,widget_title(widget.type),&lv_font_montserrat_12,MUTED); lv_obj_set_pos(name,16,13);
+        widget.value=label(tile,"Loading…",&lv_font_montserrat_20,TEXT); lv_obj_set_pos(widget.value,16,38); lv_obj_set_width(widget.value,width-32); lv_label_set_long_mode(widget.value,LV_LABEL_LONG_DOT);
+        widget.detail=label(tile,"",&lv_font_montserrat_14,MUTED); lv_obj_set_pos(widget.detail,16,height-28); lv_obj_set_width(widget.detail,width-32); lv_label_set_long_mode(widget.detail,LV_LABEL_LONG_DOT);
+        if(strcmp(widget.type,"quick_actions")!=0) continue;
+        action_status_=widget.detail; action_count_=cfg.overview_quick_action_count;
+        const int columns=width>=900?3:width>=590?2:1, button_width=(width-32-(columns-1)*6)/columns;
+        for(uint8_t i=0;i<action_count_;++i) {
+            QuickAction &action=actions_[i]; const PanelOverviewQuickAction &saved=cfg.overview_quick_actions[i];
+            action.owner=this; snprintf(action.entity_id,sizeof(action.entity_id),"%s",saved.entity_id); snprintf(action.type,sizeof(action.type),"%s",saved.type);
+            const int action_row=i/columns, action_column=i%columns;
+            action.button=button(tile,saved.label,16+action_column*(button_width+6),68+action_row*54,button_width,46,CARD_ALT);
+            action.label=lv_obj_get_child(action.button,0); lv_obj_set_style_text_font(action.label,&lv_font_montserrat_14,LV_PART_MAIN);
+            lv_obj_add_event_cb(action.button,action_cb,LV_EVENT_CLICKED,&action);
+        }
     }
-
-    lv_obj_t *tip = card(parent, 24, 528, 1228, 104);
-    lv_obj_t *th = label(tip, "Panel tip", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(th, 18, 14);
-    lv_obj_t *tv = label(tip, "Use the Room tab for individual lights, devices, shades, and all available scenes.", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(tv, 18, 48);
 }
 
 void OverviewModule::update() {
-    const PanelConfig &cfg = config_service_get();
-    if (area_value_) lv_label_set_text(area_value_, cfg.area_id[0] ? cfg.area_id : "Not set");
-
-    HomeAssistantLightStats lights = {};
-    home_assistant_get_light_stats(lights);
-
-    if (lights_value_) {
-        char text[48];
-        if (lights.total == 0) {
-            snprintf(text, sizeof(text), "None found");
-        } else {
-            snprintf(text, sizeof(text), "%u on / %u",
-                     static_cast<unsigned>(lights.on),
-                     static_cast<unsigned>(lights.total));
-        }
-        lv_label_set_text(lights_value_, text);
+    HomeAssistantLightStats lights={}; home_assistant_get_light_stats(lights); HomeAssistantStatus health={}; home_assistant_get_status(health); HomeAssistantDiscoveryStatus discovery={}; home_assistant_get_discovery_status(discovery);
+    static HomeAssistantEntitySnapshot entities[HA_MAX_AREA_ENTITIES]={}; const size_t count=home_assistant_get_layout_entities(entities,HA_MAX_AREA_ENTITIES);
+    const HomeAssistantEntitySnapshot *weather=first_domain(entities,count,"weather"),*calendar=first_domain(entities,count,"calendar"); const PanelConfig &cfg=config_service_get();
+    for(uint8_t i=0;i<widget_count_;++i) { Widget &widget=widgets_[i]; char value[112]={},detail[160]={};
+        if(strcmp(widget.type,"home_status")==0){snprintf(value,sizeof(value),"%s",discovery.discovery_complete?"Home Assistant live":health.configured?"Connecting…":"Not configured");snprintf(detail,sizeof(detail),"%u selected entities ready",static_cast<unsigned>(discovery.entity_count));}
+        else if(strcmp(widget.type,"lights")==0){snprintf(value,sizeof(value),lights.total?"%u on / %u":"No lights",static_cast<unsigned>(lights.on),static_cast<unsigned>(lights.total));snprintf(detail,sizeof(detail),lights.total?"Selected panel lights":"Add lights in Room configuration");}
+        else if(strcmp(widget.type,"area")==0){snprintf(value,sizeof(value),"%s",cfg.area_id[0]?cfg.area_id:"No area");snprintf(detail,sizeof(detail),"%s",cfg.display_name);}
+        else if(strcmp(widget.type,"network")==0){snprintf(value,sizeof(value),network_service_connected()?"%d dBm  online":"Offline",network_service_rssi());snprintf(detail,sizeof(detail),network_service_connected()?"Panel network connected":"Check Wi-Fi connection");}
+        else if(strcmp(widget.type,"weather")==0){snprintf(value,sizeof(value),"%s",weather?weather->name:"No weather entity");snprintf(detail,sizeof(detail),"%s",weather?weather->state:"Scan and save this layout");}
+        else if(strcmp(widget.type,"calendar")==0){snprintf(value,sizeof(value),"%s",calendar?calendar->name:"No calendar entity");snprintf(detail,sizeof(detail),"%s",calendar?calendar->state:"Scan and save this layout");}
+        else if(strcmp(widget.type,"quick_actions")==0){snprintf(value,sizeof(value),action_count_?"%u configured actions":"No configured actions",static_cast<unsigned>(action_count_));snprintf(detail,sizeof(detail),"%s",discovery.last_action[0]?discovery.last_action:"Configure actions in the web manager.");}
+        else {snprintf(value,sizeof(value),"Make this panel yours");snprintf(detail,sizeof(detail),"Add, remove, reorder, resize, and set widget height in the web manager.");}
+        set_text(widget.value,value); if(widget.detail!=action_status_)set_text(widget.detail,detail);
     }
-
-    QuickAction &all_lights = actions_[0];
-    all_lights.bound = lights.total > 0;
-    set_enabled(all_lights.button, all_lights.bound);
-    if (all_lights.bound) {
-        lv_label_set_text(all_lights.label, lights.on > 0 ? "Turn All Off" : "Turn All On");
-        lv_obj_set_style_bg_color(all_lights.button,
-                                  lv_color_hex(lights.on > 0 ? ACCENT : CARD_ALT),
-                                  LV_PART_MAIN);
-    } else {
-        lv_label_set_text(all_lights.label, "No Lights");
-        lv_obj_set_style_bg_color(all_lights.button, lv_color_hex(CARD_ALT), LV_PART_MAIN);
-    }
-
-    HomeAssistantEntitySnapshot scenes[HA_MAX_AREA_SCENES] = {};
-    const size_t scene_count = home_assistant_get_area_scenes(scenes, HA_MAX_AREA_SCENES);
-
-    for (size_t i = 0; i < HA_MAX_AREA_SCENES; ++i) {
-        QuickAction &action = actions_[i + 1];
-        if (i < scene_count) {
-            action.bound = true;
-            snprintf(action.entity_id, sizeof(action.entity_id), "%s", scenes[i].entity_id);
-            lv_label_set_text(action.label, scenes[i].name);
-            set_enabled(action.button, scenes[i].available);
-        } else {
-            action.bound = false;
-            action.entity_id[0] = '\0';
-            lv_label_set_text(action.label, i == 0 ? "No Scenes" : "Available Slot");
-            set_enabled(action.button, false);
-        }
-    }
-
-    HomeAssistantStatus health = {};
-    home_assistant_get_status(health);
-    HomeAssistantDiscoveryStatus discovery = {};
-    home_assistant_get_discovery_status(discovery);
-
-    if (hero_title_) {
-        char text[64];
-        if (discovery.discovery_complete) {
-            snprintf(text, sizeof(text), "Home Assistant is live - %u devices ready",
-                     static_cast<unsigned>(discovery.entity_count));
-        } else if (discovery.websocket_authenticated) {
-            snprintf(text, sizeof(text), "Discovering...");
-        } else if (health.configured) {
-            snprintf(text, sizeof(text), "Connecting...");
-        } else {
-            snprintf(text, sizeof(text), "Not configured");
-        }
-        lv_label_set_text(hero_title_, text);
-    }
-
-    if (network_value_) {
-        char text[48];
-        if (network_service_connected()) snprintf(text, sizeof(text), "%d dBm  online", network_service_rssi());
-        else snprintf(text, sizeof(text), "Offline");
-        lv_label_set_text(network_value_, text);
-    }
-
-    if (action_status_) {
-        char text[196];
-        if (discovery.last_action_ms && discovery.last_action[0]) {
-            snprintf(text, sizeof(text), "%s", discovery.last_action);
-        } else {
-            snprintf(text, sizeof(text), "%s",
-                     discovery.message[0] ? discovery.message : "Waiting for Home Assistant.");
-        }
-        lv_label_set_text(action_status_, text);
+    for(uint8_t i=0;i<action_count_;++i) { QuickAction &action=actions_[i];
+        if(strcmp(action.type,"all_lights")==0) { action.bound=lights.total>0; set_enabled(action.button,action.bound); lv_obj_set_style_bg_color(action.button,lv_color_hex(lights.on?ACCENT:CARD_ALT),LV_PART_MAIN); }
+        else { HomeAssistantEntitySnapshot current={}; action.bound=home_assistant_get_room_entity(action.entity_id,current)&&current.available; set_enabled(action.button,action.bound); }
     }
 }
 
-void OverviewModule::action_cb(lv_event_t *e) {
-    auto *action = static_cast<QuickAction *>(lv_event_get_user_data(e));
-    if (!action || !action->owner || !action->bound) return;
-
-    bool queued = false;
-
-    if (action->is_all_lights) {
-        HomeAssistantLightStats lights = {};
-        home_assistant_get_light_stats(lights);
-        queued = lights.total > 0 && home_assistant_queue_all_lights(lights.on == 0);
-    } else if (action->entity_id[0]) {
-        queued = home_assistant_queue_scene(action->entity_id);
-    }
-
-    if (action->owner->action_status_) {
-        lv_label_set_text(action->owner->action_status_,
-                          queued ? "Command queued; waiting for Home Assistant state update."
-                                 : "Could not queue Home Assistant command.");
-    }
+void OverviewModule::action_cb(lv_event_t *event) {
+    auto *action=static_cast<QuickAction *>(lv_event_get_user_data(event)); if(!action||!action->owner||!action->bound)return; bool queued=false;
+    if(strcmp(action->type,"all_lights")==0){HomeAssistantLightStats lights={};home_assistant_get_light_stats(lights);queued=lights.total&&home_assistant_queue_all_lights(lights.on==0);}
+    else if(strcmp(action->type,"scene")==0) queued=home_assistant_queue_scene(action->entity_id);
+    else if(strcmp(action->type,"toggle")==0) queued=home_assistant_queue_toggle(action->entity_id);
+    if(action->owner->action_status_)set_text(action->owner->action_status_,queued?"Command queued; waiting for Home Assistant.":"Could not queue Home Assistant command.");
 }

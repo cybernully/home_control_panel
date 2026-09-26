@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "device_id": "panel-01",
   "display_name": "Living Room Panel",
   "profile": "room",
@@ -16,5 +16,18 @@
   "backlight": 80,
   "dark_mode": true,
   "screen_timeout_seconds": 120,
-  "room_controls": []
+  "room_controls": [],
+  "explicit_layout": false,
+  "media_players": [],
+  "overview_widgets": [
+    {"type": "home_status", "span": 2, "height": 1},
+    {"type": "lights", "span": 1, "height": 1},
+    {"type": "network", "span": 1, "height": 1},
+    {"type": "quick_actions", "span": 4, "height": 2},
+    {"type": "weather", "span": 2, "height": 1},
+    {"type": "calendar", "span": 2, "height": 1}
+  ],
+  "overview_quick_actions": [
+    {"label": "All Lights", "type": "all_lights", "entity_id": ""}
+  ]
 }

@@ -40,6 +40,8 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.dark_mode = true;
     cfg.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
     config_service_set_profile_defaults(cfg);
+    config_service_set_overview_defaults(cfg);
+    config_service_set_overview_quick_action_defaults(cfg);
 }
 
 bool save_internal(const PanelConfig &cfg) {
@@ -47,7 +49,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 1;
+    doc["schema"] = 2;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -55,6 +57,7 @@ bool save_internal(const PanelConfig &cfg) {
     doc["backlight"] = cfg.backlight;
     doc["dark_mode"] = cfg.dark_mode;
     doc["screen_timeout_seconds"] = cfg.screen_timeout_seconds;
+    doc["explicit_layout"] = cfg.explicit_layout;
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -71,6 +74,22 @@ bool save_internal(const PanelConfig &cfg) {
         item["entity_id"] = cfg.room_controls[i].entity_id;
         item["label"] = cfg.room_controls[i].label;
         item["placement"] = cfg.room_controls[i].placement;
+    }
+    JsonArray players = doc["media_players"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
+    JsonArray widgets = doc["overview_widgets"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
+        JsonObject item = widgets.add<JsonObject>();
+        item["type"] = cfg.overview_widgets[i].type;
+        item["span"] = cfg.overview_widgets[i].span;
+        item["height"] = cfg.overview_widgets[i].height;
+    }
+    JsonArray quick_actions = doc["overview_quick_actions"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i) {
+        JsonObject item = quick_actions.add<JsonObject>();
+        item["label"] = cfg.overview_quick_actions[i].label;
+        item["type"] = cfg.overview_quick_actions[i].type;
+        item["entity_id"] = cfg.overview_quick_actions[i].entity_id;
     }
     const size_t written = serializeJsonPretty(doc, f);
     f.close();
@@ -118,6 +137,9 @@ bool config_service_begin() {
     loaded.backlight = constrain(static_cast<int>(doc["backlight"] | APP_DEFAULT_BACKLIGHT), 10, 100);
     loaded.dark_mode = doc["dark_mode"] | true;
     loaded.screen_timeout_seconds = doc["screen_timeout_seconds"] | APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
+    // Schema 1 did not have a layout editor. Preserve its automatic discovery
+    // until the owner saves a layout from the 1.5 web manager.
+    loaded.explicit_layout = doc["explicit_layout"] | false;
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
     JsonArray modules = doc["modules"].as<JsonArray>();
@@ -148,6 +170,27 @@ bool config_service_begin() {
             Serial0.printf("[Config] Invalid room preferences: %s\n", error.c_str());
         }
     }
+    if (!doc["overview_widgets"].isNull()) {
+        String json, error;
+        serializeJson(doc["overview_widgets"], json);
+        if (!config_service_parse_overview_widgets(json, loaded, error))
+            Serial0.printf("[Config] Invalid overview widgets: %s\n", error.c_str());
+    }
+    if (loaded.overview_widget_count == 0) config_service_set_overview_defaults(loaded);
+    if (!doc["overview_quick_actions"].isNull()) {
+        String json, error;
+        serializeJson(doc["overview_quick_actions"], json);
+        if (!config_service_parse_overview_quick_actions(json, loaded, error))
+            Serial0.printf("[Config] Invalid overview quick actions: %s\n", error.c_str());
+    } else config_service_set_overview_quick_action_defaults(loaded);
+    JsonArray players = doc["media_players"].as<JsonArray>();
+    if (!players.isNull()) for (JsonVariant item : players) {
+        const char *id = item.as<const char *>();
+        if (!id || strncmp(id, "media_player.", 13) != 0 ||
+            loaded.media_player_count >= PANEL_MAX_MEDIA_PLAYERS) continue;
+        copy_text(loaded.media_players[loaded.media_player_count++],
+                  PANEL_MEDIA_ENTITY_ID_LEN, id);
+    }
     g_config = loaded;
     Serial0.printf("[Config] %s profile=%s area=%s modules=%u media_shortcuts=%u\n",
                    g_config.device_id, g_config.profile, g_config.area_id,
@@ -167,6 +210,13 @@ bool config_service_save(const PanelConfig &config) {
     if (clean.media_shortcut_count > PANEL_MAX_MEDIA_SHORTCUTS) {
         clean.media_shortcut_count = PANEL_MAX_MEDIA_SHORTCUTS;
     }
+    if (clean.media_player_count > PANEL_MAX_MEDIA_PLAYERS) {
+        clean.media_player_count = PANEL_MAX_MEDIA_PLAYERS;
+    }
+    if (clean.overview_widget_count == 0 || clean.overview_widget_count > PANEL_MAX_OVERVIEW_WIDGETS)
+        config_service_set_overview_defaults(clean);
+    if (clean.overview_quick_action_count > PANEL_MAX_OVERVIEW_QUICK_ACTIONS)
+        config_service_set_overview_quick_action_defaults(clean);
     if (clean.module_count == 0) config_service_set_profile_defaults(clean);
     if (!save_internal(clean)) return false;
     g_config = clean;

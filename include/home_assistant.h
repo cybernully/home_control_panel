@@ -100,6 +100,9 @@ bool home_assistant_request_health_check();
 void home_assistant_get_status(HomeAssistantStatus &out);
 
 bool home_assistant_request_discovery();
+// A temporary full-area scan used by the web layout editor. It is never the
+// normal startup mode once an explicit layout has been saved.
+bool home_assistant_request_full_discovery();
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out);
 
 size_t home_assistant_get_room_controls(HomeAssistantEntitySnapshot *out, size_t max_count);
@@ -137,6 +140,9 @@ bool home_assistant_token_configured();
 
 // All discovered controllable room entities and scenes, without UI slot limits.
 size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t max_count);
+// All supported entities currently in the HA discovery cache, including media
+// players. Intended for the authenticated web layout editor.
+size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size_t max_count);
 
 bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct);
 

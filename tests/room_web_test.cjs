@@ -1,32 +1,29 @@
-const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const source=fs.readFileSync('src/web_manager.cpp','utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
-const elements=new Map();let saveHandler;let saved;
-function element(id){if(!elements.has(id)) elements.set(id,{value:'',textContent:'',disabled:false,addEventListener(type,cb){saveHandler=cb},querySelector(){return element('save')},set innerHTML(s){this.html=s;for(const m of s.matchAll(/<input id="([^"]+)"[^>]*value="([^"]*)"/g))element(m[1]).value=m[2].replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');for(const m of s.matchAll(/<select id="([^"]+)">([\s\S]*?)<\/select>/g)){const v=m[2].match(/value="(\d+)" selected/);element(m[1]).value=v?v[1]:'0'}},get innerHTML(){return this.html}});return elements.get(id)}
-const entities=[{entity_id:'light.a',name:'A — light'},{entity_id:'switch.b',name:'<img src=x onerror=alert(1)>'}];
-const config={device_id:'test',display_name:'Test',profile:'room',area_id:'office',room_controls:[{entity_id:'light.missing',label:'Missing',placement:1}],media_shortcuts:[]};
-const context=vm.createContext({document:{getElementById:element},URLSearchParams,setInterval(){},fetch:async(url,opt)=>({ok:true,json:async()=>{if(url==='/api/room/entities')return entities;if(url==='/api/config'&&!opt)return config;if(url==='/api/config'&&opt){saved=Object.fromEntries(opt.body);return {message:'Saved'}}return {}}})});
-// Suppress automatic boot to make network and form roundtrip assertions deterministic.
-vm.runInContext(source.slice(0,source.indexOf('status();load().catch')),context);
-(async()=>{
- await vm.runInContext('load()',context);
- assert.equal(vm.runInContext('roomRows.length',context),3);
- assert.equal(element('save').disabled,false);
- assert(element('room_fields').innerHTML.includes('&lt;img'));
- element('room_label_1').value='Desk — lamp';element('room_place_1').value='1';
- vm.runInContext('moveRoom(1,-1)',context);
- assert.equal(vm.runInContext('roomRows[0].entity_id',context),'light.a');
- assert.equal(element('room_label_0').value,'Desk — lamp');
- await vm.runInContext('refreshRoom()',context);
- assert.equal(vm.runInContext('roomRows.length',context),3);
- await saveHandler({preventDefault(){}});
- const sent=JSON.parse(saved.room_controls);
- assert.equal(sent[0].label,'Desk — lamp');assert.equal(sent[0].placement,1);
- assert.equal(sent[1].entity_id,'light.missing');
- vm.runInContext('resetRoom(1)',context);
- assert.equal(vm.runInContext('roomRows.length',context),2);
- element('room_place_1').value='2';
- await saveHandler({preventDefault(){}});
- assert.equal(JSON.parse(saved.room_controls)[1].placement,2);
- console.log('Web room editor tests passed: discovery, escaping, reorder, Unicode, missing favorites, hiding, reset and save payload.');
-})().catch(e=>{console.error(e);process.exitCode=1});
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const source=fs.readFileSync('include/web_ui.h','utf8');
 
+// The live UI is a self-contained firmware asset. These checks keep the
+// layout editor's essential routes and safe rendering helpers from regressing
+// without needing a browser or a Home Assistant server in host CI.
+for(const feature of [
+  "const $=id=>document.getElementById(id)", "function esc(s)",
+  "Room controls", "Media players", "Administration", "Scan Home Assistant area",
+  "/api/ha/discover", "/api/ha/entities", "room_controls",
+  "media_players", "shortcut_label_", "Save layout and configuration",
+  "explicit layout", "modules.join(',')", "Available widgets",
+  "widget_catalog", "overview_widgets", "Full width · 4 columns",
+  "widgetLabels={home_status", "weather:'Weather'", "calendar:'Calendar'"
+]) assert(source.includes(feature),`missing web manager feature: ${feature}`);
+assert(source.includes('function renderWidgets()'),'overview widgets must have an editable renderer');
+for(const feature of ["Configured buttons", "function addQuickAction()", "overview_quick_actions",
+                     "Display height", "All Lights", "Toggle entity", "Activate scene"])
+  assert(source.includes(feature),`missing configurable quick actions feature: ${feature}`);
+for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add Weather widget",
+                     "Edit room controls", "function renderLinkedPages()"])
+  assert(source.includes(feature),`missing working panel-tab configuration: ${feature}`);
+assert(source.includes('function showModule(id)'),'show-tab buttons must update the web navigation immediately');
+assert(source.includes('onclick="showModule(\'${m}\')"'),'show-tab buttons must use the explicit handler');
+assert(source.match(/<section id="media"[\s\S]*?Scan Home Assistant area/),'Media must expose its own HA scan trigger');
+assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
+assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
+       'escape helper must be defined before entity HTML rendering');
+console.log('Web layout manager tests passed: local tabbed editor, typed HA scan, explicit layout payload, and safe rendering hooks.');

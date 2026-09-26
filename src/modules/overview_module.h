@@ -16,17 +16,21 @@ private:
         lv_obj_t *button = nullptr;
         lv_obj_t *label = nullptr;
         char entity_id[96] = {};
-        bool is_all_lights = false;
+        char type[16] = {};
         bool bound = false;
     };
 
-    lv_obj_t *area_value_ = nullptr;
-    lv_obj_t *lights_value_ = nullptr;
-    lv_obj_t *ha_value_ = nullptr;
-    lv_obj_t *network_value_ = nullptr;
-    lv_obj_t *hero_title_ = nullptr;
+    struct Widget {
+        char type[PANEL_OVERVIEW_WIDGET_ID_LEN] = {};
+        lv_obj_t *value = nullptr;
+        lv_obj_t *detail = nullptr;
+    };
+
     lv_obj_t *action_status_ = nullptr;
-    QuickAction actions_[4];
+    Widget widgets_[PANEL_MAX_OVERVIEW_WIDGETS];
+    uint8_t widget_count_ = 0;
+    QuickAction actions_[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];
+    uint8_t action_count_ = 0;
 
     static void action_cb(lv_event_t *e);
 };

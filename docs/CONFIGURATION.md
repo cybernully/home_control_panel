@@ -4,7 +4,7 @@ Room panel example:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "device_id": "living-room-panel",
   "display_name": "Living Room",
   "profile": "room",
@@ -20,7 +20,12 @@ Room panel example:
   ],
   "backlight": 80,
   "dark_mode": true,
-  "screen_timeout_seconds": 120
+  "screen_timeout_seconds": 120,
+  "explicit_layout": true,
+  "media_players": ["media_player.office_echo_studio"],
+  "room_controls": [
+    {"entity_id": "light.desk", "label": "Desk", "placement": 1}
+  ]
 }
 ```
 
@@ -80,7 +85,7 @@ Calendar-oriented panel:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "device_id": "kitchen-calendar",
   "display_name": "Kitchen",
   "profile": "calendar",
@@ -96,7 +101,7 @@ Whole-home panel:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "device_id": "main-control-panel",
   "display_name": "Whole Home",
   "profile": "whole_home",
@@ -120,3 +125,14 @@ controls editor; changes apply live after Save. Existing files without this
 array load with all supported controls grouped and no favorites.
 
 See [release 1.4.0](RELEASE_1.4.0.md) for examples and hidden-control semantics.
+
+## Web layout manager (1.5.0)
+
+The local web manager now has tabs corresponding to the enabled panel tabs and
+an Administration tab. Select **Scan Home Assistant area** from Room to run a
+temporary, authenticated area scan; the editor identifies each entity's domain
+and presents suitable Room or Media controls. Saving enables `explicit_layout`.
+From then on the panel subscribes only to configured `room_controls`,
+`media_players`, and media-shortcut targets rather than all supported entities
+in the area. Schema-1 files remain in legacy auto-discovery mode until saved by
+the 1.5.0 editor.
