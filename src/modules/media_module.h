@@ -43,6 +43,7 @@ private:
 
     char selected_entity_id_[96] = {};
     char requested_picture_[HA_MEDIA_ARTWORK_URL_LEN] = {};
+    uint32_t artwork_request_ms_ = 0;
     bool volume_dragging_ = false;
 
     PlayerControl players_[HA_MAX_MEDIA_PLAYERS];

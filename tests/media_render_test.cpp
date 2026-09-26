@@ -21,7 +21,7 @@ void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out){out=
 bool home_assistant_commands_ready(){return true;}
 bool home_assistant_request_media_browse(const char *){return true;}
 bool home_assistant_request_media_artwork(const char *){return true;}
-void home_assistant_get_media_artwork_info(HomeAssistantMediaArtworkInfo &out){out={};out.generation=1;out.data_size=cover.size();out.width=out.height=256;out.format=HomeAssistantArtworkFormat::Jpeg;snprintf(out.entity_id,sizeof(out.entity_id),"media_player.office");}
+void home_assistant_get_media_artwork_info(HomeAssistantMediaArtworkInfo &out){out={};out.generation=1;out.data_size=cover.size();out.width=out.height=256;out.format=HomeAssistantArtworkFormat::Jpeg;snprintf(out.entity_id,sizeof(out.entity_id),"media_player.office");snprintf(out.picture_url,sizeof(out.picture_url),"fixture://cover");}
 bool home_assistant_copy_media_artwork(uint8_t *out,size_t capacity,HomeAssistantMediaArtworkInfo &info){if(capacity<cover.size())return false;memcpy(out,cover.data(),cover.size());home_assistant_get_media_artwork_info(info);return true;}
 bool home_assistant_queue_media_play_pause(const char *id){target=id;action="play";return true;}
 bool home_assistant_queue_media_previous(const char *id){target=id;action="previous";return true;}

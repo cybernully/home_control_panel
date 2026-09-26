@@ -1134,7 +1134,11 @@ bool read_artwork_response(HTTPClient &http, uint8_t *&data, size_t &size) {
     int remaining = declared;
     const uint32_t started = millis();
 
-    while (http.connected() && size < capacity && (remaining > 0 || declared < 0)) {
+    // HTTPClient can report the socket closed while bytes from that response
+    // are still buffered in its stream.  Drain available bytes first; testing
+    // connected() in the loop condition used to discard intermittent media
+    // proxy responses just before they became complete.
+    while (size < capacity && (remaining > 0 || declared < 0)) {
         const size_t available = stream->available();
         if (available) {
             size_t chunk = available;
@@ -1148,6 +1152,7 @@ bool read_artwork_response(HTTPClient &http, uint8_t *&data, size_t &size) {
             if (remaining > 0) remaining -= static_cast<int>(read);
         } else {
             if (remaining == 0) break;
+            if (!http.connected()) break;
             if (millis() - started >= HA_MEDIA_ARTWORK_TIMEOUT_MS) break;
             delay(1);
         }
@@ -1192,6 +1197,7 @@ int download_artwork_worker(const char *entity_id, const char *picture_url) {
     HTTPClient http;
     http.setConnectTimeout(HA_HTTP_CONNECT_TIMEOUT_MS);
     http.setTimeout(HA_MEDIA_ARTWORK_TIMEOUT_MS);
+    http.setReuse(false);
     // Arduino's redirect implementation reuses request headers.  Follow
     // redirects only for unauthenticated external artwork so an HA bearer
     // token can never be forwarded to a different redirect host.
@@ -1645,6 +1651,21 @@ void worker_task(void *) {
             char artwork_url[HA_MEDIA_ARTWORK_URL_LEN] = {};
             if (take_artwork_request_worker(artwork_entity, sizeof(artwork_entity),
                                             artwork_url, sizeof(artwork_url))) {
+                // ESP32-P4 TLS needs DMA-capable internal RAM. Keeping the
+                // authenticated WSS connection open while starting a second
+                // HTTPS client can exhaust that pool (esp-aes allocation
+                // failures), even with ample PSRAM. Release the idle socket
+                // before fetching artwork; the next worker pass reconnects
+                // and rediscovers the small area subscription.
+                char base[sizeof(g_base_url)] = {};
+                char token_unused[sizeof(g_token)] = {};
+                credentials_snapshot(base, sizeof(base), token_unused, sizeof(token_unused));
+                const bool secure_artwork = String(artwork_url).startsWith("https://") ||
+                                            (artwork_url[0] == '/' && String(base).startsWith("https://"));
+                if (secure_artwork && g_ws_started) {
+                    stop_websocket_worker("Refreshing media artwork; reconnecting after download...");
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                }
                 download_artwork_worker(artwork_entity, artwork_url);
                 g_last_http_ms = millis();
                 if (g_ws_started) g_ws.loop();

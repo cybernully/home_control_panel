@@ -351,6 +351,7 @@ void MediaModule::select_player(const char *entity_id) {
     volume_dragging_ = false;
     volume_entity_id_[0] = 0;
     requested_picture_[0] = '\0';
+    artwork_request_ms_ = 0;
     clear_artwork();
     home_assistant_request_media_browse(selected_entity_id_);
     set_status("Media player selected; loading state, artwork, and favorites...");
@@ -543,7 +544,8 @@ void MediaModule::refresh_artwork() {
     memset(&info, 0, sizeof(info));
     home_assistant_get_media_artwork_info(info);
     if (!info.generation || info.generation == artwork_generation_ ||
-        !same_text(info.entity_id, selected_entity_id_) || info.data_size == 0) {
+        !same_text(info.entity_id, selected_entity_id_) ||
+        !same_text(info.picture_url, requested_picture_) || info.data_size == 0) {
         return;
     }
 
@@ -859,16 +861,36 @@ void MediaModule::update() {
     else lv_obj_remove_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
 
     if (active.entity_picture[0]) {
-        if (!same_text(requested_picture_, active.entity_picture)) {
+        const bool picture_changed = !same_text(requested_picture_, active.entity_picture);
+        if (picture_changed) {
             snprintf(requested_picture_, sizeof(requested_picture_), "%s", active.entity_picture);
-            if (!home_assistant_request_media_artwork(active.entity_id)) {
-                requested_picture_[0] = '\0';
+            artwork_request_ms_ = 0;
+            // Never display a previous track's cover while the new one loads.
+            clear_artwork();
+        }
+
+        HomeAssistantMediaArtworkInfo cached = {};
+        home_assistant_get_media_artwork_info(cached);
+        const bool cache_matches = cached.generation &&
+                                   same_text(cached.entity_id, active.entity_id) &&
+                                   same_text(cached.picture_url, requested_picture_) &&
+                                   cached.data_size > 0;
+        const uint32_t now = millis();
+        // A request can be accepted by the worker but fail later (expired proxy
+        // URL, transient Wi-Fi, or artwork decode response). Retry the same
+        // cover with a bounded interval until the cache holds this exact URL.
+        if (!cache_matches && (!artwork_request_ms_ || now - artwork_request_ms_ >= 8000UL)) {
+            if (home_assistant_request_media_artwork(active.entity_id)) {
+                artwork_request_ms_ = now;
+            } else {
+                artwork_request_ms_ = now;
                 Serial0.printf("[Media] Artwork request could not be queued for %s\n",
                                active.entity_id);
             }
         }
     } else {
         requested_picture_[0] = '\0';
+        artwork_request_ms_ = 0;
         clear_artwork();
     }
     refresh_artwork();

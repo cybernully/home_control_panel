@@ -1,13 +1,13 @@
 # Home Control Panel
 
-**Version 1.4.2**
+**Version 1.4.3**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
 
-## Home Assistant stability 1.4.2
+## Home Assistant stability 1.4.3
 
 The Room page now has six explicitly chosen favorites and four touch-friendly
 bubble groups: Lights, Devices (switches/fans), Shades, and Scenes. Each group
@@ -26,7 +26,7 @@ playback and volume controls, three optional shortcut tiles, and rounded Players
 Sources, and Browse popups. Unused slots are hidden, long metadata is bounded,
 and canceled volume drags do not send a command.
 
-See [1.4.2 release notes](docs/RELEASE_1.4.2.md) for the persistent command channel, [1.4.1 release notes](docs/RELEASE_1.4.1.md) for recovery behavior, and [1.4.0 release notes](docs/RELEASE_1.4.0.md) for room configuration.
+See [1.4.3 release notes](docs/RELEASE_1.4.3.md) for the TLS artwork fix, [1.4.2 release notes](docs/RELEASE_1.4.2.md) for the persistent command channel, and [1.4.0 release notes](docs/RELEASE_1.4.0.md) for room configuration.
 
 ## Maintenance update 1.3.10
 
