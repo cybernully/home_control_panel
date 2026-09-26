@@ -75,14 +75,14 @@ h3{margin-top:24px}
       <div><label>Base URL</label><input id="ha_url" placeholder="https://homeassistant.local:8123"></div>
       <div><label>Access token</label><input id="ha_token" type="password" placeholder="Leave blank to keep existing token"></div>
     </div>
+    <h3>Media shortcuts</h3>
+    <p class="muted">Add up to three one-touch actions for the Media tab. Fill all four fields in a slot, then Save configuration. The media player must be assigned to this panel's Home Assistant area.</p>
+    <div id="shortcut_fields"></div>
     <h3>Room controls</h3>
     <p class="muted">Choose up to six favorites. Grouped controls live in Lights, Devices, Shades or Scenes. Hidden controls disappear only from this panel's Room screen; scenes and other dashboards can still operate them. Use arrows to set order. Names may use up to 63 UTF-8 bytes.</p>
     <button type="button" onclick="refreshRoom()">Refresh discovered controls</button>
     <div id="room_fields" style="margin-top:12px"></div>
     <p id="room_hint" class="muted"></p>
-    <h3>Media shortcuts</h3>
-    <p class="muted">Configure up to three one-touch media actions. The target media player must be assigned to this panel's Home Assistant area.</p>
-    <div id="shortcut_fields"></div>
     <p class="muted">The token is stored in NVS and is never returned to this page. Media shortcuts update after saving; profile and module changes require a reboot.</p>
     <button type="submit" disabled>Save configuration</button>
   </form>
@@ -96,7 +96,7 @@ function shortcutFields(i,s={}){return `<div class="shortcut"><strong>Shortcut $
 let roomRows=[];
 function readRoom(){roomRows.forEach((r,i)=>{r.label=$('room_label_'+i).value;r.placement=Number($('room_place_'+i).value)})}
 function renderRoom(){
- $('room_fields').innerHTML=roomRows.map((r,i)=>`<div class="shortcut"><strong>${esc(r.name||r.entity_id)}</strong><div class="muted">${esc(r.entity_id)}${r.discovered?'':' � not currently discovered'}</div><div class="grid"><div><label for="room_label_${i}">Display name</label><input id="room_label_${i}" maxlength="63" value="${esc(r.label)}" placeholder="Use Home Assistant name"></div><div><label for="room_place_${i}">Placement</label><select id="room_place_${i}">${['Grouped','Favorite','Hidden'].map((n,v)=>`<option value="${v}" ${r.placement===v?'selected':''}>${n}</option>`).join('')}</select></div><div class="row"><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} up" onclick="moveRoom(${i},-1)" ${i===0?'disabled':''}>Up</button><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} down" onclick="moveRoom(${i},1)" ${i===roomRows.length-1?'disabled':''}>Down</button><button type="button" onclick="resetRoom(${i})">Reset</button></div></div></div>`).join('');
+ $('room_fields').innerHTML=roomRows.map((r,i)=>`<div class="shortcut"><strong>${esc(r.name||r.entity_id)}</strong><div class="muted">${esc(r.entity_id)}${r.discovered?'':' — not currently discovered'}</div><div class="grid"><div><label for="room_label_${i}">Display name</label><input id="room_label_${i}" maxlength="63" value="${esc(r.label)}" placeholder="Use Home Assistant name"></div><div><label for="room_place_${i}">Placement</label><select id="room_place_${i}">${['Grouped','Favorite','Hidden'].map((n,v)=>`<option value="${v}" ${r.placement===v?'selected':''}>${n}</option>`).join('')}</select></div><div class="row"><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} up" onclick="moveRoom(${i},-1)" ${i===0?'disabled':''}>Up</button><button type="button" aria-label="Move ${esc(r.name||r.entity_id)} down" onclick="moveRoom(${i},1)" ${i===roomRows.length-1?'disabled':''}>Down</button><button type="button" onclick="resetRoom(${i})">Reset</button></div></div></div>`).join('');
  $('room_hint').textContent=roomRows.length?'Room changes apply after saving. Reset restores the HA name and grouped placement.':'No room controls discovered yet. Check the area and Home Assistant connection, then refresh.';
 }
 function moveRoom(i,d){readRoom();const j=i+d;if(j<0||j>=roomRows.length)return;[roomRows[i],roomRows[j]]=[roomRows[j],roomRows[i]];renderRoom()}
@@ -107,7 +107,7 @@ async function status(){try{const s=await j('/api/status');$('ver').textContent=
 async function load(){const c=await j('/api/config');for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url'])$(id).value=c[id]??'';roomRows=(c.room_controls||[]).map(r=>({...r,discovered:false}));renderRoom();await discoverRoom();const shortcuts=c.media_shortcuts||[];$('shortcut_fields').innerHTML=Array.from({length:3},(_,i)=>shortcutFields(i,shortcuts[i]||{})).join('');$('cfg').querySelector('button[type=submit]').disabled=false}
 $('cfg').addEventListener('submit',async e=>{e.preventDefault();const p=new URLSearchParams();for(const id of ['device_id','display_name','profile','area_id','modules','backlight','timeout','ha_url','ha_token'])p.set(id,$(id).value);for(let i=0;i<3;i++){p.set(`shortcut_label_${i}`,$(`shortcut_label_${i}`).value);p.set(`shortcut_entity_${i}`,$(`shortcut_entity_${i}`).value);p.set(`shortcut_id_${i}`,$(`shortcut_id_${i}`).value);p.set(`shortcut_type_${i}`,$(`shortcut_type_${i}`).value)}readRoom();p.set('room_controls',JSON.stringify(roomRows.map(({entity_id,label,placement})=>({entity_id,label,placement}))));try{const r=await j('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});$('msg').textContent=r.message;$('ha_token').value=''}catch(e){$('msg').textContent=e.message}});
 async function testHA(){try{const r=await j('/api/ha/test',{method:'POST'});$('msg').textContent=r.queued?'HA test queued on the single worker.':'HA test could not be queued.'}catch(e){$('msg').textContent=e.message}}
-async function reboot(){try{await j('/api/reboot',{method:'POST'});$('msg').textContent='Rebooting…'}catch(e){$('msg').textContent=e.message}}
+async function reboot(){try{await j('/api/reboot',{method:'POST'});$('msg').textContent='Rebootingâ€¦'}catch(e){$('msg').textContent=e.message}}
 status();load().catch(e=>{$('msg').textContent='Could not load configuration: '+e.message;$('cfg').querySelector('button[type=submit]').disabled=true});setInterval(status,5000);
 </script>
 </body>

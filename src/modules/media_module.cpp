@@ -856,7 +856,7 @@ void MediaModule::update() {
 
     bool has_favorites = false;
     for (const auto &favorite : favorites_) if (favorite.bound) has_favorites = true;
-    lv_label_set_text(popup_empty_[2], "No browse favorites available yet. You can add your own media shortcuts in the web manager.");
+    lv_label_set_text(popup_empty_[2], "No browse favorites available. Add one-touch actions under Media shortcuts in the web manager, above Room controls.");
     if (has_favorites) lv_obj_add_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
 
