@@ -46,6 +46,7 @@ private:
 
     PlayerControl players_[HA_MAX_MEDIA_PLAYERS];
     SourceControl sources_[HA_MAX_MEDIA_SOURCES];
+    FavoriteControl shortcuts_[PANEL_MAX_MEDIA_SHORTCUTS];
     FavoriteControl favorites_[HA_MAX_MEDIA_FAVORITES];
 
     // Media snapshots are roughly 1 KB each because they include metadata,

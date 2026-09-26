@@ -1,5 +1,6 @@
 #include "media_module.h"
 
+#include "config_service.h"
 #include "module_ui.h"
 
 #include <Arduino.h>
@@ -268,12 +269,25 @@ void MediaModule::create(lv_obj_t *parent) {
         lv_obj_add_event_cb(sources_[i].button, source_cb, LV_EVENT_CLICKED, &sources_[i]);
     }
 
-    lv_obj_t *favorites_title = label(bottom, "Favorites / playlists", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(favorites_title, 624, 10);
+    lv_obj_t *shortcuts_title = label(bottom, "Media shortcuts", &lv_font_montserrat_12, TEXT);
+    lv_obj_set_pos(shortcuts_title, 624, 4);
+    for (int i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
+        shortcuts_[i].owner = this;
+        shortcuts_[i].button = button(bottom, "--", 624 + i * 194, 24, 180, 42, ACCENT_SOFT);
+        shortcuts_[i].label = lv_obj_get_child(shortcuts_[i].button, 0);
+        lv_obj_set_style_text_font(shortcuts_[i].label, &lv_font_montserrat_14, LV_PART_MAIN);
+        configure_button_label(shortcuts_[i].label, 158);
+        set_enabled(shortcuts_[i].button, false);
+        lv_obj_add_event_cb(shortcuts_[i].button, favorite_cb, LV_EVENT_CLICKED, &shortcuts_[i]);
+    }
+
+    lv_obj_t *favorites_title = label(bottom, "Browse favorites", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(favorites_title, 624, 69);
     for (int i = 0; i < HA_MAX_MEDIA_FAVORITES; ++i) {
         favorites_[i].owner = this;
-        favorites_[i].button = button(bottom, "--", 624 + i * 194, 44, 180, 58, CARD_ALT);
+        favorites_[i].button = button(bottom, "--", 624 + i * 194, 86, 180, 38, CARD_ALT);
         favorites_[i].label = lv_obj_get_child(favorites_[i].button, 0);
+        lv_obj_set_style_text_font(favorites_[i].label, &lv_font_montserrat_12, LV_PART_MAIN);
         configure_button_label(favorites_[i].label, 158);
         set_enabled(favorites_[i].button, false);
         lv_obj_add_event_cb(favorites_[i].button, favorite_cb, LV_EVENT_CLICKED, &favorites_[i]);
@@ -589,6 +603,41 @@ void MediaModule::update() {
            HA_MAX_MEDIA_PLAYERS * sizeof(HomeAssistantMediaSnapshot));
     const size_t count = home_assistant_get_media_players(
         media_cache_, HA_MAX_MEDIA_PLAYERS);
+
+    const PanelConfig &panel_config = config_service_get();
+    for (size_t i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
+        FavoriteControl &control = shortcuts_[i];
+        if (i < panel_config.media_shortcut_count) {
+            const PanelMediaShortcut &configured = panel_config.media_shortcuts[i];
+            control.bound = true;
+            memset(&control.favorite, 0, sizeof(control.favorite));
+            snprintf(control.favorite.entity_id, sizeof(control.favorite.entity_id),
+                     "%s", configured.entity_id);
+            snprintf(control.favorite.title, sizeof(control.favorite.title),
+                     "%s", configured.label);
+            snprintf(control.favorite.media_content_id,
+                     sizeof(control.favorite.media_content_id),
+                     "%s", configured.media_content_id);
+            snprintf(control.favorite.media_content_type,
+                     sizeof(control.favorite.media_content_type),
+                     "%s", configured.media_content_type);
+            set_media_label_text(control.label, configured.label);
+
+            bool target_available = false;
+            for (size_t player = 0; player < count; ++player) {
+                if (same_text(media_cache_[player].entity_id, configured.entity_id)) {
+                    target_available = media_cache_[player].available;
+                    break;
+                }
+            }
+            set_enabled(control.button, target_available);
+        } else {
+            control.bound = false;
+            memset(&control.favorite, 0, sizeof(control.favorite));
+            lv_label_set_text(control.label, "--");
+            set_enabled(control.button, false);
+        }
+    }
 
     if (count == 0) {
         selected_entity_id_[0] = '\0';

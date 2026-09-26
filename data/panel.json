@@ -5,6 +5,7 @@
   "profile": "room",
   "area_id": "living_room",
   "modules": ["overview", "room", "media", "climate", "security", "settings"],
+  "media_shortcuts": [],
   "backlight": 80,
   "dark_mode": true,
   "screen_timeout_seconds": 120

@@ -1368,8 +1368,12 @@ void process_action_worker(const HaAction &action) {
                 break;
             case HaActionType::MediaFavorite:
                 service = "play_media";
-                doc["media_content_id"] = action.text;
-                doc["media_content_type"] = action.aux;
+                {
+                    JsonObject media = doc["media"].to<JsonObject>();
+                    media["media_content_id"] = action.text;
+                    media["media_content_type"] = action.aux;
+                    media["metadata"].to<JsonObject>();
+                }
                 break;
             default:
                 record_action_result("Unsupported media action", -103);

@@ -3,6 +3,13 @@
 #include <stdint.h>
 #include "app_config.h"
 
+struct PanelMediaShortcut {
+    char label[PANEL_MEDIA_SHORTCUT_LABEL_LEN];
+    char entity_id[PANEL_MEDIA_ENTITY_ID_LEN];
+    char media_content_id[HA_MEDIA_CONTENT_ID_LEN];
+    char media_content_type[HA_MEDIA_CONTENT_TYPE_LEN];
+};
+
 struct PanelConfig {
     char device_id[32];
     char display_name[48];
@@ -10,6 +17,8 @@ struct PanelConfig {
     char area_id[64];
     char modules[PANEL_MAX_MODULES][PANEL_MODULE_ID_LEN];
     uint8_t module_count;
+    PanelMediaShortcut media_shortcuts[PANEL_MAX_MEDIA_SHORTCUTS];
+    uint8_t media_shortcut_count;
     uint8_t backlight;
     bool dark_mode;
     uint32_t screen_timeout_seconds;

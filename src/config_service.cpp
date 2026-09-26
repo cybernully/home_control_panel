@@ -55,6 +55,14 @@ bool save_internal(const PanelConfig &cfg) {
     doc["screen_timeout_seconds"] = cfg.screen_timeout_seconds;
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
+    JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) {
+        JsonObject item = shortcuts.add<JsonObject>();
+        item["label"] = cfg.media_shortcuts[i].label;
+        item["entity_id"] = cfg.media_shortcuts[i].entity_id;
+        item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
+        item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
+    }
     const size_t written = serializeJsonPretty(doc, f);
     f.close();
     return written > 0;
@@ -104,8 +112,29 @@ bool config_service_begin() {
     JsonArray modules = doc["modules"].as<JsonArray>();
     if (!modules.isNull()) for (JsonVariant item : modules) add_module(loaded, item.as<const char *>());
     if (loaded.module_count == 0) config_service_set_profile_defaults(loaded);
+
+    JsonArray shortcuts = doc["media_shortcuts"].as<JsonArray>();
+    if (!shortcuts.isNull()) {
+        for (JsonObject item : shortcuts) {
+            if (loaded.media_shortcut_count >= PANEL_MAX_MEDIA_SHORTCUTS) break;
+            const char *label = item["label"] | "";
+            const char *entity_id = item["entity_id"] | "";
+            const char *content_id = item["media_content_id"] | "";
+            const char *content_type = item["media_content_type"] | "";
+            if (!label[0] || !entity_id[0] || !content_id[0] || !content_type[0]) continue;
+            PanelMediaShortcut &shortcut =
+                loaded.media_shortcuts[loaded.media_shortcut_count++];
+            copy_text(shortcut.label, sizeof(shortcut.label), label);
+            copy_text(shortcut.entity_id, sizeof(shortcut.entity_id), entity_id);
+            copy_text(shortcut.media_content_id, sizeof(shortcut.media_content_id), content_id);
+            copy_text(shortcut.media_content_type, sizeof(shortcut.media_content_type), content_type);
+        }
+    }
     g_config = loaded;
-    Serial0.printf("[Config] %s profile=%s area=%s modules=%u\n", g_config.device_id, g_config.profile, g_config.area_id, static_cast<unsigned>(g_config.module_count));
+    Serial0.printf("[Config] %s profile=%s area=%s modules=%u media_shortcuts=%u\n",
+                   g_config.device_id, g_config.profile, g_config.area_id,
+                   static_cast<unsigned>(g_config.module_count),
+                   static_cast<unsigned>(g_config.media_shortcut_count));
     return true;
 }
 
@@ -114,6 +143,9 @@ const PanelConfig &config_service_get() { return g_config; }
 bool config_service_save(const PanelConfig &config) {
     PanelConfig clean = config;
     clean.backlight = constrain(static_cast<int>(clean.backlight), 10, 100);
+    if (clean.media_shortcut_count > PANEL_MAX_MEDIA_SHORTCUTS) {
+        clean.media_shortcut_count = PANEL_MAX_MEDIA_SHORTCUTS;
+    }
     if (clean.module_count == 0) config_service_set_profile_defaults(clean);
     if (!save_internal(clean)) return false;
     g_config = clean;

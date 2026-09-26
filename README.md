@@ -1,11 +1,20 @@
 # Home Control Panel
 
-**Version 1.3.8**
+**Version 1.3.9**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Maintenance update 1.3.9
+
+Version 1.3.9 adds three persistent Media Shortcut buttons configured from the
+local web manager.  Each shortcut stores its label, target `media_player`, media
+content ID, and media content type.  Shortcuts use Home Assistant's current
+nested `media_player.play_media` payload and appear in their own row above the
+three automatically discovered Browse favorites.  Existing `panel.json` files
+remain valid and load with no shortcuts until they are configured.
 
 ## Maintenance update 1.3.8
 
