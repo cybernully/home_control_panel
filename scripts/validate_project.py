@@ -6,7 +6,7 @@ required=[
     "platformio.ini","partitions.csv","include/app_config.h","include/board_lvgl.h",
     "include/config_service.h","include/module.h","include/module_registry.h",
     "include/home_assistant.h","include/web_manager.h","src/main.cpp","src/board_lvgl.cpp",
-    "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/config_service.cpp","src/module_registry.cpp",
+    "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/config_service.cpp","src/module_registry.cpp","src/runtime_stats.cpp","include/runtime_stats.h",
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
@@ -74,7 +74,9 @@ for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
                 "shortcut_type_", "parse_media_shortcuts"]:
     assert feature in web
 settings=(root/"src/modules/settings_module.cpp").read_text()
-for feature in ['#include "network_service.h"', "network_service_ip()", "IP address: %s"]:
+for feature in ['#include "network_service.h"', '#include "runtime_stats.h"',
+                "network_service_ip()", "SPIFFS.totalBytes()", "ESP.getFreeHeap()",
+                "runtime_stats_app_loop_percent()"]:
     assert feature in settings
 stb_impl=(root/"src/stb_image_impl.cpp").read_text()
 for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM"]:

@@ -13,6 +13,11 @@ private:
     lv_obj_t *identity_label_ = nullptr;
     lv_obj_t *ha_label_ = nullptr;
     lv_obj_t *discovery_label_ = nullptr;
+    lv_obj_t *heap_label_ = nullptr;
+    lv_obj_t *psram_label_ = nullptr;
+    lv_obj_t *storage_label_ = nullptr;
+    lv_obj_t *cpu_label_ = nullptr;
+    lv_obj_t *runtime_label_ = nullptr;
 
     static void backlight_changed_cb(lv_event_t *e);
     static void backlight_released_cb(lv_event_t *e);

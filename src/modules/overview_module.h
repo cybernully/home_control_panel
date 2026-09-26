@@ -22,8 +22,9 @@ private:
 
     lv_obj_t *area_value_ = nullptr;
     lv_obj_t *lights_value_ = nullptr;
-    lv_obj_t *climate_value_ = nullptr;
     lv_obj_t *ha_value_ = nullptr;
+    lv_obj_t *network_value_ = nullptr;
+    lv_obj_t *hero_title_ = nullptr;
     lv_obj_t *action_status_ = nullptr;
     QuickAction actions_[4];
 

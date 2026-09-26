@@ -3,6 +3,7 @@
 #include "config_service.h"
 #include "home_assistant.h"
 #include "module_ui.h"
+#include "network_service.h"
 
 #include <Arduino.h>
 
@@ -29,22 +30,51 @@ void OverviewModule::create(lv_obj_t *parent) {
 
     const PanelConfig &cfg = config_service_get();
     char sub[120];
-    snprintf(sub, sizeof(sub), "At-a-glance status for %s", cfg.display_name);
-    module_ui::title(parent, "Overview", sub);
+    snprintf(sub, sizeof(sub), "Your home at a glance - %s", cfg.display_name);
+    module_ui::title(parent, "Home", sub);
     add_live_badge(parent);
 
-    add_metric(parent, 24,  "AREA", cfg.area_id[0] ? cfg.area_id : "Not set", &area_value_);
-    add_metric(parent, 322, "LIGHTS", "Discovering...", &lights_value_);
-    add_metric(parent, 620, "CLIMATE", "Planned 1.5", &climate_value_);
-    add_metric(parent, 918, "HOME ASSISTANT", "Connecting...", &ha_value_);
+    lv_obj_t *hero = card(parent, 24, 92, 778, 154);
+    lv_obj_t *eyebrow = label(hero, "HOME STATUS", &lv_font_montserrat_14, ACCENT);
+    lv_obj_set_pos(eyebrow, 20, 18);
+    hero_title_ = label(hero, "Connecting to Home Assistant...", &lv_font_montserrat_24, TEXT);
+    lv_obj_set_pos(hero_title_, 20, 48);
+    lv_obj_set_width(hero_title_, 730);
+    lv_label_set_long_mode(hero_title_, LV_LABEL_LONG_DOT);
+    action_status_ = label(hero, "Waiting for live area data.", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(action_status_, 20, 96);
+    lv_obj_set_width(action_status_, 730);
+    lv_label_set_long_mode(action_status_, LV_LABEL_LONG_DOT);
 
-    lv_obj_t *quick = card(parent, 24, 258, 1228, 250);
+    lv_obj_t *area = card(parent, 826, 92, 200, 76);
+    lv_obj_t *area_name = label(area, "AREA", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(area_name, 16, 10);
+    area_value_ = label(area, cfg.area_id[0] ? cfg.area_id : "Not set", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(area_value_, 16, 36);
+    lv_obj_set_width(area_value_, 168);
+    lv_label_set_long_mode(area_value_, LV_LABEL_LONG_DOT);
+
+    lv_obj_t *lights = card(parent, 1044, 92, 208, 76);
+    lv_obj_t *lights_name = label(lights, "LIGHTS", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(lights_name, 16, 10);
+    lights_value_ = label(lights, "Discovering...", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(lights_value_, 16, 36);
+    lv_obj_set_width(lights_value_, 176);
+    lv_label_set_long_mode(lights_value_, LV_LABEL_LONG_DOT);
+
+    lv_obj_t *network = card(parent, 826, 170, 426, 76);
+    lv_obj_t *network_name = label(network, "NETWORK", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(network_name, 16, 10);
+    network_value_ = label(network, "Checking...", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(network_value_, 16, 36);
+
+    lv_obj_t *quick = card(parent, 24, 266, 1228, 242);
     lv_obj_t *qh = label(quick, "Quick actions", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(qh, 18, 16);
 
     lv_obj_t *qs = label(
         quick,
-        "Area lights and discovered Home Assistant scenes are live in 1.2.0.",
+        "Control the room now. Home Assistant confirms every action before the display changes.",
         &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(qs, 18, 46);
 
@@ -59,11 +89,11 @@ void OverviewModule::create(lv_obj_t *parent) {
         if (i > 0) set_enabled(actions_[i].button, false);
     }
 
-    action_status_ = label(quick, "Waiting for Home Assistant discovery.",
-                           &lv_font_montserrat_16, MUTED);
-    lv_obj_set_width(action_status_, 1180);
-    lv_label_set_long_mode(action_status_, LV_LABEL_LONG_DOT);
-    lv_obj_set_pos(action_status_, 18, 194);
+    lv_obj_t *tip = card(parent, 24, 528, 1228, 104);
+    lv_obj_t *th = label(tip, "Panel tip", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(th, 18, 14);
+    lv_obj_t *tv = label(tip, "Use the Room tab for individual lights, devices, shades, and all available scenes.", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(tv, 18, 48);
 }
 
 void OverviewModule::update() {
@@ -121,10 +151,10 @@ void OverviewModule::update() {
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);
 
-    if (ha_value_) {
+    if (hero_title_) {
         char text[64];
         if (discovery.discovery_complete) {
-            snprintf(text, sizeof(text), "Live | %u entities",
+            snprintf(text, sizeof(text), "Home Assistant is live - %u devices ready",
                      static_cast<unsigned>(discovery.entity_count));
         } else if (discovery.websocket_authenticated) {
             snprintf(text, sizeof(text), "Discovering...");
@@ -133,7 +163,14 @@ void OverviewModule::update() {
         } else {
             snprintf(text, sizeof(text), "Not configured");
         }
-        lv_label_set_text(ha_value_, text);
+        lv_label_set_text(hero_title_, text);
+    }
+
+    if (network_value_) {
+        char text[48];
+        if (network_service_connected()) snprintf(text, sizeof(text), "%d dBm  online", network_service_rssi());
+        else snprintf(text, sizeof(text), "Offline");
+        lv_label_set_text(network_value_, text);
     }
 
     if (action_status_) {

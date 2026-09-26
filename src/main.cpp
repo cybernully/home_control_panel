@@ -7,6 +7,7 @@
 #include "home_assistant.h"
 #include "module_registry.h"
 #include "network_service.h"
+#include "runtime_stats.h"
 #include "ui_shell.h"
 #include "web_manager.h"
 
@@ -50,11 +51,13 @@ void setup() {
 }
 
 void loop() {
+    const uint32_t started_us = micros();
     network_service_loop();
     home_assistant_loop();
     web_manager_loop();
     battery_service_loop();
     ui_shell_loop();
     board_lvgl_loop();
+    runtime_stats_note_loop(micros() - started_us);
     delay(5);
 }
