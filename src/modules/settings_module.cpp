@@ -140,18 +140,24 @@ void SettingsModule::update() {
         home_assistant_get_discovery_status(discovery);
 
         char text[240];
+        const bool recent_action = discovery.last_action_ms &&
+                                   millis() - discovery.last_action_ms < 12000;
         if (discovery.area_found) {
             snprintf(text, sizeof(text),
-                     "Area: %s | %u entities / %u devices | WS: %s | %s",
+                     "Area: %s | %u entities / %u devices | WS: %s | %s%s%s",
                      discovery.area_name[0] ? discovery.area_name : discovery.area_id,
                      static_cast<unsigned>(discovery.entity_count),
                      static_cast<unsigned>(discovery.device_count),
                      discovery.websocket_authenticated ? "authenticated" : "offline",
-                     discovery.message[0] ? discovery.message : "");
+                     discovery.message[0] ? discovery.message : "",
+                     recent_action ? " | Action: " : "",
+                     recent_action ? discovery.last_action : "");
         } else {
-            snprintf(text, sizeof(text), "WS: %s | %s",
+            snprintf(text, sizeof(text), "WS: %s | %s%s%s",
                      discovery.websocket_authenticated ? "authenticated" : "offline",
-                     discovery.message[0] ? discovery.message : "waiting");
+                     discovery.message[0] ? discovery.message : "waiting",
+                     recent_action ? " | Action: " : "",
+                     recent_action ? discovery.last_action : "");
         }
         lv_label_set_text(discovery_label_, text);
     }

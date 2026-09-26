@@ -23,6 +23,7 @@ void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) {
     out={};snprintf(out.area_name,sizeof(out.area_name),"Office — upstairs");
     snprintf(out.message,sizeof(out.message),"Connected to Home Assistant");
 }
+bool home_assistant_commands_ready(){return true;}
 bool home_assistant_queue_toggle(const char *id){target=id;++toggles;return true;}
 bool home_assistant_queue_scene(const char *id){target=id;return true;}
 bool home_assistant_queue_light_brightness(const char *id,uint8_t){target=id;++brightness_calls;return true;}

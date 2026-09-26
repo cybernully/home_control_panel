@@ -234,10 +234,13 @@ void RoomModule::action_cb(lv_event_t *e) {
         self->update(); return;
     }
     const bool queued = t->scene ? home_assistant_queue_scene(t->entity_id) : home_assistant_queue_toggle(t->entity_id);
-    display(self->status_,queued ? "Command queued. Waiting for Home Assistant." : "Command queue busy. Please try again.");
+    display(self->status_,queued ? "Command queued. Waiting for Home Assistant." :
+            (home_assistant_commands_ready() ? "Command queue busy. Please try again." :
+             "Home Assistant reconnecting. Please wait."));
     self->feedback_until_ = millis()+4000;
     // Feedback remains visible above the popup's pagination controls.
-    if (self->group_ >= 0) display(self->page_label_,queued ? "Command queued" : "Queue busy - try again");
+    if (self->group_ >= 0) display(self->page_label_,queued ? "Command queued" :
+                                    (home_assistant_commands_ready() ? "Queue busy - try again" : "HA reconnecting"));
 }
 void RoomModule::group_cb(lv_event_t *e) {
     auto *g = static_cast<Group *>(lv_event_get_user_data(e));
@@ -274,8 +277,11 @@ void RoomModule::brightness_cb(lv_event_t *e) {
         t->dragging = false;
         if (hidden(t->entity_id)) { t->owner->update(); return; }
         const bool queued = home_assistant_queue_light_brightness(t->entity_id,lv_slider_get_value(t->slider));
-        display(t->owner->page_label_,queued ? "Brightness queued" : "Queue busy - try again");
+        display(t->owner->page_label_,queued ? "Brightness queued" :
+                (home_assistant_commands_ready() ? "Queue busy - try again" : "HA reconnecting"));
         t->owner->feedback_until_ = millis()+4000;
-        display(t->owner->status_,queued ? "Brightness queued. Waiting for Home Assistant." : "Command queue busy. Please try again.");
+        display(t->owner->status_,queued ? "Brightness queued. Waiting for Home Assistant." :
+                (home_assistant_commands_ready() ? "Command queue busy. Please try again." :
+                 "Home Assistant reconnecting. Please wait."));
     }
 }

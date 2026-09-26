@@ -20,7 +20,34 @@
 - En and em dashes display as a font-safe hyphen. UTF-8 is truncated only at
   complete codepoint boundaries; long names use an ellipsis within the tile.
 
-## Customization
+## Header refinement
+
+The persistent header now uses aligned Wi-Fi and battery capsules, a quieter
+profile/area/version subtitle, a subtle divider, and bounded titles. Signal bars
+replace the raw RSSI number. The battery body, terminal, fill and percentage
+share a consistent vertical center; an unavailable reading clears the previous
+fill, and zero percent displays an empty battery. Amber/red low-battery cues
+remain. Header height, content area and navigation positions are unchanged.
+
+![Refined header in context](previews/header-refined.png)
+
+## Media refinement
+
+The Media screen now centers on a single now-playing card with native-size
+artwork, a clear track/artist/album hierarchy, large transport buttons, and an
+aligned volume row. Players, Sources, and Browse open rounded modal sheets with
+large touch targets and a highlighted current selection. The three configured
+shortcuts remain directly accessible; unused slots are hidden. Empty lists show
+guidance and unavailable players disable their controls. Long metadata and tile
+labels use a bounded single-line ellipsis. Volume drags retain their original
+player and cancel on lost touch, player changes, or navigation.
+
+Existing playback commands, shortcut configuration, discovery limits, and the
+artwork decode/no-upscale behavior are retained.
+
+![Refined Media screen](previews/media-refined.png)
+
+## Room customization
 
 Open the panel's existing authenticated web manager and find **Room controls**.
 Refresh the discovered list, select Grouped/Favorite/Hidden for each entity,
@@ -63,3 +90,4 @@ availability and brightness support before issuing a request.
 
 See `docs/VALIDATION_1.4.0.md` for executed checks and remaining hardware checks.
 No firmware upload or live Home Assistant service call is part of this update.
+

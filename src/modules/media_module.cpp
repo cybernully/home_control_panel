@@ -8,6 +8,7 @@
 #include <JPEGDEC.h>
 #include <esp_heap_caps.h>
 #include <new>
+#include <initializer_list>
 #include <stb_image.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,9 +21,15 @@ bool same_text(const char *a, const char *b) {
     return strcmp(a ? a : "", b ? b : "") == 0;
 }
 
+const char *media_command_unavailable_message() {
+    return home_assistant_commands_ready() ? "Could not queue command." :
+                                             "Home Assistant reconnecting. Please wait.";
+}
+
 void configure_button_label(lv_obj_t *label_obj, int width) {
     if (!label_obj) return;
     lv_obj_set_width(label_obj, width);
+    lv_obj_set_height(label_obj, lv_obj_get_style_text_font(label_obj, LV_PART_MAIN)->line_height);
     lv_label_set_long_mode(label_obj, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(label_obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_center(label_obj);
@@ -136,164 +143,213 @@ bool MediaModule::allocate_work_buffers() {
 
 void MediaModule::create(lv_obj_t *parent) {
     const bool buffers_ready = allocate_work_buffers();
-
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Media", "Live Home Assistant media players assigned to this area");
-    add_live_badge(parent);
+    module_ui::title(parent, "Media", "Your music, within reach.");
 
-    lv_obj_t *now = card(parent, 24, 92, 760, 394);
-    artwork_box_ = card(now, 20, 36, 320, 320);
-    lv_obj_set_style_bg_color(artwork_box_, lv_color_hex(CARD_ALT), LV_PART_MAIN);
+    const char *menus[] = {"Players", "Sources", "Browse"};
+    for (int i = 0; i < 3; ++i) {
+        auto &trigger = popup_triggers_[i];
+        trigger.owner = this; trigger.index = i;
+        trigger.button = button(parent, menus[i], 704 + i * 184, 18, 168, 48);
+        lv_obj_set_style_radius(trigger.button, 24, LV_PART_MAIN);
+        lv_obj_add_event_cb(trigger.button, popup_cb, LV_EVENT_CLICKED, &trigger);
+    }
+
+    lv_obj_t *now = card(parent, 24, 92, 1232, 380);
+    lv_obj_set_style_radius(now, 24, LV_PART_MAIN);
+    artwork_box_ = card(now, 24, 29, 320, 320);
+    lv_obj_set_style_bg_color(artwork_box_, lv_color_hex(0x101A2B), LV_PART_MAIN);
+    lv_obj_set_style_radius(artwork_box_, 20, LV_PART_MAIN);
     lv_obj_set_style_border_width(artwork_box_, 0, LV_PART_MAIN);
-
-    artwork_placeholder_ = label(artwork_box_, "NO ARTWORK", &lv_font_montserrat_14, MUTED);
+    artwork_placeholder_ = label(artwork_box_, "No artwork", &lv_font_montserrat_16, MUTED);
     lv_obj_center(artwork_placeholder_);
-
     artwork_image_ = lv_image_create(artwork_box_);
     lv_obj_set_style_radius(artwork_image_, 12, LV_PART_MAIN);
     lv_image_set_antialias(artwork_image_, true);
     lv_obj_remove_flag(artwork_image_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
 
-    player_name_ = label(now, "Discovering media players...", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(player_name_, 366, 30);
-    lv_obj_set_width(player_name_, 366);
-    lv_label_set_long_mode(player_name_, LV_LABEL_LONG_DOT);
+    auto text = [now](const char *value, const lv_font_t *font, uint32_t color, int y, int width) {
+        lv_obj_t *obj = label(now, value, font, color);
+        lv_obj_set_pos(obj, 376, y);
+        lv_obj_set_width(obj, width);
+        lv_obj_set_height(obj, font->line_height);
+        lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
+        return obj;
+    };
+    player_name_ = text("Discovering players...", &lv_font_montserrat_14, MUTED, 24, 828);
+    track_label_ = text("Nothing playing", &lv_font_montserrat_28, TEXT, 59, 828);
+    artist_label_ = text("", &lv_font_montserrat_18, TEXT, 103, 828);
+    album_label_ = text("", &lv_font_montserrat_14, MUTED, 137, 828);
+    state_label_ = text("Waiting for Home Assistant", &lv_font_montserrat_14, MUTED, 173, 420);
 
-    track_label_ = label(now, "Nothing playing", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(track_label_, 366, 70);
-    lv_obj_set_width(track_label_, 366);
-    lv_label_set_long_mode(track_label_, LV_LABEL_LONG_DOT);
-
-    artist_label_ = label(now, "", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(artist_label_, 366, 111);
-    lv_obj_set_width(artist_label_, 366);
-    lv_label_set_long_mode(artist_label_, LV_LABEL_LONG_DOT);
-
-    album_label_ = label(now, "", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(album_label_, 366, 144);
-    lv_obj_set_width(album_label_, 366);
-    lv_label_set_long_mode(album_label_, LV_LABEL_LONG_DOT);
-
-    state_label_ = label(now, "Waiting for Home Assistant", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(state_label_, 366, 177);
-    lv_obj_set_width(state_label_, 366);
-    lv_label_set_long_mode(state_label_, LV_LABEL_LONG_DOT);
-
-    prev_button_ = button(now, "PREV", 366, 224, 104, 68, CARD_ALT);
-    lv_obj_add_event_cb(prev_button_, previous_cb, LV_EVENT_CLICKED, this);
-    set_enabled(prev_button_, false);
-
-    play_button_ = button(now, "PLAY", 482, 224, 134, 68, ACCENT);
+    prev_button_ = button(now, "Previous", 376, 222, 112, 72);
+    play_button_ = button(now, "Play", 500, 222, 164, 72, ACCENT);
     play_label_ = lv_obj_get_child(play_button_, 0);
-    lv_obj_add_event_cb(play_button_, play_cb, LV_EVENT_CLICKED, this);
-    set_enabled(play_button_, false);
-
-    next_button_ = button(now, "NEXT", 628, 224, 104, 68, CARD_ALT);
-    lv_obj_add_event_cb(next_button_, next_cb, LV_EVENT_CLICKED, this);
-    set_enabled(next_button_, false);
-
-    status_label_ = label(now, "Waiting for media discovery...", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(status_label_, 366, 317);
-    lv_obj_set_width(status_label_, 366);
-    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_WRAP);
-
-    lv_obj_t *right = card(parent, 804, 92, 448, 394);
-    lv_obj_t *ph = label(right, "Players", &lv_font_montserrat_20, TEXT);
-    lv_obj_set_pos(ph, 18, 16);
-
-    for (int i = 0; i < HA_MAX_MEDIA_PLAYERS; ++i) {
-        players_[i].owner = this;
-        const int x = 18 + (i % 2) * 205;
-        const int y = 50 + (i / 2) * 62;
-        players_[i].button = button(right, "Available slot", x, y, 193, 52, CARD_ALT);
-        players_[i].label = lv_obj_get_child(players_[i].button, 0);
-        configure_button_label(players_[i].label, 169);
-        set_enabled(players_[i].button, false);
-        lv_obj_add_event_cb(players_[i].button, player_cb, LV_EVENT_CLICKED, &players_[i]);
+    next_button_ = button(now, "Next", 676, 222, 112, 72);
+    for (auto *control : {prev_button_, play_button_, next_button_}) {
+        lv_obj_set_style_radius(control, 36, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(control, 0, LV_PART_MAIN);
+        set_enabled(control, false);
     }
+    lv_obj_add_event_cb(prev_button_, previous_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(play_button_, play_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(next_button_, next_cb, LV_EVENT_CLICKED, this);
 
-    lv_obj_t *vh = label(right, "Volume", &lv_font_montserrat_18, TEXT);
-    lv_obj_set_pos(vh, 18, 188);
-    volume_label_ = label(right, "--", &lv_font_montserrat_20, TEXT);
-    lv_obj_align(volume_label_, LV_ALIGN_TOP_RIGHT, -20, 184);
-
-    volume_down_button_ = button(right, "-", 24, 220, 64, 64, CARD_ALT);
-    lv_obj_set_style_text_font(lv_obj_get_child(volume_down_button_, 0),
-                               &lv_font_montserrat_24, LV_PART_MAIN);
+    auto *volume_title = label(now, "VOLUME", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(volume_title, 828, 176);
+    volume_label_ = label(now, "--", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_width(volume_label_, 64);
+    lv_obj_set_style_text_align(volume_label_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_obj_set_pos(volume_label_, 1144, 171);
+    volume_down_button_ = button(now, "-", 828, 230, 52, 56);
+    volume_up_button_ = button(now, "+", 1156, 230, 52, 56);
+    for (auto *control : {volume_down_button_, volume_up_button_}) {
+        lv_obj_set_style_radius(control, 28, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(control, 0, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lv_obj_get_child(control, 0), &lv_font_montserrat_24, LV_PART_MAIN);
+        set_enabled(control, false);
+    }
     lv_obj_add_event_cb(volume_down_button_, volume_down_cb, LV_EVENT_CLICKED, this);
-    set_enabled(volume_down_button_, false);
-
-    volume_slider_ = lv_slider_create(right);
-    lv_obj_set_pos(volume_slider_, 104, 238);
-    lv_obj_set_size(volume_slider_, 236, 28);
+    lv_obj_add_event_cb(volume_up_button_, volume_up_cb, LV_EVENT_CLICKED, this);
+    volume_slider_ = lv_slider_create(now);
+    lv_obj_set_pos(volume_slider_, 908, 246);
+    lv_obj_set_size(volume_slider_, 220, 24);
+    lv_obj_set_ext_click_area(volume_slider_, 12);
     lv_slider_set_range(volume_slider_, 0, 100);
-    lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
     style_slider(volume_slider_);
+    lv_obj_set_style_bg_color(volume_slider_, lv_color_hex(BORDER), LV_PART_MAIN);
     set_enabled(volume_slider_, false);
     lv_obj_add_event_cb(volume_slider_, volume_pressed_cb, LV_EVENT_PRESSED, this);
     lv_obj_add_event_cb(volume_slider_, volume_changed_cb, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_add_event_cb(volume_slider_, volume_released_cb, LV_EVENT_RELEASED, this);
-
-    volume_up_button_ = button(right, "+", 356, 220, 68, 64, CARD_ALT);
-    lv_obj_set_style_text_font(lv_obj_get_child(volume_up_button_, 0),
-                               &lv_font_montserrat_24, LV_PART_MAIN);
-    lv_obj_add_event_cb(volume_up_button_, volume_up_cb, LV_EVENT_CLICKED, this);
-    set_enabled(volume_up_button_, false);
-
-    mute_button_ = button(right, "MUTE", 274, 304, 150, 54, CARD_ALT);
+    lv_obj_add_event_cb(volume_slider_, volume_cancel_cb, LV_EVENT_PRESS_LOST, this);
+    mute_button_ = button(now, "Mute", 1056, 306, 152, 48);
+    lv_obj_set_style_radius(mute_button_, 24, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(mute_button_, 0, LV_PART_MAIN);
     mute_label_ = lv_obj_get_child(mute_button_, 0);
     lv_obj_add_event_cb(mute_button_, mute_cb, LV_EVENT_CLICKED, this);
     set_enabled(mute_button_, false);
 
-    lv_obj_t *bottom = card(parent, 24, 502, 1228, 130);
-    lv_obj_t *sources_title = label(bottom, "Sources", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(sources_title, 18, 10);
-    for (int i = 0; i < HA_MAX_MEDIA_SOURCES; ++i) {
-        sources_[i].owner = this;
-        sources_[i].button = button(bottom, "--", 18 + i * 142, 44, 132, 58, CARD_ALT);
-        sources_[i].label = lv_obj_get_child(sources_[i].button, 0);
-        configure_button_label(sources_[i].label, 112);
-        set_enabled(sources_[i].button, false);
-        lv_obj_add_event_cb(sources_[i].button, source_cb, LV_EVENT_CLICKED, &sources_[i]);
-    }
-
-    lv_obj_t *shortcuts_title = label(bottom, "Media shortcuts", &lv_font_montserrat_12, TEXT);
-    lv_obj_set_pos(shortcuts_title, 624, 4);
+    auto *caption = label(parent, "Media shortcuts", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(caption, 24, 495);
     for (int i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
-        shortcuts_[i].owner = this;
-        shortcuts_[i].button = button(bottom, "--", 624 + i * 194, 24, 180, 42, ACCENT_SOFT);
-        shortcuts_[i].label = lv_obj_get_child(shortcuts_[i].button, 0);
-        lv_obj_set_style_text_font(shortcuts_[i].label, &lv_font_montserrat_14, LV_PART_MAIN);
-        configure_button_label(shortcuts_[i].label, 158);
-        set_enabled(shortcuts_[i].button, false);
-        lv_obj_add_event_cb(shortcuts_[i].button, favorite_cb, LV_EVENT_CLICKED, &shortcuts_[i]);
+        auto &control = shortcuts_[i]; control.owner = this;
+        control.button = button(parent, "", 24 + i * 416, 520, 400, 72);
+        lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(control.button, 0, LV_PART_MAIN);
+        control.label = lv_obj_get_child(control.button, 0);
+        lv_obj_set_style_text_font(control.label, &lv_font_montserrat_18, LV_PART_MAIN);
+        configure_button_label(control.label, 352);
+        set_enabled(control.button, false);
+        lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
     }
+    shortcuts_empty_ = label(parent, "Add your favorite playlists or stations in the web manager.", &lv_font_montserrat_16, MUTED);
+    lv_obj_set_pos(shortcuts_empty_, 24, 544);
+    status_label_ = label(parent, "Waiting for media discovery...", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(status_label_, 24, 617);
+    lv_obj_set_width(status_label_, 1232);
+    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
 
-    lv_obj_t *favorites_title = label(bottom, "Browse favorites", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(favorites_title, 624, 69);
+    // Persistent page-owned popups match the room screen and avoid dense button strips.
+    popup_ = card(parent, 0, 0, 1280, 658);
+    box(popup_, 0x030712, 0, 0);
+    lv_obj_set_style_bg_opa(popup_, LV_OPA_80, LV_PART_MAIN);
+    lv_obj_add_event_cb(popup_, close_popup_cb, LV_EVENT_CLICKED, this);
+    auto *sheet = card(popup_, 124, 72, 1032, 514);
+    lv_obj_set_style_radius(sheet, 28, LV_PART_MAIN);
+    popup_title_ = label(sheet, "", &lv_font_montserrat_24, TEXT);
+    lv_obj_set_pos(popup_title_, 24, 24);
+    popup_hint_ = label(sheet, "", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(popup_hint_, 24, 61);
+    auto *close = button(sheet, "Close", 864, 18, 144, 56);
+    lv_obj_set_style_radius(close, 28, LV_PART_MAIN);
+    lv_obj_add_event_cb(close, close_popup_cb, LV_EVENT_CLICKED, this);
+    for (int group = 0; group < 3; ++group) {
+        auto *section = card(sheet, 24, 104, 984, 324);
+        box(section, CARD, 0, 0);
+        popup_sections_[group] = section;
+        popup_empty_[group] = label(section, "Waiting for Home Assistant...", &lv_font_montserrat_18, MUTED);
+        lv_obj_set_pos(popup_empty_[group], 24, 104);
+        lv_obj_set_width(popup_empty_[group], 930);
+        lv_label_set_long_mode(popup_empty_[group], LV_LABEL_LONG_WRAP);
+        lv_obj_add_flag(section, LV_OBJ_FLAG_HIDDEN);
+    }
+    for (int i = 0; i < HA_MAX_MEDIA_PLAYERS; ++i) {
+        auto &control = players_[i]; control.owner = this;
+        control.button = button(popup_sections_[0], "", (i % 2) * 500, (i / 2) * 132, 484, 116);
+        lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
+        control.label = lv_obj_get_child(control.button, 0);
+        configure_button_label(control.label, 436);
+        set_enabled(control.button, false);
+        lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(control.button, player_cb, LV_EVENT_CLICKED, &control);
+    }
+    for (int i = 0; i < HA_MAX_MEDIA_SOURCES; ++i) {
+        auto &control = sources_[i]; control.owner = this;
+        control.button = button(popup_sections_[1], "", (i % 2) * 500, (i / 2) * 132, 484, 116);
+        lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
+        control.label = lv_obj_get_child(control.button, 0);
+        configure_button_label(control.label, 436);
+        set_enabled(control.button, false);
+        lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(control.button, source_cb, LV_EVENT_CLICKED, &control);
+    }
     for (int i = 0; i < HA_MAX_MEDIA_FAVORITES; ++i) {
-        favorites_[i].owner = this;
-        favorites_[i].button = button(bottom, "--", 624 + i * 194, 86, 180, 38, CARD_ALT);
-        favorites_[i].label = lv_obj_get_child(favorites_[i].button, 0);
-        lv_obj_set_style_text_font(favorites_[i].label, &lv_font_montserrat_12, LV_PART_MAIN);
-        configure_button_label(favorites_[i].label, 158);
-        set_enabled(favorites_[i].button, false);
-        lv_obj_add_event_cb(favorites_[i].button, favorite_cb, LV_EVENT_CLICKED, &favorites_[i]);
+        auto &control = favorites_[i]; control.owner = this;
+        control.button = button(popup_sections_[2], "", 0, i * 108, 984, 92);
+        lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
+        control.label = lv_obj_get_child(control.button, 0);
+        configure_button_label(control.label, 920);
+        set_enabled(control.button, false);
+        lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
     }
+    popup_status_ = label(sheet, "", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(popup_status_, 24, 470);
+    lv_obj_set_width(popup_status_, 984);
+    lv_label_set_long_mode(popup_status_, LV_LABEL_LONG_DOT);
+    lv_obj_add_flag(popup_, LV_OBJ_FLAG_HIDDEN);
+    if (!buffers_ready) set_status("Media buffers could not be allocated; controls are disabled.");
+}
 
-    if (!buffers_ready) {
-        set_status("Media buffers could not be allocated; controls are disabled.");
+void MediaModule::popup_cb(lv_event_t *e) {
+    auto *trigger = static_cast<PopupTrigger *>(lv_event_get_user_data(e));
+    auto *self = trigger->owner;
+    self->update();
+    const char *titles[] = {"Players", "Sources", "Browse favorites"};
+    const char *hints[] = {"Choose where to listen.", "Choose an input for the selected player.", "Play a favorite or playlist from the selected player."};
+    lv_label_set_text(self->popup_title_, titles[trigger->index]);
+    lv_label_set_text(self->popup_hint_, hints[trigger->index]);
+    for (int i = 0; i < 3; ++i) {
+        if (i == trigger->index) lv_obj_remove_flag(self->popup_sections_[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(self->popup_sections_[i], LV_OBJ_FLAG_HIDDEN);
     }
+    lv_obj_remove_flag(self->popup_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void MediaModule::close_popup_cb(lv_event_t *e) {
+    auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
+    if (self->popup_) lv_obj_add_flag(self->popup_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void MediaModule::on_deactivate() {
+    volume_dragging_ = false;
+    volume_entity_id_[0] = 0;
+    if (popup_) lv_obj_add_flag(popup_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void MediaModule::set_status(const char *text) {
     set_media_label_text(status_label_, text);
+    set_media_label_text(popup_status_, text);
 }
 
 void MediaModule::select_player(const char *entity_id) {
     if (!entity_id || !entity_id[0] || same_text(selected_entity_id_, entity_id)) return;
     snprintf(selected_entity_id_, sizeof(selected_entity_id_), "%s", entity_id);
+    volume_dragging_ = false;
+    volume_entity_id_[0] = 0;
     requested_picture_[0] = '\0';
     clear_artwork();
     home_assistant_request_media_browse(selected_entity_id_);
@@ -620,19 +676,26 @@ void MediaModule::update() {
                 }
             }
             set_enabled(control.button, target_available);
+            lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         } else {
             control.bound = false;
             memset(&control.favorite, 0, sizeof(control.favorite));
             lv_label_set_text(control.label, "--");
             set_enabled(control.button, false);
+            lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         }
     }
+    if (panel_config.media_shortcut_count) lv_obj_add_flag(shortcuts_empty_, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(shortcuts_empty_, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(popup_empty_[0], "No players discovered. Assign a media player to this Home Assistant area.");
+    if (count) lv_obj_add_flag(popup_empty_[0], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(popup_empty_[0], LV_OBJ_FLAG_HIDDEN);
 
     if (count == 0) {
         selected_entity_id_[0] = '\0';
         requested_picture_[0] = '\0';
         clear_artwork();
-        lv_label_set_text(player_name_, "No media_player entities found in this area");
+        lv_label_set_text(player_name_, "No players in this room");
         lv_label_set_text(track_label_, "Nothing playing");
         lv_label_set_text(artist_label_, "Assign a media player to the configured Home Assistant area.");
         lv_label_set_text(album_label_, "");
@@ -644,9 +707,20 @@ void MediaModule::update() {
         set_enabled(volume_down_button_, false);
         set_enabled(volume_up_button_, false);
         set_enabled(mute_button_, false);
-        for (auto &p : players_) { p.bound = false; set_enabled(p.button, false); lv_label_set_text(p.label, "Available slot"); }
-        for (auto &s : sources_) { s.bound = false; set_enabled(s.button, false); lv_label_set_text(s.label, "--"); }
-        for (auto &f : favorites_) { f.bound = false; set_enabled(f.button, false); lv_label_set_text(f.label, "--"); }
+        volume_dragging_ = false;
+        volume_entity_id_[0] = 0;
+        lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
+        lv_label_set_text(volume_label_, "--");
+        lv_label_set_text(play_label_, "Play");
+        lv_label_set_text(mute_label_, "Mute");
+        lv_obj_set_style_bg_color(mute_button_, lv_color_hex(CARD_ALT), LV_PART_MAIN);
+        for (auto &p : players_) { p.bound = false; set_enabled(p.button, false); lv_obj_add_flag(p.button, LV_OBJ_FLAG_HIDDEN); }
+        for (auto &s : sources_) { s.bound = false; set_enabled(s.button, false); lv_obj_add_flag(s.button, LV_OBJ_FLAG_HIDDEN); }
+        for (auto &f : favorites_) { f.bound = false; set_enabled(f.button, false); lv_obj_add_flag(f.button, LV_OBJ_FLAG_HIDDEN); }
+        for (int i = 1; i < 3; ++i) {
+            lv_label_set_text(popup_empty_[i], "Choose a player when discovery is complete.");
+            lv_obj_remove_flag(popup_empty_[i], LV_OBJ_FLAG_HIDDEN);
+        }
         set_status("No area media players discovered yet.");
         return;
     }
@@ -674,12 +748,15 @@ void MediaModule::update() {
                                      ? media_cache_[i].name
                                      : media_cache_[i].entity_id);
             set_enabled(control.button, media_cache_[i].available);
+            lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_bg_color(control.button,
-                                      lv_color_hex(i == selected ? ACCENT : CARD_ALT), LV_PART_MAIN);
+                                      lv_color_hex(i == selected ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
+            lv_obj_set_style_border_color(control.button,
+                                          lv_color_hex(i == selected ? 0x38BDF8 : BORDER), LV_PART_MAIN);
         } else {
             control.bound = false;
             control.entity_id[0] = '\0';
-            lv_label_set_text(control.label, "Available slot");
+            lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             set_enabled(control.button, false);
             lv_obj_set_style_bg_color(control.button, lv_color_hex(CARD_ALT), LV_PART_MAIN);
         }
@@ -692,41 +769,40 @@ void MediaModule::update() {
     char artist[128] = {};
     if (active.artist[0]) snprintf(artist, sizeof(artist), "%s", active.artist);
     else if (active.playlist[0]) snprintf(artist, sizeof(artist), "Playlist: %s", active.playlist);
-    else snprintf(artist, sizeof(artist), "No artist metadata");
+    else artist[0] = 0;
     set_media_label_text(artist_label_, artist);
 
     char album[128] = {};
-    if (active.album[0]) snprintf(album, sizeof(album), "Album: %s", active.album);
-    else if (active.source[0]) snprintf(album, sizeof(album), "Source: %s", active.source);
+    if (active.album[0]) snprintf(album, sizeof(album), "%s", active.album);
     set_media_label_text(album_label_, album);
 
     char state[160];
-    snprintf(state, sizeof(state), "State: %s%s%s",
-             active.state[0] ? active.state : "unknown",
-             active.source[0] ? " | Source: " : "",
-             active.source[0] ? active.source : "");
+    const char *playback = !active.available ? "Unavailable" : is_playing_state(active.state) ? "Playing" :
+                           same_text(active.state, "paused") ? "Paused" : same_text(active.state, "off") ? "Player off" : "Ready";
+    snprintf(state, sizeof(state), "%s%s%s", playback,
+             active.source[0] ? "  /  " : "", active.source);
     set_media_label_text(state_label_, state);
 
     set_enabled(play_button_, active.available);
     set_enabled(prev_button_, active.available);
     set_enabled(next_button_, active.available);
-    lv_label_set_text(play_label_, is_playing_state(active.state) ? "PAUSE" : "PLAY");
-    lv_obj_set_style_bg_color(play_button_, lv_color_hex(is_playing_state(active.state) ? ACCENT : CARD_ALT), LV_PART_MAIN);
+    lv_label_set_text(play_label_, is_playing_state(active.state) ? "Pause" : "Play");
+    lv_obj_set_style_bg_color(play_button_, lv_color_hex(ACCENT), LV_PART_MAIN);
 
     set_enabled(volume_slider_, active.available && active.supports_volume);
     set_enabled(volume_down_button_, active.available && active.supports_volume);
     set_enabled(volume_up_button_, active.available && active.supports_volume);
-    if (!volume_dragging_) lv_slider_set_value(volume_slider_, active.volume_pct, LV_ANIM_OFF);
-    char volume[20];
-    if (active.supports_volume) {
-        snprintf(volume, sizeof(volume), "%u%%", static_cast<unsigned>(active.volume_pct));
-    } else {
-        snprintf(volume, sizeof(volume), "--");
+    if (!active.available || !active.supports_volume) volume_dragging_ = false;
+    if (!volume_dragging_) {
+        lv_slider_set_value(volume_slider_, active.available && active.supports_volume ? active.volume_pct : 0, LV_ANIM_OFF);
+        char volume[20];
+        if (active.available && active.supports_volume) snprintf(volume, sizeof(volume), "%u%%", static_cast<unsigned>(active.volume_pct));
+        else snprintf(volume, sizeof(volume), "--");
+        lv_label_set_text(volume_label_, volume);
     }
-    lv_label_set_text(volume_label_, volume);
 
     set_enabled(mute_button_, active.available && active.supports_mute);
-    lv_label_set_text(mute_label_, active.volume_muted ? "UNMUTE" : "MUTE");
+    lv_label_set_text(mute_label_, active.volume_muted ? "Unmute" : "Mute");
     lv_obj_set_style_bg_color(mute_button_, lv_color_hex(active.volume_muted ? ACCENT : CARD_ALT), LV_PART_MAIN);
 
     for (size_t i = 0; i < HA_MAX_MEDIA_SOURCES; ++i) {
@@ -736,17 +812,23 @@ void MediaModule::update() {
             snprintf(control.source, sizeof(control.source), "%s", active.sources[i]);
             set_media_label_text(control.label, control.source);
             set_enabled(control.button, active.available);
-            lv_obj_set_style_bg_color(control.button,
-                                      lv_color_hex(same_text(active.source, control.source) ? ACCENT : CARD_ALT),
-                                      LV_PART_MAIN);
+            lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+            const bool selected_source = same_text(active.source, control.source);
+            lv_obj_set_style_bg_color(control.button, lv_color_hex(selected_source ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
+            lv_obj_set_style_border_color(control.button, lv_color_hex(selected_source ? 0x38BDF8 : BORDER), LV_PART_MAIN);
         } else {
             control.bound = false;
             control.source[0] = '\0';
+            lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             lv_label_set_text(control.label, "--");
             set_enabled(control.button, false);
             lv_obj_set_style_bg_color(control.button, lv_color_hex(CARD_ALT), LV_PART_MAIN);
         }
     }
+
+    lv_label_set_text(popup_empty_[1], "This player does not expose selectable sources.");
+    if (active.source_count) lv_obj_add_flag(popup_empty_[1], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(popup_empty_[1], LV_OBJ_FLAG_HIDDEN);
 
     memset(favorite_cache_, 0,
            HA_MAX_MEDIA_FAVORITES * sizeof(HomeAssistantMediaFavorite));
@@ -760,13 +842,21 @@ void MediaModule::update() {
             control.favorite = favorite_cache_[i];
             set_media_label_text(control.label, favorite_cache_[i].title);
             set_enabled(control.button, active.available);
+            lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         } else {
             control.bound = false;
             memset(&control.favorite, 0, sizeof(control.favorite));
+            lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             lv_label_set_text(control.label, i == 0 ? "No browse items" : "--");
             set_enabled(control.button, false);
         }
     }
+
+    bool has_favorites = false;
+    for (const auto &favorite : favorites_) if (favorite.bound) has_favorites = true;
+    lv_label_set_text(popup_empty_[2], "No browse favorites available yet. You can add your own media shortcuts in the web manager.");
+    if (has_favorites) lv_obj_add_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
 
     if (active.entity_picture[0]) {
         if (!same_text(requested_picture_, active.entity_picture)) {
@@ -786,13 +876,15 @@ void MediaModule::update() {
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);
     if (discovery.last_action_ms && discovery.last_action[0]) set_status(discovery.last_action);
-    else set_status("Live state from Home Assistant. Commands update after HA confirms state.");
+    else set_status("Connected to Home Assistant");
 }
 
 void MediaModule::player_cb(lv_event_t *e) {
     auto *control = static_cast<PlayerControl *>(lv_event_get_user_data(e));
     if (!control || !control->owner || !control->bound || !control->entity_id[0]) return;
     control->owner->select_player(control->entity_id);
+    lv_obj_add_flag(control->owner->popup_, LV_OBJ_FLAG_HIDDEN);
+    control->owner->update();
 }
 
 void MediaModule::play_cb(lv_event_t *e) {
@@ -800,7 +892,7 @@ void MediaModule::play_cb(lv_event_t *e) {
     if (!self || !self->selected_entity_id_[0]) return;
     self->set_status(home_assistant_queue_media_play_pause(self->selected_entity_id_)
                          ? "Play/pause queued; waiting for Home Assistant."
-                         : "Could not queue play/pause.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::previous_cb(lv_event_t *e) {
@@ -808,7 +900,7 @@ void MediaModule::previous_cb(lv_event_t *e) {
     if (!self || !self->selected_entity_id_[0]) return;
     self->set_status(home_assistant_queue_media_previous(self->selected_entity_id_)
                          ? "Previous track queued."
-                         : "Could not queue previous track.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::next_cb(lv_event_t *e) {
@@ -816,12 +908,15 @@ void MediaModule::next_cb(lv_event_t *e) {
     if (!self || !self->selected_entity_id_[0]) return;
     self->set_status(home_assistant_queue_media_next(self->selected_entity_id_)
                          ? "Next track queued."
-                         : "Could not queue next track.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::volume_pressed_cb(lv_event_t *e) {
     auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
-    if (self) self->volume_dragging_ = true;
+    if (self) {
+        self->volume_dragging_ = true;
+        snprintf(self->volume_entity_id_, sizeof(self->volume_entity_id_), "%s", self->selected_entity_id_);
+    }
 }
 
 void MediaModule::volume_changed_cb(lv_event_t *e) {
@@ -836,14 +931,15 @@ void MediaModule::volume_changed_cb(lv_event_t *e) {
 
 void MediaModule::volume_released_cb(lv_event_t *e) {
     auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
-    if (!self || !self->selected_entity_id_[0]) return;
+    if (!self || !self->volume_dragging_) return;
     self->volume_dragging_ = false;
+    if (!self->selected_entity_id_[0] || !same_text(self->selected_entity_id_, self->volume_entity_id_)) return;
     const int value = static_cast<int>(
         lv_slider_get_value(static_cast<lv_obj_t *>(lv_event_get_target(e))));
     self->set_status(home_assistant_queue_media_volume(
                          self->selected_entity_id_, static_cast<uint8_t>(constrain(value, 0, 100)))
                          ? "Volume queued; waiting for Home Assistant."
-                         : "Could not queue volume change.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::volume_down_cb(lv_event_t *e) {
@@ -852,7 +948,7 @@ void MediaModule::volume_down_cb(lv_event_t *e) {
     self->set_status(home_assistant_queue_media_volume_step(
                          self->selected_entity_id_, false)
                          ? "Volume down queued; waiting for Home Assistant."
-                         : "Could not queue volume down.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::volume_up_cb(lv_event_t *e) {
@@ -861,7 +957,7 @@ void MediaModule::volume_up_cb(lv_event_t *e) {
     self->set_status(home_assistant_queue_media_volume_step(
                          self->selected_entity_id_, true)
                          ? "Volume up queued; waiting for Home Assistant."
-                         : "Could not queue volume up.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::mute_cb(lv_event_t *e) {
@@ -889,7 +985,7 @@ void MediaModule::mute_cb(lv_event_t *e) {
     if (!found) return;
     self->set_status(home_assistant_queue_media_mute(self->selected_entity_id_, !muted)
                          ? "Mute command queued; waiting for Home Assistant."
-                         : "Could not queue mute command.");
+                         : media_command_unavailable_message());
 }
 
 void MediaModule::source_cb(lv_event_t *e) {
@@ -899,7 +995,7 @@ void MediaModule::source_cb(lv_event_t *e) {
     control->owner->set_status(
         home_assistant_queue_media_source(control->owner->selected_entity_id_, control->source)
             ? "Source change queued; waiting for Home Assistant."
-            : "Could not queue source change.");
+            : media_command_unavailable_message());
 }
 
 void MediaModule::favorite_cb(lv_event_t *e) {
@@ -907,5 +1003,14 @@ void MediaModule::favorite_cb(lv_event_t *e) {
     if (!control || !control->owner || !control->bound) return;
     control->owner->set_status(home_assistant_queue_media_favorite(control->favorite)
                                    ? "Favorite/playlist queued; waiting for Home Assistant."
-                                   : "Could not queue favorite/playlist.");
+                                   : media_command_unavailable_message());
 }
+
+void MediaModule::volume_cancel_cb(lv_event_t *e) {
+    auto *self = static_cast<MediaModule *>(lv_event_get_user_data(e));
+    if (!self) return;
+    self->volume_dragging_ = false;
+    self->volume_entity_id_[0] = 0;
+    self->update();
+}
+

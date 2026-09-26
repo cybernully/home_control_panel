@@ -127,6 +127,10 @@ bool home_assistant_queue_media_mute(const char *entity_id, bool muted);
 bool home_assistant_queue_media_source(const char *entity_id, const char *source);
 bool home_assistant_queue_media_favorite(const HomeAssistantMediaFavorite &favorite);
 
+// A command is only accepted after the live Home Assistant session is ready.
+// This prevents a tap during reconnect from being reported as a queued action.
+bool home_assistant_commands_ready();
+
 bool home_assistant_set_credentials(const char *base_url, const char *token);
 String home_assistant_base_url();
 bool home_assistant_token_configured();

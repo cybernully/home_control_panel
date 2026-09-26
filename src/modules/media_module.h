@@ -14,6 +14,7 @@ public:
     const char *title() const override { return "Media"; }
     void create(lv_obj_t *parent) override;
     void update() override;
+    void on_deactivate() override;
 
 private:
     struct PlayerControl {
@@ -56,6 +57,21 @@ private:
     HomeAssistantMediaSnapshot *media_cache_ = nullptr;
     HomeAssistantMediaFavorite *favorite_cache_ = nullptr;
     HomeAssistantMediaArtworkInfo *artwork_info_cache_ = nullptr;
+
+    struct PopupTrigger {
+        MediaModule *owner = nullptr;
+        int index = 0;
+        lv_obj_t *button = nullptr;
+    };
+    PopupTrigger popup_triggers_[3];
+    lv_obj_t *popup_ = nullptr, *popup_title_ = nullptr, *popup_hint_ = nullptr;
+    lv_obj_t *popup_sections_[3] = {};
+    lv_obj_t *popup_empty_[3] = {};
+    lv_obj_t *popup_status_ = nullptr, *shortcuts_empty_ = nullptr;
+    char volume_entity_id_[96] = {};
+    static void popup_cb(lv_event_t *e);
+    static void close_popup_cb(lv_event_t *e);
+    static void volume_cancel_cb(lv_event_t *e);
 
     lv_obj_t *player_name_ = nullptr;
     lv_obj_t *track_label_ = nullptr;

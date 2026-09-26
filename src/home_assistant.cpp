@@ -1289,9 +1289,59 @@ void record_action_result(const char *description, int code) {
     portEXIT_CRITICAL(&g_mux);
 }
 
+bool action_is_idempotent(const HaAction &action) {
+    switch (action.type) {
+        case HaActionType::Toggle:
+        case HaActionType::AreaBrightness:
+        case HaActionType::LightBrightness:
+        case HaActionType::AllLights:
+        case HaActionType::Scene:
+        case HaActionType::MediaVolume:
+        case HaActionType::MediaMute:
+        case HaActionType::MediaSource:
+            return true;
+        case HaActionType::MediaPlayPause:
+        case HaActionType::MediaPrevious:
+        case HaActionType::MediaNext:
+        case HaActionType::MediaVolumeUp:
+        case HaActionType::MediaVolumeDown:
+        case HaActionType::MediaFavorite:
+            return false;
+    }
+    return false;
+}
+
+bool is_transient_http_error(int code) {
+    // HTTPClient negative values are connection/read failures.  Do not retry
+    // authorization and validation failures, which require user correction.
+    return (code < 0 && code >= -11) || code == 408 || code == 429 ||
+           (code >= 500 && code <= 599);
+}
+
+int call_service_with_recovery(const HaAction &action, const char *domain,
+                               const char *service, const String &body,
+                               bool &retried) {
+    retried = false;
+    int code = http_post_service(domain, service, body);
+    for (uint8_t attempt = 1;
+         attempt < HA_COMMAND_MAX_ATTEMPTS && action_is_idempotent(action) &&
+         is_transient_http_error(code);
+         ++attempt) {
+        retried = true;
+        const uint32_t until = millis() + HA_COMMAND_RETRY_DELAY_MS;
+        while (static_cast<int32_t>(millis() - until) < 0) {
+            if (g_ws_started) g_ws.loop();
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        code = http_post_service(domain, service, body);
+    }
+    return code;
+}
+
 void process_action_worker(const HaAction &action) {
     int code = -100;
     char description[96] = {};
+    bool retried = false;
 
     if (action.type == HaActionType::Toggle) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
@@ -1308,7 +1358,8 @@ void process_action_worker(const HaAction &action) {
             service = strcmp(model->state, "on") == 0 ? "turn_off" : "turn_on";
         }
 
-        code = http_post_service(model->domain, service, entity_target_body(model->entity_id));
+        code = call_service_with_recovery(action, model->domain, service,
+                                          entity_target_body(model->entity_id), retried);
         snprintf(description, sizeof(description), "%s %s", model->name, service);
     } else if (action.type == HaActionType::LightBrightness) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
@@ -1319,17 +1370,18 @@ void process_action_worker(const HaAction &action) {
         doc["entity_id"] = model->entity_id;
         if (action.value) doc["brightness_pct"] = action.value;
         String body; serializeJson(doc, body);
-        code = http_post_service("light", action.value ? "turn_on" : "turn_off", body);
+        code = call_service_with_recovery(action, "light", action.value ? "turn_on" : "turn_off",
+                                          body, retried);
         snprintf(description, sizeof(description), "%s brightness", model->name);
     } else if (action.type == HaActionType::AreaBrightness) {
         const bool turn_off = action.value == 0;
-        code = http_post_service("light", turn_off ? "turn_off" : "turn_on",
-                                 area_light_body(!turn_off, action.value));
+        code = call_service_with_recovery(action, "light", turn_off ? "turn_off" : "turn_on",
+                                          area_light_body(!turn_off, action.value), retried);
         snprintf(description, sizeof(description), "Area lights %s",
                  turn_off ? "off" : "brightness");
     } else if (action.type == HaActionType::AllLights) {
-        code = http_post_service("light", action.flag ? "turn_on" : "turn_off",
-                                 area_light_body(false, 0));
+        code = call_service_with_recovery(action, "light", action.flag ? "turn_on" : "turn_off",
+                                          area_light_body(false, 0), retried);
         snprintf(description, sizeof(description), "All lights %s", action.flag ? "on" : "off");
     } else if (action.type == HaActionType::Scene) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
@@ -1337,7 +1389,8 @@ void process_action_worker(const HaAction &action) {
             record_action_result("Scene no longer available", -103);
             return;
         }
-        code = http_post_service("scene", "turn_on", entity_target_body(model->entity_id));
+        code = call_service_with_recovery(action, "scene", "turn_on",
+                                          entity_target_body(model->entity_id), retried);
         snprintf(description, sizeof(description), "Scene %s", model->name);
     } else {
         HaEntityModel *model = find_entity_worker(action.entity_id);
@@ -1394,10 +1447,16 @@ void process_action_worker(const HaAction &action) {
 
         String body;
         serializeJson(doc, body);
-        code = http_post_service("media_player", service, body);
+        code = call_service_with_recovery(action, "media_player", service, body, retried);
         snprintf(description, sizeof(description), "%s %s", model->name, service);
     }
 
+    if (retried) {
+        const size_t used = strlen(description);
+        if (used < sizeof(description) - 1) {
+            snprintf(description + used, sizeof(description) - used, " (retry)");
+        }
+    }
     record_action_result(description, code);
 }
 
@@ -1534,7 +1593,12 @@ void worker_task(void *) {
         if (http_ready && g_action_queue) {
             HaAction action = {};
             if (xQueueReceive(g_action_queue, &action, 0) == pdTRUE) {
-                process_action_worker(action);
+                // A disconnect can happen after the UI accepted a tap.  Do
+                // not send a blind REST command without the live session that
+                // supplied the entity state; the user can retry after the
+                // visible reconnect completes.
+                if (home_assistant_commands_ready()) process_action_worker(action);
+                else record_action_result("Home Assistant reconnecting", -102);
                 g_last_http_ms = millis();
                 if (g_ws_started) g_ws.loop();
                 vTaskDelay(pdMS_TO_TICKS(5));
@@ -1610,8 +1674,11 @@ void snapshot_media(const HaEntityModel &source, HomeAssistantMediaSnapshot &out
 }
 
 bool queue_action(const HaAction &action) {
-    if (!g_action_queue || !network_service_connected() ||
-        !network_ready_snapshot() || !configured_snapshot()) return false;
+    const bool ready = home_assistant_commands_ready();
+    if (!g_action_queue || !ready) {
+        if (!ready) record_action_result("Home Assistant reconnecting", -102);
+        return false;
+    }
     return xQueueSend(g_action_queue, &action, 0) == pdTRUE;
 }
 
@@ -1701,6 +1768,18 @@ bool home_assistant_request_health_check() {
     }
     portEXIT_CRITICAL(&g_mux);
     return queued;
+}
+
+bool home_assistant_commands_ready() {
+    if (!network_service_connected() || !network_ready_snapshot() || !configured_snapshot()) {
+        return false;
+    }
+    portENTER_CRITICAL(&g_mux);
+    const bool ready = g_ws_started && g_ws_authenticated &&
+                       g_discovery.websocket_authenticated &&
+                       g_discovery.discovery_complete;
+    portEXIT_CRITICAL(&g_mux);
+    return ready;
 }
 
 void home_assistant_get_status(HomeAssistantStatus &out) {

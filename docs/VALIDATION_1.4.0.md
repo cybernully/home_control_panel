@@ -21,7 +21,37 @@
   overlapping text or controls observed. Off-state slider track contrast was
   improved after inspection. These are sample-data renders, not device photos.
 
-## Previews
+## Header validation
+
+`python scripts/test_room_render.py --header` renders the actual UI shell at
+1280x800 with the Room page. The battery body and terminal share an exact center;
+percentage alignment differs by at most a single raster pixel. Fill remains
+inside the frame at 100%, 20%, 10%, 1%, and 0%. Empty and unavailable readings hide
+the fill. Offline Wi-Fi and long labels were also rendered and visually checked.
+
+![Header states](previews/header-states.png)
+
+## Media validation
+
+`python scripts/test_room_render.py --media` builds the actual Media module and
+UI shell with LVGL 9.3.0 and offline fixtures. Playback, player selection, source
+selection, shortcuts, and browse favorites target the intended entities. Volume
+drag values survive refresh; lost-touch releases send no command. Navigation
+closes the popup. Seven full-screen previews cover now-playing, all three
+popups, unavailable/long metadata, empty discovery, and empty browse results.
+Visual QA found and corrected title wrapping into the artist row; metadata and
+tile labels now have explicit single-line heights.
+
+The preview uses a synthetic progressive JPEG decoded through the existing
+JPEGDEC header parser and stb path. Baseline JPEG decoding failed in the Windows
+host harness and is not claimed as validated here. Embedded codec integer
+operations require UBSan disabled in this native Media test. Production artwork
+decoding is unchanged; on-device artwork and touch checks remain outstanding.
+
+![Media](previews/media-refined.png)
+![Sources popup](previews/media-sources.png)
+
+## Room previews
 
 ![Favorites](previews/room-favorites.png)
 ![Lights popup](previews/room-lights.png)
@@ -30,12 +60,12 @@
 
 ## Firmware compilation
 
-Both pinned PlatformIO firmware environments built successfully:
+Both pinned PlatformIO firmware environments rebuilt successfully after the Media refinement:
 
 | Board | Static RAM | Application flash | Result |
 |---|---:|---:|---|
-| 2624 / ESP32-P4 | 90,848 / 327,680 bytes (27.7%) | 3,284,604 / 6,291,456 bytes (52.2%) | PASS |
-| 2635 / ESP32-P4 R3 | 126,556 / 327,680 bytes (38.6%) | 3,285,988 / 6,291,456 bytes (52.2%) | PASS |
+| 2624 / ESP32-P4 | 91,040 / 327,680 bytes (27.8%) | 3,287,548 / 6,291,456 bytes (52.3%) | PASS |
+| 2635 / ESP32-P4 R3 | 126,812 / 327,680 bytes (38.7%) | 3,288,996 / 6,291,456 bytes (52.3%) | PASS |
 
 Firmware outputs are `.pio/build/jc8012p4a1c_2624/firmware.bin` and
 `.pio/build/jc8012p4a1c_2635/firmware.bin`. These target different silicon revisions;
@@ -54,6 +84,9 @@ host's disabled long-path support. The existing framework include flags now use
 quotes so paths containing backslashes or spaces reach the compiler intact.
 The host's global long-path policy was not changed.
 
-Firmware 2624 SHA-256: `18c71cb8b430e5eeecf0aee395c91252ee13847c9e725f7b60d0ef913f115751`
+Firmware 2624 SHA-256: `0fe472ece3b5e867b770fe5df4093eeaedaa37a3471590ca46321fb7424c886f`
 
-Firmware 2635 SHA-256: `fa2b0553d70ef693203f60878b9e7662571fc3b94bec17522b1f5db2c03e8073`
+Firmware 2635 SHA-256: `412bed80b697c7a3198e34939e8441211474fef541cfc4f26928696a3c6e7019`
+
+
+
