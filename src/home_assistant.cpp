@@ -103,6 +103,8 @@ bool g_discovery_requested = false;
 bool g_reconnect_requested = false;
 bool g_network_ready = false;
 bool g_action_in_flight = false;
+bool g_resume_entities_after_reconnect = false;
+bool g_resubscribe_requested = false;
 
 uint32_t g_connected_since_ms = 0;
 uint32_t g_last_health_request_ms = 0;
@@ -859,7 +861,11 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
         g_discovery.websocket_authenticated = true;
         g_status.authenticated = true;
         copy_text(g_status.message, sizeof(g_status.message), "Home Assistant WebSocket authenticated");
-        g_discovery_requested = true;
+        if (g_resume_entities_after_reconnect && g_entity_count) {
+            g_resubscribe_requested = true;
+        } else {
+            g_discovery_requested = true;
+        }
         portEXIT_CRITICAL(&g_mux);
         return;
     }
@@ -951,7 +957,16 @@ void start_websocket_worker() {
     g_ws.disconnect();
     g_ws_started = true;
     g_ws_authenticated = false;
-    reset_discovery_state("Connecting to Home Assistant WebSocket...");
+    if (g_resume_entities_after_reconnect && g_entity_count) {
+        portENTER_CRITICAL(&g_mux);
+        g_discovery.websocket_connected = false;
+        g_discovery.websocket_authenticated = false;
+        copy_text(g_discovery.message, sizeof(g_discovery.message),
+                  "Reconnecting Home Assistant after media artwork...");
+        portEXIT_CRITICAL(&g_mux);
+    } else {
+        reset_discovery_state("Connecting to Home Assistant WebSocket...");
+    }
 
     g_ws.onEvent(ws_event_worker);
     g_ws.setReconnectInterval(HA_WS_RECONNECT_MS);
@@ -1611,6 +1626,11 @@ void worker_task(void *) {
             }
         }
 
+        if (g_ws_authenticated && take_flag(g_resubscribe_requested)) {
+            send_subscribe_entities_worker();
+            g_resume_entities_after_reconnect = false;
+        }
+
         if (g_ws_authenticated && take_flag(g_discovery_requested)) {
             portENTER_CRITICAL(&g_mux);
             g_entity_count = 0;
@@ -1663,7 +1683,19 @@ void worker_task(void *) {
                 const bool secure_artwork = String(artwork_url).startsWith("https://") ||
                                             (artwork_url[0] == '/' && String(base).startsWith("https://"));
                 if (secure_artwork && g_ws_started) {
-                    stop_websocket_worker("Refreshing media artwork; reconnecting after download...");
+                    // Keep the media snapshot intact so the UI does not
+                    // briefly fall back to "not playing" while TLS memory is
+                    // released for the artwork connection.
+                    g_resume_entities_after_reconnect = g_entity_count > 0;
+                    g_ws.disconnect();
+                    g_ws_started = false;
+                    g_ws_authenticated = false;
+                    portENTER_CRITICAL(&g_mux);
+                    g_discovery.websocket_connected = false;
+                    g_discovery.websocket_authenticated = false;
+                    copy_text(g_discovery.message, sizeof(g_discovery.message),
+                              "Refreshing media artwork; reconnecting after download...");
+                    portEXIT_CRITICAL(&g_mux);
                     vTaskDelay(pdMS_TO_TICKS(100));
                 }
                 download_artwork_worker(artwork_entity, artwork_url);
