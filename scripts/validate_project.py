@@ -13,7 +13,7 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "include/display_text.h", "src/room_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "include/display_text.h", "src/room_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
@@ -25,11 +25,12 @@ assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=3
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.4.1"' in app
+assert '#define APP_VERSION "1.4.2"' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 3' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_COMMAND_MAX_ATTEMPTS 2U' in app
+assert '#define HA_COMMAND_RESULT_TIMEOUT_MS 6000UL' in app
 assert '#define HA_MAX_MEDIA_PLAYERS 4' in app
 assert '#define HA_MEDIA_ARTWORK_MAX_BYTES (256U * 1024U)' in app
 main=(root/"src/main.cpp").read_text()
@@ -80,5 +81,5 @@ for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM
     assert feature in stb_impl
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.4.1 structure validation passed.")
+print("Home Control Panel v1.4.2 structure validation passed.")
 

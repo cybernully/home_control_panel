@@ -102,6 +102,7 @@ bool g_health_in_progress = false;
 bool g_discovery_requested = false;
 bool g_reconnect_requested = false;
 bool g_network_ready = false;
+bool g_action_in_flight = false;
 
 uint32_t g_connected_since_ms = 0;
 uint32_t g_last_health_request_ms = 0;
@@ -111,9 +112,14 @@ uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
 uint32_t g_extract_request_id = 0;
 uint32_t g_subscribe_request_id = 0;
+uint32_t g_action_request_id = 0;
+uint32_t g_action_started_ms = 0;
+char g_action_description[96] = {};
 
 char g_resolved_area_id[64] = {};
 char g_resolved_area_name[64] = {};
+
+void record_action_result(const char *description, int code);
 
 HomeAssistantMediaFavorite g_media_favorites[HA_MAX_MEDIA_FAVORITES] = {};
 size_t g_media_favorite_count = 0;
@@ -815,6 +821,16 @@ void handle_entity_event_worker(JsonDocument &doc) {
     portEXIT_CRITICAL(&g_mux);
 }
 
+void handle_action_result_worker(JsonDocument &doc) {
+    const bool success = doc["success"] | false;
+    record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action",
+                         success ? 200 : 500);
+    g_action_in_flight = false;
+    g_action_request_id = 0;
+    g_action_started_ms = 0;
+    g_action_description[0] = '\0';
+}
+
 void handle_ws_text_worker(uint8_t *payload, size_t length) {
     JsonDocument doc;
     const DeserializationError err = deserializeJson(doc, payload, length);
@@ -871,6 +887,8 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
             if (!success) set_discovery_message("Home Assistant rejected live entity subscription.");
         } else if (id == g_media_browse_request_id) {
             handle_media_browse_result_worker(doc);
+        } else if (id == g_action_request_id && g_action_in_flight) {
+            handle_action_result_worker(doc);
         }
         return;
     }
@@ -891,6 +909,13 @@ void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
             break;
         case WStype_DISCONNECTED:
             g_ws_authenticated = false;
+            if (g_action_in_flight) {
+                record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -102);
+                g_action_in_flight = false;
+                g_action_request_id = 0;
+                g_action_started_ms = 0;
+                g_action_description[0] = '\0';
+            }
             portENTER_CRITICAL(&g_mux);
             g_discovery.websocket_connected = false;
             g_discovery.websocket_authenticated = false;
@@ -1322,20 +1347,25 @@ int call_service_with_recovery(const HaAction &action, const char *domain,
                                const char *service, const String &body,
                                bool &retried) {
     retried = false;
-    int code = http_post_service(domain, service, body);
-    for (uint8_t attempt = 1;
-         attempt < HA_COMMAND_MAX_ATTEMPTS && action_is_idempotent(action) &&
-         is_transient_http_error(code);
-         ++attempt) {
-        retried = true;
-        const uint32_t until = millis() + HA_COMMAND_RETRY_DELAY_MS;
-        while (static_cast<int32_t>(millis() - until) < 0) {
-            if (g_ws_started) g_ws.loop();
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
-        code = http_post_service(domain, service, body);
+    if (!g_ws_authenticated || g_action_in_flight) return -102;
+
+    JsonDocument service_data;
+    if (deserializeJson(service_data, body)) return -104;
+
+    JsonDocument request;
+    g_action_request_id = next_ws_id();
+    request["id"] = g_action_request_id;
+    request["type"] = "call_service";
+    request["domain"] = domain;
+    request["service"] = service;
+    request["service_data"] = service_data.as<JsonObjectConst>();
+    if (!send_json(request)) {
+        g_action_request_id = 0;
+        return -101;
     }
-    return code;
+    g_action_in_flight = true;
+    g_action_started_ms = millis();
+    return 202;
 }
 
 void process_action_worker(const HaAction &action) {
@@ -1451,12 +1481,7 @@ void process_action_worker(const HaAction &action) {
         snprintf(description, sizeof(description), "%s %s", model->name, service);
     }
 
-    if (retried) {
-        const size_t used = strlen(description);
-        if (used < sizeof(description) - 1) {
-            snprintf(description + used, sizeof(description) - used, " (retry)");
-        }
-    }
+    if (code == 202) copy_text(g_action_description, sizeof(g_action_description), description);
     record_action_result(description, code);
 }
 
@@ -1560,6 +1585,15 @@ void worker_task(void *) {
         if (configured_snapshot() && !g_ws_started) start_websocket_worker();
         if (g_ws_started) g_ws.loop();
 
+        if (g_action_in_flight &&
+            millis() - g_action_started_ms >= HA_COMMAND_RESULT_TIMEOUT_MS) {
+            record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -110);
+            g_action_in_flight = false;
+            g_action_request_id = 0;
+            g_action_started_ms = 0;
+            g_action_description[0] = '\0';
+        }
+
         if (g_ws_authenticated) {
             char media_entity[96] = {};
             char media_content_id[HA_MEDIA_CONTENT_ID_LEN] = {};
@@ -1590,7 +1624,7 @@ void worker_task(void *) {
         const bool http_ready = !g_last_http_ms ||
                                 millis() - g_last_http_ms >= HA_HTTP_INTER_REQUEST_GAP_MS;
 
-        if (http_ready && g_action_queue) {
+        if (http_ready && !g_action_in_flight && g_action_queue) {
             HaAction action = {};
             if (xQueueReceive(g_action_queue, &action, 0) == pdTRUE) {
                 // A disconnect can happen after the UI accepted a tap.  Do
