@@ -5,6 +5,7 @@
 #include "config_service.h"
 #include "home_assistant.h"
 #include "module_ui.h"
+#include "network_service.h"
 
 #include <Arduino.h>
 
@@ -46,13 +47,13 @@ void SettingsModule::create(lv_obj_t *parent) {
     lv_obj_t *ih = label(identity, "Panel identity", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(ih, 18, 18);
 
-    char detail[256];
+    char detail[320];
     snprintf(detail, sizeof(detail),
-             "Name: %s\nProfile: %s\nArea: %s\nFirmware: %s",
+             "Name: %s\nProfile: %s\nArea: %s\nFirmware: %s\nIP address: Checking...",
              cfg.display_name, cfg.profile,
              cfg.area_id[0] ? cfg.area_id : "(none)", APP_VERSION);
-    lv_obj_t *id = label(identity, detail, &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(id, 18, 60);
+    identity_label_ = label(identity, detail, &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(identity_label_, 18, 60);
 
     lv_obj_t *ha = card(parent, 24, 332, 1228, 154);
     lv_obj_t *hh = label(ha, "Home Assistant", &lv_font_montserrat_20, TEXT);
@@ -104,6 +105,19 @@ void SettingsModule::rediscover_cb(lv_event_t *e) {
 }
 
 void SettingsModule::update() {
+    if (identity_label_) {
+        const PanelConfig &cfg = config_service_get();
+        const String ip = network_service_ip();
+
+        char detail[320];
+        snprintf(detail, sizeof(detail),
+                 "Name: %s\nProfile: %s\nArea: %s\nFirmware: %s\nIP address: %s",
+                 cfg.display_name, cfg.profile,
+                 cfg.area_id[0] ? cfg.area_id : "(none)", APP_VERSION,
+                 ip.length() == 0 ? "Offline" : ip.c_str());
+        lv_label_set_text(identity_label_, detail);
+    }
+
     HomeAssistantStatus health = {};
     home_assistant_get_status(health);
 

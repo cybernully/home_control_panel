@@ -1,11 +1,17 @@
 # Home Control Panel
 
-**Version 1.3.9**
+**Version 1.3.10**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Maintenance update 1.3.10
+
+Version 1.3.10 adds the panel's current Wi-Fi IP address to the on-device
+Settings page.  The address is refreshed with the rest of the Settings status
+and changes to `Offline` whenever the network is disconnected.
 
 ## Maintenance update 1.3.9
 

@@ -10,6 +10,7 @@ public:
 
 private:
     lv_obj_t *brightness_label_ = nullptr;
+    lv_obj_t *identity_label_ = nullptr;
     lv_obj_t *ha_label_ = nullptr;
     lv_obj_t *discovery_label_ = nullptr;
 

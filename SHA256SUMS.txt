@@ -2,7 +2,7 @@
 67cca8c6c85c4698d0b5592a07a40ef2c16e9270cbe2773c6798944272525125  ./.gitignore.optional
 e83693f24d4429dcd13634ada54f2b9d235f885be3fd08697d8d6635c36122fc  ./.vscode/extensions.json
 e6a4642c3a95d0269e82e62753052f324b8f410a6b5047d0ecfa45084981a18f  ./.vscode/extensions.json.optional
-49f22b22241bcf08619065852b9f6c83de62d18690f1ba9e3688600d21c28ac7  ./README.md
+6bff7bb5f8000ae8939ba53e84c569498a5a4813e7206342f28c6e00929c0e19  ./README.md
 12ea6b5e774863cd6c577b57879fff60a1580916db756f29e0d365d71f0cfa0b  ./data/hosted/esp32c6-v2.12.3.bin
 9373df9fa13e95935c520f6e8cdd25e47e4646cb3ad71dd8c52791c67acc6997  ./data/panel.json
 43a692be4befc6f1d6824a1833b5fb7280cf5bf2d96aee9a364be85f70032521  ./docs/ARCHITECTURE.md
@@ -11,6 +11,7 @@ e6a4642c3a95d0269e82e62753052f324b8f410a6b5047d0ecfa45084981a18f  ./.vscode/exte
 b38e2c3098d4a144eb89a1084a093e8d6876890efd7ed9a7be2fef1e6a5827df  ./docs/RELEASE_1.1.0.md
 0290234709872e76df2b96c3ac5039f49dfb9c80037970d9c3936f8c1dddf02f  ./docs/RELEASE_1.2.0.md
 f39c115cf99b8f5989ac1ee2bef1690043ba0d6af57f69319324b89b17c36567  ./docs/RELEASE_1.3.0.md
+6c522655338cbb3de5f997d62dbce28dce4a9fb943d012f05ac180c36fccb9c6  ./docs/RELEASE_1.3.10.md
 365cad9cb34c023c585bdda52031fccab7198fcf51653e92a9eb4cfa76c0195a  ./docs/RELEASE_1.3.2.md
 23ebe5ffe0e9378a2c825d4a68125469f8d06da59b04369efcab201f08a2713c  ./docs/RELEASE_1.3.3.md
 e515901ba03b81e55b45226c6820e62edd6ed214edcf9ce8e8d206b2dd02cf77  ./docs/RELEASE_1.3.4.md
@@ -20,7 +21,7 @@ d29ae73e47b9a85674be8a602938360074e583f228e9bda971d1eb6e4cbff0fd  ./docs/RELEASE
 fc46b8b55562c15d9604e2f63f2c2bf43371c6ca1ff4cd53f2ff14991fbd2104  ./docs/RELEASE_1.3.8.md
 3a66bd56bcc8561c0a21eeb93c75dddea3bdf069dc757f8f5d4baafa4f1a054d  ./docs/RELEASE_1.3.9.md
 cc75d9f83073dd1eb15c259b110d35629380d05bbf1fbc056f873efab9469ffc  ./docs/ROADMAP.md
-6ef69da8ba3acb78322d601166ea9aa633e1267f0a62b6922b25d360f4d177c4  ./include/app_config.h
+18acec0330adc42618169e2b29600b479e2578901497a92ea89aee71c29338ca  ./include/app_config.h
 d6eb587141513c6aee3d6a2575d829b2a9a0a1946e846a9c38d5c404bf5e9712  ./include/app_secrets.example.h
 b92d50e74d54d79a834002d32f42fa7b803c281e1b49215b5195c17e0b66cf52  ./include/battery_service.h
 3f8ab4d2e9ed56b59f8d905f3a4f56d4f73eee57cb49b71644e0c48dfcbe85f4  ./include/board_lvgl.h
@@ -57,7 +58,7 @@ cca916297e361a6c44ac25be8d4ca5be6669db769d5b85b9e48e2754a429e1c7  ./partitions.c
 aa3ec69a57f727e81a6df1aab800f94058e8d1f4e6044847717c1f714b0188c1  ./scripts/bootstrap_jd9365.py
 7049fdedbda2d7ed22a00e181019ce400f814d375866a6c56f8c9565d8a5bff6  ./scripts/build_all.sh
 cb289c15c1ad66bef372bc94e2bed49d4a77721e4e33d87f520479c9284fe57d  ./scripts/fetch_hosted_c6.py
-803ddc3d7ff7f4ffb9946d6febed4b2902cf4a76cc61bdfe3ea351dfb412fe79  ./scripts/validate_project.py
+41c552dfbd55247b2d067e42db318c6ebe47462f389939ae5beefc13404456fb  ./scripts/validate_project.py
 9126a474657df57e8aedabaf4318e3749173797d01972db8eaa3a5b1d2b154b8  ./src/battery_service.cpp
 878203288522ace0a7a5f36d09b336c37e0c6bde30e1ad13636b7dd40feec74e  ./src/board_lvgl.cpp
 22f320d1fce28f69422c038bdff21cea7e5614abdcb7551d92b11384a765e6cd  ./src/config_service.cpp
@@ -79,8 +80,8 @@ abbf0c21f2b968aa38709a4fd21039678ab5916f7c6666568c9e12907b7baaac  ./src/modules/
 5e6e015989f67dfb9f6b6dde9c72bbabf682112e22faf9f3d472785290211f1b  ./src/modules/room_module.h
 86b61631eee07f7e1a5d9bc28e69037994403066794b6e528e7375ad44417879  ./src/modules/security_module.cpp
 e89c9b933986afca279d9c0a364a2a51f36d59125ea3f3fe93c952dd1ab94c08  ./src/modules/security_module.h
-334a426229646bb3ac98ff6a198563579fbef44fe4b13bd84fc800f768432d9f  ./src/modules/settings_module.cpp
-bcce746120500cd05144e5bfc3a55b3901409b6da99187cb34c65344e7673705  ./src/modules/settings_module.h
+5008d06da6b465e8e5c68039657a93d289df64acaaccaad7dd38b822b78f2676  ./src/modules/settings_module.cpp
+a1d842369da5728105f4ae277568e8b0d4b9e7693c0022d2af56b71a2bcc2e66  ./src/modules/settings_module.h
 a78ceff56f91f78367de1f75fd6ea7012f45a5b05f0ab8a89f9ca0751a305037  ./src/network_service.cpp
 1b45623f81e6a70ce25b979c0a62b8e3c800acaa9ce06b93d0b73d758fad1b69  ./src/stb_image_impl.cpp
 a090deeccf6c0b02455e9ce31a1a7696a3e481c43f005471d2fe37c24b94d43c  ./src/ui_shell.cpp
