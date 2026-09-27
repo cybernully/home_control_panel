@@ -35,11 +35,16 @@ void set_base_defaults(PanelConfig &cfg) {
     copy_text(cfg.device_id, sizeof(cfg.device_id), "panel-01");
     copy_text(cfg.display_name, sizeof(cfg.display_name), "Home Panel");
     copy_text(cfg.profile, sizeof(cfg.profile), "room");
-    copy_text(cfg.area_id, sizeof(cfg.area_id), "living_room");
+    // Kept for migration compatibility only. Device bindings no longer use a
+    // profile-wide Home Assistant area.
+    cfg.area_id[0] = '\0';
     cfg.backlight = APP_DEFAULT_BACKLIGHT;
     cfg.dark_mode = true;
     cfg.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
     config_service_set_profile_defaults(cfg);
+    cfg.room_count = 1;
+    copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
+    copy_text(cfg.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room");
     config_service_set_overview_defaults(cfg);
     config_service_set_overview_quick_action_defaults(cfg);
 }
@@ -49,15 +54,16 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 2;
+    doc["schema"] = 3;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
-    doc["area_id"] = cfg.area_id;
     doc["backlight"] = cfg.backlight;
     doc["dark_mode"] = cfg.dark_mode;
     doc["screen_timeout_seconds"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
+    doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["calendar_entity_id"] = cfg.calendar_entity_id;
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -74,7 +80,10 @@ bool save_internal(const PanelConfig &cfg) {
         item["entity_id"] = cfg.room_controls[i].entity_id;
         item["label"] = cfg.room_controls[i].label;
         item["placement"] = cfg.room_controls[i].placement;
+        item["room_index"] = cfg.room_controls[i].room_index;
     }
+    JsonArray rooms = doc["rooms"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.room_count; ++i) { JsonObject item = rooms.add<JsonObject>(); item["tab_label"] = cfg.rooms[i].tab_label; item["header"] = cfg.rooms[i].header; }
     JsonArray players = doc["media_players"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
     JsonArray widgets = doc["overview_widgets"].to<JsonArray>();
@@ -133,13 +142,17 @@ bool config_service_begin() {
     copy_text(loaded.device_id, sizeof(loaded.device_id), doc["device_id"] | g_config.device_id);
     copy_text(loaded.display_name, sizeof(loaded.display_name), doc["display_name"] | g_config.display_name);
     copy_text(loaded.profile, sizeof(loaded.profile), doc["profile"] | g_config.profile);
-    copy_text(loaded.area_id, sizeof(loaded.area_id), doc["area_id"] | g_config.area_id);
+    // Ignore the retired profile-wide area setting in existing panel.json
+    // files. Entity selection is now explicit and whole-home.
+    loaded.area_id[0] = '\0';
     loaded.backlight = constrain(static_cast<int>(doc["backlight"] | APP_DEFAULT_BACKLIGHT), 10, 100);
     loaded.dark_mode = doc["dark_mode"] | true;
     loaded.screen_timeout_seconds = doc["screen_timeout_seconds"] | APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
     // Schema 1 did not have a layout editor. Preserve its automatic discovery
     // until the owner saves a layout from the 1.5 web manager.
     loaded.explicit_layout = doc["explicit_layout"] | false;
+    copy_text(loaded.weather_entity_id, sizeof(loaded.weather_entity_id), doc["weather_entity_id"] | "");
+    copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), doc["calendar_entity_id"] | "");
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
     JsonArray modules = doc["modules"].as<JsonArray>();
@@ -170,6 +183,8 @@ bool config_service_begin() {
             Serial0.printf("[Config] Invalid room preferences: %s\n", error.c_str());
         }
     }
+    if (!doc["rooms"].isNull()) { String json, error; serializeJson(doc["rooms"], json); if (!config_service_parse_rooms(json, loaded, error)) Serial0.printf("[Config] Invalid rooms: %s\n", error.c_str()); }
+    if (loaded.room_count == 0) { loaded.room_count = 1; copy_text(loaded.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room"); copy_text(loaded.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room"); }
     if (!doc["overview_widgets"].isNull()) {
         String json, error;
         serializeJson(doc["overview_widgets"], json);
@@ -192,8 +207,8 @@ bool config_service_begin() {
                   PANEL_MEDIA_ENTITY_ID_LEN, id);
     }
     g_config = loaded;
-    Serial0.printf("[Config] %s profile=%s area=%s modules=%u media_shortcuts=%u\n",
-                   g_config.device_id, g_config.profile, g_config.area_id,
+    Serial0.printf("[Config] %s profile=%s modules=%u media_shortcuts=%u\n",
+                   g_config.device_id, g_config.profile,
                    static_cast<unsigned>(g_config.module_count),
                    static_cast<unsigned>(g_config.media_shortcut_count));
     return true;

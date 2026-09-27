@@ -6,7 +6,7 @@ const source=fs.readFileSync('include/web_ui.h','utf8');
 // without needing a browser or a Home Assistant server in host CI.
 for(const feature of [
   "const $=id=>document.getElementById(id)", "function esc(s)",
-  "Room controls", "Media players", "Administration", "Scan Home Assistant area",
+  "Rooms and controls", "Media players", "Administration", "Search Home Assistant",
   "/api/ha/discover", "/api/ha/entities", "room_controls",
   "media_players", "shortcut_label_", "Save layout and configuration",
   "explicit layout", "modules.join(',')", "Available widgets",
@@ -22,7 +22,7 @@ for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add
   assert(source.includes(feature),`missing working panel-tab configuration: ${feature}`);
 assert(source.includes('function showModule(id)'),'show-tab buttons must update the web navigation immediately');
 assert(source.includes('onclick="showModule(\'${m}\')"'),'show-tab buttons must use the explicit handler');
-assert(source.match(/<section id="media"[\s\S]*?Scan Home Assistant area/),'Media must expose its own HA scan trigger');
+assert(source.match(/<section id="media"[\s\S]*?Search all Home Assistant devices/),'Media must expose its own HA search trigger');
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');

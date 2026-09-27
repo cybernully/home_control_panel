@@ -136,8 +136,8 @@ void SettingsModule::update() {
 
         char detail[420];
         snprintf(detail, sizeof(detail),
-                 "%s | %s | %s | v%s | %s",
-                 cfg.display_name, cfg.profile, cfg.area_id[0] ? cfg.area_id : "no area", APP_VERSION,
+                 "%s | %s | selected controls | v%s | %s",
+                 cfg.display_name, cfg.profile, APP_VERSION,
                  ip.length() == 0 ? "Offline" : ip.c_str());
         lv_label_set_text(identity_label_, detail);
     }

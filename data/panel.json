@@ -1,9 +1,8 @@
 {
-  "schema": 2,
+  "schema": 3,
   "device_id": "panel-01",
   "display_name": "Living Room Panel",
   "profile": "room",
-  "area_id": "living_room",
   "modules": [
     "overview",
     "room",
@@ -17,6 +16,9 @@
   "dark_mode": true,
   "screen_timeout_seconds": 120,
   "room_controls": [],
+  "rooms": [{"tab_label": "Room", "header": "Your room"}],
+  "weather_entity_id": "",
+  "calendar_entity_id": "",
   "explicit_layout": false,
   "media_players": [],
   "overview_widgets": [

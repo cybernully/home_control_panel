@@ -8,6 +8,7 @@
 using namespace module_ui;
 
 namespace {
+uint8_t g_active_room = 0;
 const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
 int entity_group(const char *domain) {
     if (strcmp(domain, "light") == 0) return 0;
@@ -18,7 +19,7 @@ int entity_group(const char *domain) {
 const PanelRoomControl *preference(const char *id) {
     const auto &cfg = config_service_get();
     for (size_t i = 0; i < cfg.room_control_count; ++i)
-        if (strcmp(cfg.room_controls[i].entity_id, id) == 0) return &cfg.room_controls[i];
+        if (cfg.room_controls[i].room_index == g_active_room && strcmp(cfg.room_controls[i].entity_id, id) == 0) return &cfg.room_controls[i];
     return nullptr;
 }
 int order(const char *id) {
@@ -67,13 +68,15 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
 
 void RoomModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
+    const PanelConfig &cfg = config_service_get();
     heading_ = module_ui::title(parent, "Your room", "Favorites within reach. Tap a group to explore.");
     ellipsis(heading_, 1000);
+    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) { room_tabs_[i].owner=this; room_tabs_[i].index=i; room_tabs_[i].button=button(parent,cfg.rooms[i].tab_label,24+i*210,92,196,42,CARD_ALT); lv_obj_add_event_cb(room_tabs_[i].button,room_tab_cb,LV_EVENT_CLICKED,&room_tabs_[i]); }
     auto *caption = label(parent, "FAVORITES", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 92);
+    lv_obj_set_pos(caption, 24, 142);
     for (int i = 0; i < 6; ++i)
-        make_tile(favorites_[i], parent, 24 + (i % 3) * 416, 120 + (i / 3) * 142, 400, 126);
-    empty_ = card(parent, 24, 120, 1232, 268);
+        make_tile(favorites_[i], parent, 24 + (i % 3) * 416, 170 + (i / 3) * 142, 400, 126);
+    empty_ = card(parent, 24, 170, 1232, 238);
     auto *text = label(empty_, "Make this room yours", &lv_font_montserrat_24, TEXT);
     lv_obj_set_pos(text, 28, 60);
     text = label(empty_, "Open a group below to control your room.\nChoose up to six favorites, rename, reorder or hide controls in the web manager.", &lv_font_montserrat_18, MUTED);
@@ -152,18 +155,27 @@ void RoomModule::bind(Tile &t, const HomeAssistantEntitySnapshot *e) {
 
 void RoomModule::update() {
     count_ = home_assistant_get_room_entities(entities_, HA_MAX_AREA_ENTITIES);
+    const auto &cfg = config_service_get();
+    if (g_active_room >= cfg.room_count) g_active_room = 0;
+    if (cfg.room_count) {
+        size_t filtered = 0;
+        for (size_t i = 0; i < count_; ++i) {
+            const PanelRoomControl *p = preference(entities_[i].entity_id);
+            if (p) entities_[filtered++] = entities_[i];
+        }
+        count_ = filtered;
+    }
     std::sort(entities_, entities_ + count_, [](const HomeAssistantEntitySnapshot &a, const HomeAssistantEntitySnapshot &b) {
         const int ao = order(a.entity_id), bo = order(b.entity_id);
         if (ao != bo) return ao < bo;
         const int name = strcmp(a.name, b.name);
         return name ? name < 0 : strcmp(a.entity_id, b.entity_id) < 0;
     });
-    const auto &cfg = config_service_get();
     size_t favorite_count = 0;
     // A missing favorite retains its position instead of becoming another device.
     for (size_t i = 0; i < cfg.room_control_count && favorite_count < 6; ++i) {
         const auto &p = cfg.room_controls[i];
-        if (p.placement != 1) continue;
+        if (p.room_index != g_active_room || p.placement != 1) continue;
         const HomeAssistantEntitySnapshot *found = nullptr;
         for (size_t j = 0; j < count_; ++j)
             if (strcmp(p.entity_id, entities_[j].entity_id)==0) { found = &entities_[j]; break; }
@@ -183,7 +195,8 @@ void RoomModule::update() {
     }
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);
-    display(heading_, discovery.area_name[0] ? discovery.area_name : cfg.area_id[0] ? cfg.area_id : "Your room");
+    display(heading_, cfg.room_count && cfg.rooms[g_active_room].header[0] ? cfg.rooms[g_active_room].header : discovery.area_name[0] ? discovery.area_name : "Your room");
+    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) if (room_tabs_[i].button) lv_obj_set_style_bg_color(room_tabs_[i].button,lv_color_hex(i==g_active_room?ACCENT:CARD_ALT),LV_PART_MAIN);
     if (!feedback_until_ || static_cast<int32_t>(millis() - feedback_until_) >= 0) {
         if (discovery.last_action_ms && millis() - discovery.last_action_ms < 12000) {
             display(status_, discovery.last_action);
@@ -258,6 +271,7 @@ void RoomModule::page_cb(lv_event_t *e) {
     if (self->page_ < 0) self->page_ = 0;
     self->render_popup();
 }
+void RoomModule::room_tab_cb(lv_event_t *e) { auto *tab=static_cast<RoomTab *>(lv_event_get_user_data(e)); if(!tab)return; g_active_room=tab->index; tab->owner->on_deactivate(); tab->owner->update(); }
 void RoomModule::on_deactivate() {
     group_ = -1; page_ = 0;
     for (auto &tile : popup_tiles_) { tile.dragging = false; tile.pressed = false; }

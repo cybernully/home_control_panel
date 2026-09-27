@@ -52,12 +52,9 @@ void update_header() {
                           strcmp(cfg.profile, "calendar") == 0 ? "Calendar" : "Custom panel";
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);
-    const bool current_area = strcmp(cfg.area_id, discovery.area_id) == 0 ||
-                              strcmp(cfg.area_id, discovery.area_name) == 0;
-    const char *area = current_area && discovery.area_name[0] ? discovery.area_name :
-                       cfg.area_id[0] ? cfg.area_id : "No area selected";
+    const char *scope = discovery.area_name[0] ? discovery.area_name : "Configured controls";
     char subtitle[192], safe[192];
-    snprintf(subtitle, sizeof(subtitle), "%s  /  %s  /  v%s", profile, area, APP_VERSION);
+    snprintf(subtitle, sizeof(subtitle), "%s  /  %s  /  v%s", profile, scope, APP_VERSION);
     panel_display_text(safe, sizeof(safe), subtitle);
     lv_label_set_text(g_header_subtitle, safe);
 

@@ -15,6 +15,12 @@ struct PanelRoomControl {
     char entity_id[96];
     char label[64];
     uint8_t placement;
+    uint8_t room_index;
+};
+
+struct PanelRoom {
+    char tab_label[PANEL_ROOM_NAME_LEN];
+    char header[PANEL_ROOM_NAME_LEN];
 };
 
 // span is the number of columns in Overview's four-column widget grid: 1, 2,
@@ -43,11 +49,15 @@ struct PanelConfig {
     uint8_t media_shortcut_count;
     PanelRoomControl room_controls[HA_MAX_AREA_ENTITIES];
     uint8_t room_control_count;
+    PanelRoom rooms[PANEL_MAX_ROOMS];
+    uint8_t room_count;
     // Once a layout is saved in the 1.5 web manager, only these configured
     // entities (plus configured media players/shortcuts) are subscribed.
     bool explicit_layout;
     char media_players[PANEL_MAX_MEDIA_PLAYERS][PANEL_MEDIA_ENTITY_ID_LEN];
     uint8_t media_player_count;
+    char weather_entity_id[96];
+    char calendar_entity_id[96];
     PanelOverviewWidget overview_widgets[PANEL_MAX_OVERVIEW_WIDGETS];
     uint8_t overview_widget_count;
     PanelOverviewQuickAction overview_quick_actions[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];
@@ -67,6 +77,7 @@ String config_service_modules_csv();
 
 // Shared strict parser for persisted and web room preferences.
 bool config_service_parse_room_controls(const String &json, PanelConfig &config, String &error);
+bool config_service_parse_rooms(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_widgets(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_quick_actions(const String &json, PanelConfig &config, String &error);
 void config_service_set_overview_defaults(PanelConfig &config);

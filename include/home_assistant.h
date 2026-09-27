@@ -100,8 +100,8 @@ bool home_assistant_request_health_check();
 void home_assistant_get_status(HomeAssistantStatus &out);
 
 bool home_assistant_request_discovery();
-// A temporary full-area scan used by the web layout editor. It is never the
-// normal startup mode once an explicit layout has been saved.
+// A temporary whole-home entity search used by the web layout editor. It is
+// never the normal startup mode once an explicit layout has been saved.
 bool home_assistant_request_full_discovery();
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out);
 

@@ -47,7 +47,7 @@ void setup() {
     home_assistant_begin();
     web_manager_begin();
 
-    Serial0.printf("%s ready. profile=%s area=%s\n", APP_NAME, config.profile, config.area_id);
+    Serial0.printf("%s ready. profile=%s controls=explicit\n", APP_NAME, config.profile);
 }
 
 void loop() {

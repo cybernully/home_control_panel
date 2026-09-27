@@ -20,12 +20,12 @@ missing=[p for p in required if not(root/p).exists()]
 if missing:
     print("Missing:",*missing,sep="\n - ");sys.exit(1)
 cfg=json.loads((root/"data/panel.json").read_text())
-assert cfg["schema"]==2
+assert cfg["schema"]==3
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=3
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.5.0"' in app
+assert '#define APP_VERSION "1.5.1"' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 3' in app
 assert '#define PANEL_MAX_MEDIA_PLAYERS 4' in app
@@ -79,7 +79,7 @@ for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
 for feature in ["handle_ha_entities", "handle_ha_discover", "parse_media_players", "home_assistant_request_full_discovery"]:
     assert feature in web
 web_ui=(root/"include/web_ui.h").read_text()
-for feature in ["Panel display manager", "Room controls", "Media players", "Administration", "Scan Home Assistant area"]:
+for feature in ["Panel display manager", "Rooms and controls", "Media players", "Administration", "Search Home Assistant"]:
     assert feature in web_ui
 for feature in ["Available widgets", "Weather", "Calendar", "Full width", "overview_widgets"]:
     assert feature in web_ui
@@ -94,5 +94,5 @@ for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM
     assert feature in stb_impl
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.5.0 structure validation passed.")
+print("Home Control Panel v1.5.1 structure validation passed.")
 

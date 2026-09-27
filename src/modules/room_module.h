@@ -24,7 +24,9 @@ private:
         int index = 0;
         lv_obj_t *button = nullptr, *text = nullptr;
     };
+    struct RoomTab { RoomModule *owner = nullptr; uint8_t index = 0; lv_obj_t *button = nullptr; };
     Tile favorites_[6], popup_tiles_[6];
+    RoomTab room_tabs_[PANEL_MAX_ROOMS];
     Group groups_[4];
     // Persistent storage avoids placing the 48-entity snapshot on loopTask's stack.
     HomeAssistantEntitySnapshot entities_[HA_MAX_AREA_ENTITIES] = {};
@@ -42,4 +44,5 @@ private:
     static void group_cb(lv_event_t *e);
     static void close_cb(lv_event_t *e);
     static void page_cb(lv_event_t *e);
+    static void room_tab_cb(lv_event_t *e);
 };

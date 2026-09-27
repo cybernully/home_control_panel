@@ -114,6 +114,7 @@ uint32_t g_discovery_started_ms = 0;
 uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
 uint32_t g_extract_request_id = 0;
+uint32_t g_entity_registry_request_id = 0;
 uint32_t g_subscribe_request_id = 0;
 uint32_t g_action_request_id = 0;
 uint32_t g_action_started_ms = 0;
@@ -123,6 +124,8 @@ char g_resolved_area_id[64] = {};
 char g_resolved_area_name[64] = {};
 
 void record_action_result(const char *description, int code);
+void send_subscribe_entities_worker();
+void populate_configured_layout_entities_worker();
 
 HomeAssistantMediaFavorite g_media_favorites[HA_MAX_MEDIA_FAVORITES] = {};
 size_t g_media_favorite_count = 0;
@@ -490,6 +493,28 @@ uint32_t next_ws_id() {
 }
 
 void send_area_lookup_worker() {
+    if (g_full_discovery_requested) {
+        JsonDocument doc;
+        g_entity_registry_request_id = next_ws_id();
+        doc["id"] = g_entity_registry_request_id;
+        // This compact registry call is intended for device-picker clients.
+        // It is deliberately separate from the area-targeted live subscription.
+        doc["type"] = "config/entity_registry/list_for_display";
+        if (send_json(doc)) {
+            g_discovery_started_ms = millis();
+            set_discovery_message("Searching all Home Assistant entities...");
+        } else {
+            set_discovery_message("Could not send Home Assistant device search request.");
+        }
+        return;
+    }
+
+    // The live panel is driven exclusively by the entities selected in the
+    // web manager. An area is no longer needed to discover or subscribe to
+    // controls at startup.
+    populate_configured_layout_entities_worker();
+    return;
+
     const PanelConfig &cfg = config_service_get();
     if (!cfg.area_id[0]) {
         portENTER_CRITICAL(&g_mux);
@@ -532,6 +557,71 @@ void send_extract_target_worker() {
     }
 }
 
+void handle_entity_registry_result_worker(JsonDocument &doc) {
+    const bool success = doc["success"] | false;
+    if (!success) {
+        g_full_discovery_requested = false;
+        set_discovery_message("Home Assistant rejected the global device search.");
+        return;
+    }
+
+    JsonArrayConst entities = doc["result"]["entities"].as<JsonArrayConst>();
+    if (entities.isNull()) {
+        // Older Home Assistant versions return the uncompressed list format.
+        entities = doc["result"].as<JsonArrayConst>();
+    }
+
+    portENTER_CRITICAL(&g_mux);
+    g_entity_count = 0;
+    portEXIT_CRITICAL(&g_mux);
+    bool truncated = false;
+    for (JsonObjectConst item : entities) {
+        const char *entity_id = item["ei"] | "";
+        if (!entity_id[0]) entity_id = item["entity_id"] | "";
+        if (!entity_id[0]) continue;
+
+        char domain[16] = {};
+        domain_from_entity_id(entity_id, domain, sizeof(domain));
+        if (!is_supported_domain(domain)) continue;
+
+        portENTER_CRITICAL(&g_mux);
+        if (g_entity_count >= HA_MAX_AREA_ENTITIES) {
+            truncated = true;
+            portEXIT_CRITICAL(&g_mux);
+            break;
+        }
+        HaEntityModel &model = g_entities[g_entity_count++];
+        memset(&model, 0, sizeof(model));
+        copy_text(model.entity_id, sizeof(model.entity_id), entity_id);
+        copy_text(model.domain, sizeof(model.domain), domain);
+        const char *name = item["en"] | "";
+        if (!name[0]) name = item["name"] | "";
+        if (!name[0]) name = item["original_name"] | "";
+        if (name[0]) copy_text(model.name, sizeof(model.name), name);
+        else fallback_name_from_id(entity_id, model.name, sizeof(model.name));
+        copy_text(model.state, sizeof(model.state), "unknown");
+        model.position_pct = -1;
+        portEXIT_CRITICAL(&g_mux);
+    }
+
+    portENTER_CRITICAL(&g_mux);
+    g_discovery.area_found = true;
+    g_discovery.device_count = static_cast<uint16_t>(entities.size());
+    update_discovery_counts_locked();
+    copy_text(g_discovery.area_id, sizeof(g_discovery.area_id), "all");
+    copy_text(g_discovery.area_name, sizeof(g_discovery.area_name), "All Home Assistant");
+    if (truncated) {
+        copy_text(g_discovery.message, sizeof(g_discovery.message),
+                  "Device search is limited to the first supported entities.");
+    }
+    portEXIT_CRITICAL(&g_mux);
+
+    // A full scan is for the editor only. Future reconnects must return to the
+    // smaller configured layout subscription.
+    g_full_discovery_requested = false;
+    send_subscribe_entities_worker();
+}
+
 bool is_layout_entity(const char *entity_id) {
     if (!entity_id || !entity_id[0]) return false;
     const PanelConfig &cfg = config_service_get();
@@ -545,6 +635,8 @@ bool is_layout_entity(const char *entity_id) {
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         if (cfg.overview_quick_actions[i].entity_id[0] &&
             strcmp(cfg.overview_quick_actions[i].entity_id, entity_id) == 0) return true;
+    if ((cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) ||
+        (cfg.calendar_entity_id[0] && strcmp(cfg.calendar_entity_id, entity_id) == 0)) return true;
     const char *dot = strchr(entity_id, '.');
     const size_t domain_len = dot ? static_cast<size_t>(dot - entity_id) : 0;
     for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
@@ -553,6 +645,66 @@ bool is_layout_entity(const char *entity_id) {
             (domain_len == 8 && strncmp(entity_id, "calendar", 8) == 0 && strcmp(widget, "calendar") == 0)) return true;
     }
     return false;
+}
+
+void populate_configured_layout_entities_worker() {
+    const PanelConfig &cfg = config_service_get();
+    portENTER_CRITICAL(&g_mux);
+    g_entity_count = 0;
+    portEXIT_CRITICAL(&g_mux);
+
+    auto add_entity = [](const char *entity_id) {
+        if (!entity_id || !entity_id[0]) return;
+        char domain[16] = {};
+        domain_from_entity_id(entity_id, domain, sizeof(domain));
+        if (!is_supported_domain(domain)) return;
+
+        portENTER_CRITICAL(&g_mux);
+        for (size_t i = 0; i < g_entity_count; ++i) {
+            if (strcmp(g_entities[i].entity_id, entity_id) == 0) {
+                portEXIT_CRITICAL(&g_mux);
+                return;
+            }
+        }
+        if (g_entity_count < HA_MAX_AREA_ENTITIES) {
+            HaEntityModel &model = g_entities[g_entity_count++];
+            memset(&model, 0, sizeof(model));
+            copy_text(model.entity_id, sizeof(model.entity_id), entity_id);
+            copy_text(model.domain, sizeof(model.domain), domain);
+            fallback_name_from_id(entity_id, model.name, sizeof(model.name));
+            copy_text(model.state, sizeof(model.state), "unknown");
+            model.position_pct = -1;
+        }
+        portEXIT_CRITICAL(&g_mux);
+    };
+
+    for (uint8_t i = 0; i < cfg.room_control_count; ++i) add_entity(cfg.room_controls[i].entity_id);
+    for (uint8_t i = 0; i < cfg.media_player_count; ++i) add_entity(cfg.media_players[i]);
+    for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) add_entity(cfg.media_shortcuts[i].entity_id);
+    for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
+        add_entity(cfg.overview_quick_actions[i].entity_id);
+    add_entity(cfg.weather_entity_id);
+    add_entity(cfg.calendar_entity_id);
+
+    portENTER_CRITICAL(&g_mux);
+    g_discovery.area_found = true;
+    g_discovery.device_count = 0;
+    update_discovery_counts_locked();
+    g_discovery.area_id[0] = '\0';
+    copy_text(g_discovery.area_name, sizeof(g_discovery.area_name), "Configured layout");
+    portEXIT_CRITICAL(&g_mux);
+
+    if (g_entity_count == 0) {
+        portENTER_CRITICAL(&g_mux);
+        g_discovery.discovery_complete = true;
+        g_discovery.last_discovery_ms = millis();
+        copy_text(g_discovery.message, sizeof(g_discovery.message),
+                  "No Home Assistant controls selected. Use the web manager to add devices.");
+        portEXIT_CRITICAL(&g_mux);
+        return;
+    }
+    set_discovery_message("Subscribing to configured Home Assistant controls...");
+    send_subscribe_entities_worker();
 }
 
 void send_subscribe_entities_worker() {
@@ -915,6 +1067,8 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
             handle_area_result_worker(doc);
         } else if (id == g_extract_request_id) {
             handle_extract_result_worker(doc);
+        } else if (id == g_entity_registry_request_id) {
+            handle_entity_registry_result_worker(doc);
         } else if (id == g_subscribe_request_id) {
             const bool success = doc["success"] | false;
             if (!success) set_discovery_message("Home Assistant rejected live entity subscription.");
@@ -962,10 +1116,10 @@ void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
         case WStype_FRAGMENT_TEXT_START:
         case WStype_FRAGMENT:
         case WStype_FRAGMENT_FIN:
-            // Area-filtered subscriptions are intentionally kept small enough
-            // for the library's normal ESP32 frame buffer. If HA returns a frame
-            // above that limit, surface it instead of silently using partial JSON.
-            set_discovery_message("WebSocket message exceeded frame buffer; reduce entities in the configured area.");
+            // The Arduino WebSockets library delivers frames beyond its normal
+            // buffer as fragments. Do not parse partial JSON or keep an
+            // unbounded assembly buffer on this display controller.
+            set_discovery_message("Home Assistant response exceeded the panel WebSocket buffer.");
             break;
         default:
             break;
@@ -1923,7 +2077,7 @@ bool home_assistant_request_full_discovery() {
     g_discovery_requested = true;
     g_discovery.discovery_complete = false;
     copy_text(g_discovery.message, sizeof(g_discovery.message),
-              "Full area scan requested for the web layout editor...");
+              "Whole-home device search requested for the web layout editor...");
     portEXIT_CRITICAL(&g_mux);
     return true;
 }

@@ -39,7 +39,7 @@ void OverviewModule::create(lv_obj_t *parent) {
         lv_obj_t *tile=card(parent,24+column*307,92+row*132,width,height);
         Widget &widget=widgets_[widget_count_++]; snprintf(widget.type,sizeof(widget.type),"%s",configured.type);
         lv_obj_t *name=label(tile,widget_title(widget.type),&lv_font_montserrat_12,MUTED); lv_obj_set_pos(name,16,13);
-        widget.value=label(tile,"Loading…",&lv_font_montserrat_20,TEXT); lv_obj_set_pos(widget.value,16,38); lv_obj_set_width(widget.value,width-32); lv_label_set_long_mode(widget.value,LV_LABEL_LONG_DOT);
+        widget.value=label(tile,"Loading...",&lv_font_montserrat_20,TEXT); lv_obj_set_pos(widget.value,16,38); lv_obj_set_width(widget.value,width-32); lv_label_set_long_mode(widget.value,LV_LABEL_LONG_DOT);
         widget.detail=label(tile,"",&lv_font_montserrat_14,MUTED); lv_obj_set_pos(widget.detail,16,height-28); lv_obj_set_width(widget.detail,width-32); lv_label_set_long_mode(widget.detail,LV_LABEL_LONG_DOT);
         if(strcmp(widget.type,"quick_actions")!=0) continue;
         action_status_=widget.detail; action_count_=cfg.overview_quick_action_count;
@@ -58,11 +58,13 @@ void OverviewModule::create(lv_obj_t *parent) {
 void OverviewModule::update() {
     HomeAssistantLightStats lights={}; home_assistant_get_light_stats(lights); HomeAssistantStatus health={}; home_assistant_get_status(health); HomeAssistantDiscoveryStatus discovery={}; home_assistant_get_discovery_status(discovery);
     static HomeAssistantEntitySnapshot entities[HA_MAX_AREA_ENTITIES]={}; const size_t count=home_assistant_get_layout_entities(entities,HA_MAX_AREA_ENTITIES);
-    const HomeAssistantEntitySnapshot *weather=first_domain(entities,count,"weather"),*calendar=first_domain(entities,count,"calendar"); const PanelConfig &cfg=config_service_get();
+    const PanelConfig &cfg=config_service_get();
+    const HomeAssistantEntitySnapshot *weather=cfg.weather_entity_id[0]?nullptr:first_domain(entities,count,"weather"),*calendar=cfg.calendar_entity_id[0]?nullptr:first_domain(entities,count,"calendar");
+    for(size_t i=0;i<count;++i) { if(cfg.weather_entity_id[0]&&strcmp(entities[i].entity_id,cfg.weather_entity_id)==0)weather=&entities[i]; if(cfg.calendar_entity_id[0]&&strcmp(entities[i].entity_id,cfg.calendar_entity_id)==0)calendar=&entities[i]; }
     for(uint8_t i=0;i<widget_count_;++i) { Widget &widget=widgets_[i]; char value[112]={},detail[160]={};
-        if(strcmp(widget.type,"home_status")==0){snprintf(value,sizeof(value),"%s",discovery.discovery_complete?"Home Assistant live":health.configured?"Connecting…":"Not configured");snprintf(detail,sizeof(detail),"%u selected entities ready",static_cast<unsigned>(discovery.entity_count));}
+        if(strcmp(widget.type,"home_status")==0){snprintf(value,sizeof(value),"%s",discovery.discovery_complete?"Home Assistant live":health.configured?"Connecting...":"Not configured");snprintf(detail,sizeof(detail),"%u selected entities ready",static_cast<unsigned>(discovery.entity_count));}
         else if(strcmp(widget.type,"lights")==0){snprintf(value,sizeof(value),lights.total?"%u on / %u":"No lights",static_cast<unsigned>(lights.on),static_cast<unsigned>(lights.total));snprintf(detail,sizeof(detail),lights.total?"Selected panel lights":"Add lights in Room configuration");}
-        else if(strcmp(widget.type,"area")==0){snprintf(value,sizeof(value),"%s",cfg.area_id[0]?cfg.area_id:"No area");snprintf(detail,sizeof(detail),"%s",cfg.display_name);}
+        else if(strcmp(widget.type,"area")==0){snprintf(value,sizeof(value),"Selected devices");snprintf(detail,sizeof(detail),"%s",cfg.display_name);}
         else if(strcmp(widget.type,"network")==0){snprintf(value,sizeof(value),network_service_connected()?"%d dBm  online":"Offline",network_service_rssi());snprintf(detail,sizeof(detail),network_service_connected()?"Panel network connected":"Check Wi-Fi connection");}
         else if(strcmp(widget.type,"weather")==0){snprintf(value,sizeof(value),"%s",weather?weather->name:"No weather entity");snprintf(detail,sizeof(detail),"%s",weather?weather->state:"Scan and save this layout");}
         else if(strcmp(widget.type,"calendar")==0){snprintf(value,sizeof(value),"%s",calendar?calendar->name:"No calendar entity");snprintf(detail,sizeof(detail),"%s",calendar?calendar->state:"Scan and save this layout");}

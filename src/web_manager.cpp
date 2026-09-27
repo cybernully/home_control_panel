@@ -176,6 +176,8 @@ void handle_get_config() {
     doc["backlight"] = cfg.backlight;
     doc["timeout"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
+    doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["ha_url"] = home_assistant_base_url();
     doc["ha_token_configured"] = home_assistant_token_configured();
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -192,7 +194,10 @@ void handle_get_config() {
         item["entity_id"] = cfg.room_controls[i].entity_id;
         item["label"] = cfg.room_controls[i].label;
         item["placement"] = cfg.room_controls[i].placement;
+        item["room_index"] = cfg.room_controls[i].room_index;
     }
+    JsonArray rooms = doc["rooms"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.room_count; ++i) { JsonObject item = rooms.add<JsonObject>(); item["tab_label"] = cfg.rooms[i].tab_label; item["header"] = cfg.rooms[i].header; }
     JsonArray players = doc["media_players"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
     JsonArray widgets = doc["overview_widgets"].to<JsonArray>();
@@ -294,13 +299,11 @@ void handle_save_config() {
     String device = g_server.arg("device_id");
     String name = g_server.arg("display_name");
     String profile = g_server.arg("profile");
-    String area = g_server.arg("area_id");
     String modules = g_server.arg("modules");
     device.trim();
     name.trim();
     profile.trim();
     profile.toLowerCase();
-    area.trim();
 
     if (device.isEmpty() || name.isEmpty()) {
         send_error(400, "Device ID and display name are required.");
@@ -317,8 +320,9 @@ void handle_save_config() {
     snprintf(next.display_name, sizeof(next.display_name), "%s",
              name.substring(0, 47).c_str());
     snprintf(next.profile, sizeof(next.profile), "%s", profile.c_str());
-    snprintf(next.area_id, sizeof(next.area_id), "%s",
-             area.substring(0, 63).c_str());
+    // Area membership is not a panel-wide setting. Keep the legacy field
+    // empty so prior configurations cannot silently reintroduce filtering.
+    next.area_id[0] = '\0';
     next.backlight = static_cast<uint8_t>(
         constrain(g_server.arg("backlight").toInt(), 10, 100));
     next.screen_timeout_seconds = static_cast<uint32_t>(
@@ -332,6 +336,13 @@ void handle_save_config() {
         !config_service_parse_room_controls(g_server.arg("room_controls"), next, room_error)) {
         send_error(400, room_error.c_str()); return;
     }
+    String rooms_error;
+    if (g_server.hasArg("rooms") && !config_service_parse_rooms(g_server.arg("rooms"), next, rooms_error)) { send_error(400, rooms_error.c_str()); return; }
+    String weather_entity = g_server.arg("weather_entity_id"); weather_entity.trim(); weather_entity.toLowerCase();
+    String calendar_entity = g_server.arg("calendar_entity_id"); calendar_entity.trim(); calendar_entity.toLowerCase();
+    if ((!weather_entity.isEmpty() && !weather_entity.startsWith("weather.")) || (!calendar_entity.isEmpty() && !calendar_entity.startsWith("calendar."))) { send_error(400, "Weather and Calendar selections must be matching Home Assistant entities."); return; }
+    snprintf(next.weather_entity_id, sizeof(next.weather_entity_id), "%s", weather_entity.substring(0,95).c_str());
+    snprintf(next.calendar_entity_id, sizeof(next.calendar_entity_id), "%s", calendar_entity.substring(0,95).c_str());
     String widgets_error;
     if (g_server.hasArg("overview_widgets") &&
         !config_service_parse_overview_widgets(g_server.arg("overview_widgets"), next, widgets_error)) {

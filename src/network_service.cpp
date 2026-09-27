@@ -14,7 +14,7 @@ uint32_t g_connect_started_ms=0,g_last_retry_ms=0;
 #if defined(CONFIG_ESP_WIFI_REMOTE_ENABLED) && CONFIG_ESP_WIFI_REMOTE_ENABLED
 extern "C" const uint8_t hosted_c6_firmware_start[];
 extern "C" const uint8_t hosted_c6_firmware_end[];
-constexpr uint32_t BUNDLED_HOSTED_MAJOR=2,BUNDLED_HOSTED_MINOR=12,BUNDLED_HOSTED_PATCH=3;
+constexpr uint32_t BUNDLED_HOSTED_MAJOR=2,BUNDLED_HOSTED_MINOR=12,BUNDLED_HOSTED_PATCH=8;
 constexpr size_t HOSTED_UPDATE_CHUNK=2048;
 uint32_t version_value(uint32_t a,uint32_t b,uint32_t c){return(a<<16)|(b<<8)|c;}
 bool maybe_update_hosted_c6(){

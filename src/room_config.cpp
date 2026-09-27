@@ -15,7 +15,8 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
         const char *label = item["label"] | "";
         if (!item["entity_id"].is<const char *>() || !id[0] || strlen(id) >= 96 ||
             !item["label"].is<const char *>() || strlen(label) >= 64 ||
-            !item["placement"].is<unsigned>() || item["placement"].as<unsigned>() > 2) {
+            !item["placement"].is<unsigned>() || item["placement"].as<unsigned>() > 2 ||
+            (!item["room_index"].isNull() && (!item["room_index"].is<unsigned>() || item["room_index"].as<unsigned>() >= PANEL_MAX_ROOMS))) {
             error = "Invalid room entry: entity, label (max 63 UTF-8 bytes), and placement 0-2 required.";
             return false;
         }
@@ -46,6 +47,24 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
         snprintf(out.entity_id, sizeof(out.entity_id), "%s", item["entity_id"].as<const char *>());
         snprintf(out.label, sizeof(out.label), "%s", item["label"].as<const char *>());
         out.placement = item["placement"].as<uint8_t>();
+        out.room_index = item["room_index"] | 0;
     }
     return true;
+}
+
+bool config_service_parse_rooms(const String &json, PanelConfig &config, String &error) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json) || !doc.is<JsonArray>() || doc.size() == 0 || doc.size() > PANEL_MAX_ROOMS) {
+        error = "Rooms must be an array of 1 to 4 named rooms."; return false;
+    }
+    PanelRoom parsed[PANEL_MAX_ROOMS] = {};
+    for (size_t i = 0; i < doc.size(); ++i) {
+        const char *tab = doc[i]["tab_label"] | ""; const char *header = doc[i]["header"] | "";
+        if (!tab[0] || !header[0] || strlen(tab) >= PANEL_ROOM_NAME_LEN || strlen(header) >= PANEL_ROOM_NAME_LEN) {
+            error = "Every room needs a tab label and header of at most 31 characters."; return false;
+        }
+        snprintf(parsed[i].tab_label, sizeof(parsed[i].tab_label), "%s", tab);
+        snprintf(parsed[i].header, sizeof(parsed[i].header), "%s", header);
+    }
+    config.room_count = static_cast<uint8_t>(doc.size()); memset(config.rooms, 0, sizeof(config.rooms)); memcpy(config.rooms, parsed, sizeof(parsed)); return true;
 }
