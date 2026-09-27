@@ -45,6 +45,9 @@
 #define HA_TLS_POST_ARTWORK_COOLDOWN_MS 2500UL
 #define HA_MEDIA_ARTWORK_RETRY_MS 60000UL
 #define HA_MEDIA_ARTWORK_FAILURE_RETRY_MS 60000UL
+// subscribe_entities is push-based. This only reconciles state after an
+// unusually long quiet period, using the existing WSS connection.
+#define HA_ENTITY_SUBSCRIPTION_REFRESH_MS 90000UL
 #define HA_DISCOVERY_TIMEOUT_MS 15000UL
 #define HA_MAX_AREA_ENTITIES 48
 #define HA_MAX_ROOM_CONTROLS 4

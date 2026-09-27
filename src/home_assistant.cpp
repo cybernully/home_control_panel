@@ -114,6 +114,7 @@ uint32_t g_connected_since_ms = 0;
 uint32_t g_last_health_request_ms = 0;
 uint32_t g_last_http_ms = 0;
 uint32_t g_ws_restart_not_before_ms = 0;
+uint32_t g_last_entity_subscription_refresh_ms = 0;
 uint32_t g_discovery_started_ms = 0;
 uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
@@ -129,6 +130,7 @@ char g_resolved_area_name[64] = {};
 
 void record_action_result(const char *description, int code);
 void send_subscribe_entities_worker();
+void refresh_entity_subscription_worker();
 void populate_configured_layout_entities_worker();
 
 HomeAssistantMediaFavorite g_media_favorites[HA_MAX_MEDIA_FAVORITES] = {};
@@ -741,6 +743,7 @@ void send_subscribe_entities_worker() {
     for (size_t i = 0; i < g_entity_count; ++i) ids.add(g_entities[i].entity_id);
 
     if (send_json(doc)) {
+        g_last_entity_subscription_refresh_ms = millis();
         set_discovery_message("Subscribing to live Home Assistant state...");
     } else {
         set_discovery_message("Could not start live state subscription.");
@@ -1026,6 +1029,18 @@ void handle_action_result_worker(JsonDocument &doc) {
     g_action_request_id = 0;
     g_action_started_ms = 0;
     g_action_description[0] = '\0';
+}
+
+void refresh_entity_subscription_worker() {
+    if (!g_ws_authenticated || !g_subscribe_request_id || g_entity_count == 0) return;
+
+    JsonDocument unsubscribe;
+    unsubscribe["id"] = next_ws_id();
+    unsubscribe["type"] = "unsubscribe_events";
+    unsubscribe["subscription"] = g_subscribe_request_id;
+    send_json(unsubscribe);
+    Serial0.println("[HA] Refreshing live entity state subscription after idle interval");
+    send_subscribe_entities_worker();
 }
 
 void handle_ws_text_worker(uint8_t *payload, size_t length) {
@@ -1850,6 +1865,19 @@ void worker_task(void *) {
         if (g_ws_authenticated && take_flag(g_resubscribe_requested)) {
             send_subscribe_entities_worker();
             g_resume_entities_after_reconnect = false;
+        }
+
+        // A healthy subscribe_entities stream updates immediately when HA
+        // changes a configured device. Reconcile only after a long idle period
+        // so a dropped hosted-radio frame cannot leave a stale button behind.
+        HomeAssistantDiscoveryStatus live_status = {};
+        home_assistant_get_discovery_status(live_status);
+        if (g_ws_authenticated && live_status.discovery_complete &&
+            live_status.last_state_ms &&
+            millis() - live_status.last_state_ms >= HA_ENTITY_SUBSCRIPTION_REFRESH_MS &&
+            (!g_last_entity_subscription_refresh_ms ||
+             millis() - g_last_entity_subscription_refresh_ms >= HA_ENTITY_SUBSCRIPTION_REFRESH_MS)) {
+            refresh_entity_subscription_worker();
         }
 
         if (g_ws_authenticated && take_flag(g_discovery_requested)) {

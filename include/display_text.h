@@ -2,8 +2,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Montserrat's bundled subset lacks dash glyphs. Preserve complete UTF-8
-// sequences, normalize en/em dashes, and never leave a partial codepoint.
+// Montserrat's bundled subset lacks dash glyphs and the lower-case u-umlaut
+// used by the current media metadata. Preserve valid UTF-8 sequences otherwise,
+// normalize supported fallbacks, and never leave a partial codepoint.
 inline void panel_display_text(char *dest, size_t capacity, const char *text) {
     if (!capacity) return;
     const auto *p = reinterpret_cast<const uint8_t *>(text ? text : "");
@@ -20,6 +21,12 @@ inline void panel_display_text(char *dest, size_t capacity, const char *text) {
         if (width == 3 && p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0x93 || p[2] == 0x94)) {
             if (n + 1 >= capacity) break;
             dest[n++] = '-'; p += 3; continue;
+        }
+        if (width == 2 && p[0] == 0xC3 && p[1] == 0xBC) {
+            if (n + 1 >= capacity) break;
+            dest[n++] = 'u';
+            p += 2;
+            continue;
         }
         if (n + width >= capacity) break;
         for (size_t i = 0; i < width; ++i) dest[n++] = static_cast<char>(*p++);

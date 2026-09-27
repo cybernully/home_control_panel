@@ -18,7 +18,7 @@ if media:
     # Third-party embedded codecs use integer operations outside UBSan's host assumptions.
     args += ['-fno-sanitize=undefined','-D__LINUX__',f'-I{jpeg}','-Ilib/stb','src/modules/media_module.cpp','src/stb_image_impl.cpp',str(jpeg/'JPEGDEC.cpp')]
 else:
-    args += ['src/modules/room_module.cpp']
+    args += ['src/modules/room_module.cpp','src/ha_icons_font.c']
 args += ['-x','c']
 args += [str(p) for p in (lvgl/'src').rglob('*.c')]
 args += ['-o',executable]

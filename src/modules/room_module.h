@@ -14,7 +14,7 @@ private:
     struct Tile {
         struct FanChoice { Tile *tile = nullptr; uint8_t percentage = 0; lv_obj_t *button = nullptr; };
         RoomModule *owner = nullptr;
-        lv_obj_t *root = nullptr, *name = nullptr, *detail = nullptr, *icon_outer = nullptr, *icon_inner = nullptr;
+        lv_obj_t *root = nullptr, *name = nullptr, *detail = nullptr, *icon = nullptr;
         char entity_id[96] = {};
         bool scene = false;
         lv_obj_t *slider = nullptr;
@@ -40,6 +40,7 @@ private:
     uint32_t feedback_until_ = 0;
     void make_tile(Tile &tile, lv_obj_t *parent, int x, int y, int w, int h);
     void bind(Tile &tile, const HomeAssistantEntitySnapshot *entity);
+    void render_icon(Tile &tile, const char *type, bool active, bool available);
     void render_popup();
     static void brightness_cb(lv_event_t *e);
     static void fan_speed_cb(lv_event_t *e);

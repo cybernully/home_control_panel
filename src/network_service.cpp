@@ -14,7 +14,7 @@ uint32_t g_connect_started_ms=0,g_last_retry_ms=0;
 #if defined(CONFIG_ESP_WIFI_REMOTE_ENABLED) && CONFIG_ESP_WIFI_REMOTE_ENABLED
 extern "C" const uint8_t hosted_c6_firmware_start[];
 extern "C" const uint8_t hosted_c6_firmware_end[];
-constexpr uint32_t BUNDLED_HOSTED_MAJOR=2,BUNDLED_HOSTED_MINOR=12,BUNDLED_HOSTED_PATCH=8;
+constexpr uint32_t BUNDLED_HOSTED_MAJOR=2,BUNDLED_HOSTED_MINOR=11,BUNDLED_HOSTED_PATCH=6;
 constexpr size_t HOSTED_UPDATE_CHUNK=2048;
 uint32_t version_value(uint32_t a,uint32_t b,uint32_t c){return(a<<16)|(b<<8)|c;}
 bool maybe_update_hosted_c6(){
@@ -23,7 +23,8 @@ bool maybe_update_hosted_c6(){
     uint32_t hm=0,hmi=0,hp=0,sm=0,smi=0,sp=0;hostedGetHostVersion(&hm,&hmi,&hp);hostedGetSlaveVersion(&sm,&smi,&sp);
     const uint32_t hv=version_value(hm,hmi,hp),sv=version_value(sm,smi,sp),bv=version_value(BUNDLED_HOSTED_MAJOR,BUNDLED_HOSTED_MINOR,BUNDLED_HOSTED_PATCH);
     Serial0.printf("[Hosted] Host %lu.%lu.%lu | C6 %lu.%lu.%lu\n",(unsigned long)hm,(unsigned long)hmi,(unsigned long)hp,(unsigned long)sm,(unsigned long)smi,(unsigned long)sp);
-    if(hv==sv)return false;if(hv!=bv||sv>hv){Serial0.println("[Hosted] Version mismatch not eligible for automatic update");return false;}
+    if(hv!=bv){Serial0.println("[Hosted] Host version does not match this firmware build; automatic C6 update skipped");return false;}
+    if(sv==bv)return false;
     const size_t image_size=static_cast<size_t>(hosted_c6_firmware_end-hosted_c6_firmware_start);if(image_size<64*1024||image_size>4*1024*1024||hosted_c6_firmware_start[0]!=0xE9)return false;
     if(!hostedBeginUpdate())return false;size_t offset=0;while(offset<image_size){size_t chunk=image_size-offset;if(chunk>HOSTED_UPDATE_CHUNK)chunk=HOSTED_UPDATE_CHUNK;uint8_t *ptr=const_cast<uint8_t *>(hosted_c6_firmware_start+offset);if(!hostedWriteUpdate(ptr,static_cast<uint32_t>(chunk)))return false;offset+=chunk;delay(1);}if(!hostedEndUpdate()||!hostedActivateUpdate())return false;Serial0.println("[Hosted] C6 update complete; restarting P4");Serial0.flush();delay(1500);ESP.restart();return true;
 #else

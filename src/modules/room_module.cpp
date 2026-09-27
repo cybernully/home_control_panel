@@ -1,6 +1,7 @@
 #include "room_module.h"
 #include "config_service.h"
 #include "display_text.h"
+#include "ha_icons_font.h"
 #include "module_ui.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -30,9 +31,36 @@ bool hidden(const char *id) {
     const auto *p = preference(id);
     return p && p->placement == 2;
 }
+bool contains_ci(const char *text, const char *needle) {
+    if (!text || !needle || !needle[0]) return false;
+    for (const char *start = text; *start; ++start) {
+        const char *a = start;
+        const char *b = needle;
+        while (*a && *b) {
+            char left = *a, right = *b;
+            if (left >= 'A' && left <= 'Z') left = static_cast<char>(left - 'A' + 'a');
+            if (right >= 'A' && right <= 'Z') right = static_cast<char>(right - 'A' + 'a');
+            if (left != right) break;
+            ++a; ++b;
+        }
+        if (!*b) return true;
+    }
+    return false;
+}
 const char *display_type(const HomeAssistantEntitySnapshot &entity) {
     const auto *p = preference(entity.entity_id);
-    return p && p->device_type[0] && strcmp(p->device_type, "auto") != 0 ? p->device_type : entity.domain;
+    if (p && p->device_type[0] && strcmp(p->device_type, "auto") != 0) return p->device_type;
+    if (strcmp(entity.domain, "switch") != 0) return entity.domain;
+
+    // HA exposes many RF/legacy devices as switches. Make the default useful
+    // without requiring IDs or manual type selection for obvious names. A web
+    // override above always wins for ambiguous devices.
+    const char *name = p && p->label[0] ? p->label : entity.name;
+    if (contains_ci(name, "light") || contains_ci(name, "lamp")) return "light";
+    if (contains_ci(name, "fan")) return "fan";
+    if (contains_ci(name, "shade") || contains_ci(name, "blind") ||
+        contains_ci(name, "curtain")) return "cover";
+    return entity.domain;
 }
 void display(lv_obj_t *obj, const char *text) {
     char safe[256]; panel_display_text(safe, sizeof(safe), text);
@@ -41,6 +69,16 @@ void display(lv_obj_t *obj, const char *text) {
 void ellipsis(lv_obj_t *obj, int width) {
     lv_obj_set_width(obj, width);
     lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
+}
+void set_icon_glyph(lv_obj_t *label_obj, uint32_t codepoint) {
+    // MDI glyphs live in Unicode's private-use area.  Encode explicitly so
+    // the source remains portable regardless of the compiler file encoding.
+    char text[5] = {};
+    text[0] = static_cast<char>(0xF0 | (codepoint >> 18));
+    text[1] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+    text[2] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+    text[3] = static_cast<char>(0x80 | (codepoint & 0x3F));
+    lv_label_set_text(label_obj, text);
 }
 }
 
@@ -53,8 +91,10 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
     ellipsis(t.name, w - 96);
     lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, 78, 20);
     t.detail = label(t.root, "", &lv_font_montserrat_14, MUTED);
-    ellipsis(t.detail, w - 40);
-    lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+    // Reserve the left column for the device glyph.  The old detail position
+    // started below the glyph, which made the icon appear over its first words.
+    ellipsis(t.detail, w - 96);
+    lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, 78, -20);
     lv_obj_add_event_cb(t.root, action_cb, LV_EVENT_ALL, &t);
     // The wider popup tiles have an independent brightness target.
     if (w == 484) {
@@ -78,16 +118,14 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
             lv_obj_add_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
         }
     }
-    // Keep decorative icon layers after the established text/controls so
-    // they cannot alter the slider's child ordering or input behavior.
-    t.icon_outer = lv_obj_create(t.root);
-    lv_obj_set_size(t.icon_outer, 42, 42); lv_obj_set_pos(t.icon_outer, 20, 56);
-    lv_obj_set_style_radius(t.icon_outer, 21, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(t.icon_outer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(t.icon_outer, 3, LV_PART_MAIN);
-    t.icon_inner = lv_obj_create(t.icon_outer);
-    lv_obj_set_size(t.icon_inner, 20, 20); lv_obj_center(t.icon_inner);
-    lv_obj_set_style_radius(t.icon_inner, 10, LV_PART_MAIN);
+    // A label backed by Home Assistant's MDI icon family is decorative only.
+    // It deliberately has no click target, leaving the entire tile reliable
+    // for touch actions.
+    t.icon = label(t.root, "", &ha_icons_font, MUTED);
+    lv_obj_set_size(t.icon, 44, 44); lv_obj_set_pos(t.icon, 18, 15);
+    lv_obj_set_style_text_align(t.icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_remove_flag(t.icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(t.icon, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_flag(t.root, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -123,6 +161,10 @@ void RoomModule::create(lv_obj_t *parent) {
             lv_obj_set_style_radius(menu_line, 2, LV_PART_MAIN);
             lv_obj_set_style_bg_color(menu_line, lv_color_hex(TEXT), LV_PART_MAIN);
             lv_obj_set_style_border_width(menu_line, 0, LV_PART_MAIN);
+            // The menu bars decorate the button; they must not become an
+            // independent touch target above it.
+            lv_obj_remove_flag(menu_line, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_flag(menu_line, LV_OBJ_FLAG_EVENT_BUBBLE);
         }
         lv_obj_add_event_cb(g.button, group_cb, LV_EVENT_CLICKED, &g);
     }
@@ -197,13 +239,44 @@ void RoomModule::bind(Tile &t, const HomeAssistantEntitySnapshot *e) {
     set_enabled(t.root, e->available);
     lv_obj_set_style_bg_color(t.root, lv_color_hex(active ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
     lv_obj_set_style_border_color(t.root, lv_color_hex(active ? 0x38BDF8 : BORDER), LV_PART_MAIN);
-    // A hollow glyph represents an inactive device; the filled color glyph
-    // makes active/open devices recognizable at a glance.
-    const uint32_t icon_color = !e->available ? MUTED : active ? 0x38BDF8 : BORDER;
-    lv_obj_set_style_border_color(t.icon_outer, lv_color_hex(icon_color), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(t.icon_inner, lv_color_hex(active ? icon_color : CARD_ALT), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(t.icon_inner, active ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+    render_icon(t, type, active, e->available);
     lv_obj_remove_flag(t.root, LV_OBJ_FLAG_HIDDEN);
+}
+
+void RoomModule::render_icon(Tile &t, const char *type, bool active, bool available) {
+    // Match the Home Assistant icon language: familiar Material Design Icons
+    // rather than improvised shapes. Off states use the MDI outline/off
+    // variants; active states use their filled counterparts.
+    constexpr uint32_t MDI_BLINDS = 0xF00AC;
+    constexpr uint32_t MDI_FAN = 0xF0210;
+    constexpr uint32_t MDI_LIGHTBULB = 0xF0335;
+    constexpr uint32_t MDI_LIGHTBULB_OUTLINE = 0xF0336;
+    constexpr uint32_t MDI_PALETTE = 0xF03D8;
+    constexpr uint32_t MDI_POWER = 0xF0425;
+    constexpr uint32_t MDI_SOCKET_US = 0xF07E9;
+    constexpr uint32_t MDI_FAN_OFF = 0xF081D;
+    constexpr uint32_t MDI_POWER_OFF = 0xF0902;
+    constexpr uint32_t MDI_PALETTE_OUTLINE = 0xF0E0C;
+    constexpr uint32_t MDI_LIGHTBULB_OFF = 0xF0E4F;
+    constexpr uint32_t MDI_BLINDS_OPEN = 0xF1011;
+    constexpr uint32_t MDI_TOOLS = 0xF1064;
+    const uint32_t color = !available ? MUTED : active ? 0x38BDF8 : MUTED;
+    uint32_t glyph = active ? MDI_POWER : MDI_POWER_OFF;
+    if (strcmp(type, "light") == 0)
+        glyph = active ? MDI_LIGHTBULB : MDI_LIGHTBULB_OUTLINE;
+    else if (strcmp(type, "fan") == 0)
+        glyph = active ? MDI_FAN : MDI_FAN_OFF;
+    else if (strcmp(type, "cover") == 0)
+        glyph = active ? MDI_BLINDS_OPEN : MDI_BLINDS;
+    else if (strcmp(type, "scene") == 0)
+        glyph = active ? MDI_PALETTE : MDI_PALETTE_OUTLINE;
+    else if (strcmp(type, "switch") == 0)
+        glyph = active ? MDI_SOCKET_US : MDI_POWER_OFF;
+    else if (strcmp(type, "tools") == 0)
+        glyph = MDI_TOOLS;
+    if (!available && strcmp(type, "light") == 0) glyph = MDI_LIGHTBULB_OFF;
+    set_icon_glyph(t.icon, glyph);
+    lv_obj_set_style_text_color(t.icon, lv_color_hex(color), LV_PART_MAIN);
 }
 
 void RoomModule::update() {

@@ -3,6 +3,6 @@
 .global hosted_c6_firmware_start
 .global hosted_c6_firmware_end
 hosted_c6_firmware_start:
-.incbin "data/hosted/esp32c6-v2.12.8.bin"
+.incbin "data/hosted/esp32c6-v2.11.6.bin"
 hosted_c6_firmware_end:
 .balign 4

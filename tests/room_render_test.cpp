@@ -57,12 +57,12 @@ int main() {
     lv_display_set_buffers(display,buffer,nullptr,sizeof(buffer),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(display,flush);
     auto *root=lv_screen_active();
     entity("light.desk","Desk — warm","light","on");entity("light.ceiling","Ceiling","light","off");
-    entity("switch.fan","Desk fan","switch","on");entity("cover.window","Window shades","cover","open");
+    entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entity("cover.window","Window shades","cover","open");
     entity("scene.focus","Focus","scene","scening");entity("light.offline","Reading lamp","light","unavailable",false);
     entity("switch.hidden","Hidden control","switch","on");
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);std::string name="Accent light "+std::to_string(i+1);entity(id.c_str(),name.c_str(),"light","off");}
     pref("light.desk","Desk — warm",1);pref("light.ceiling","Ceiling",1);pref("scene.focus","Focus",1);
-    pref("cover.window","Window shades",1);pref("switch.fan","Desk fan",1);pref("light.missing","Reading lamp",1);pref("switch.hidden","",2);
+    pref("cover.window","Window shades",1);pref("switch.fan","Desk fan",1);pref("switch.lamp","Desk lamp",1);pref("light.missing","Reading lamp",1);pref("switch.hidden","",2);
     RoomModule room;room.create(root);room.update();
     lv_obj_update_layout(root); assert(find(root,"Office - upstairs"));assert(find(root,"Desk - warm"));
     shot(".test-build/room-favorites.ppm");
@@ -73,6 +73,9 @@ int main() {
     auto *desk=lv_obj_get_parent(find(sheet,"Desk - warm"));
     auto *slider=lv_obj_get_child(desk,2);
     assert(!lv_obj_has_flag(slider,LV_OBJ_FLAG_EVENT_BUBBLE));
+    auto *device_icon=lv_obj_get_child(desk,-1);
+    assert(!lv_obj_has_flag(device_icon,LV_OBJ_FLAG_CLICKABLE));
+    assert(lv_obj_has_flag(device_icon,LV_OBJ_FLAG_EVENT_BUBBLE));
     lv_obj_send_event(slider,LV_EVENT_PRESSED,nullptr);
     lv_slider_set_value(slider,45,LV_ANIM_OFF);
     room.update();assert(lv_slider_get_value(slider)==45); // Refresh must not fight a drag.
@@ -83,7 +86,7 @@ int main() {
     lv_obj_send_event(slider,LV_EVENT_RELEASED,nullptr);
     assert(brightness_calls==1); // Lost touch never sends a brightness action.
     click(root,"Next");shot(".test-build/room-lights-page2.ppm");assert(find(root,"2 / 2"));
-    click(root,"Close");click(root,"Devices   1");assert(!find(root,"Hidden control"));
+    click(root,"Close");click(root,"Devices   2");assert(!find(root,"Hidden control"));
     room.on_deactivate();
     config.room_control_count=0;room.update();shot(".test-build/room-empty.ppm");
     click(root,"Lights   11");

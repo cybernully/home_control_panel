@@ -6,7 +6,7 @@ required=[
     "platformio.ini","partitions.csv","include/app_config.h","include/board_lvgl.h",
     "include/config_service.h","include/module.h","include/module_registry.h",
     "include/home_assistant.h","include/web_manager.h","src/main.cpp","src/board_lvgl.cpp",
-    "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/config_service.cpp","src/module_registry.cpp","src/runtime_stats.cpp","include/runtime_stats.h",
+    "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/ha_icons_font.c","include/ha_icons_font.h","src/config_service.cpp","src/module_registry.cpp","src/runtime_stats.cpp","include/runtime_stats.h",
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
@@ -41,7 +41,7 @@ pio=(root/"platformio.ini").read_text()
 assert "default_envs = jc8012p4a1c_2635" in pio
 assert "[env:jc8012p4a1c_2624]" in pio and "board = esp32-p4\n" in pio
 assert "[env:jc8012p4a1c_2635]" in pio and "board = esp32-p4_r3" in pio
-assert "55.03.39" in pio
+assert "55.03.37" in pio
 assert "links2004/WebSockets@2.7.3" in pio
 assert "JPEGDEC.git#430cf789ec96a28fd65c38f0cc3818ab4728fe57" in pio
 assert "-DLV_USE_LODEPNG=1" in pio
