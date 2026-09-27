@@ -38,6 +38,13 @@
 #define HA_BOOT_NETWORK_STABLE_MS 10000UL
 #define HA_TLS_ALLOW_INSECURE 1
 #define HA_WS_RECONNECT_MS 15000UL
+#define HA_TLS_RELEASE_SETTLE_MS 600UL
+// Do not immediately reopen WSS after a separate HTTPS artwork transfer.  The
+// ESP-Hosted SDIO transport and P4 AES DMA buffers need a short idle window to
+// return their receive buffers before another TLS handshake starts.
+#define HA_TLS_POST_ARTWORK_COOLDOWN_MS 2500UL
+#define HA_MEDIA_ARTWORK_RETRY_MS 60000UL
+#define HA_MEDIA_ARTWORK_FAILURE_RETRY_MS 60000UL
 #define HA_DISCOVERY_TIMEOUT_MS 15000UL
 #define HA_MAX_AREA_ENTITIES 48
 #define HA_MAX_ROOM_CONTROLS 4

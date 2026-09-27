@@ -30,6 +30,8 @@ struct HaEntityModel {
     bool available;
     bool supports_brightness;
     bool supports_position;
+    bool supports_fan_speed;
+    uint8_t fan_speed_pct;
 
     // media_player state retained in the same PSRAM model so there is still a
     // single Home Assistant subscription/cache.
@@ -51,6 +53,7 @@ enum class HaActionType : uint8_t {
     Toggle,
     AreaBrightness,
     LightBrightness,
+    FanSpeed,
     AllLights,
     Scene,
     MediaPlayPause,
@@ -110,6 +113,7 @@ bool g_resubscribe_requested = false;
 uint32_t g_connected_since_ms = 0;
 uint32_t g_last_health_request_ms = 0;
 uint32_t g_last_http_ms = 0;
+uint32_t g_ws_restart_not_before_ms = 0;
 uint32_t g_discovery_started_ms = 0;
 uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
@@ -140,6 +144,8 @@ char g_media_browse_content_type[HA_MEDIA_CONTENT_TYPE_LEN] = {};
 bool g_artwork_requested = false;
 char g_artwork_request_entity_id[96] = {};
 char g_artwork_request_url[HA_MEDIA_ARTWORK_URL_LEN] = {};
+char g_artwork_last_failed_url[HA_MEDIA_ARTWORK_URL_LEN] = {};
+uint32_t g_artwork_retry_not_before_ms = 0;
 uint8_t *g_artwork_data = nullptr;
 HomeAssistantMediaArtworkInfo g_artwork_info = {};
 
@@ -221,6 +227,8 @@ void reset_discovery_state(const char *message) {
     g_media_favorite_count = 0;
     g_media_browse_requested = false;
     g_artwork_requested = false;
+    g_artwork_last_failed_url[0] = '\0';
+    g_artwork_retry_not_before_ms = 0;
     portEXIT_CRITICAL(&g_mux);
 
     g_resolved_area_id[0] = '\0';
@@ -355,6 +363,11 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
         model.supports_position = true;
     }
 
+    if (strcmp(model.domain, "fan") == 0 && !attrs["percentage"].isNull()) {
+        model.fan_speed_pct = static_cast<uint8_t>(constrain(attrs["percentage"].as<int>(), 0, 100));
+        model.supports_fan_speed = true;
+    }
+
     if (strcmp(model.domain, "media_player") == 0) {
         if (!attrs["volume_level"].isNull()) {
             float level = attrs["volume_level"].as<float>();
@@ -443,6 +456,9 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
                 } else if (strcmp(key, "current_position") == 0) {
                     model->position_pct = -1;
                     model->supports_position = false;
+                } else if (strcmp(key, "percentage") == 0) {
+                    model->fan_speed_pct = 0;
+                    model->supports_fan_speed = false;
                 } else if (strcmp(key, "friendly_name") == 0) {
                     fallback_name_from_id(model->entity_id, model->name, sizeof(model->name));
                 } else if (strcmp(key, "volume_level") == 0) {
@@ -1521,6 +1537,7 @@ bool action_is_idempotent(const HaAction &action) {
         case HaActionType::Toggle:
         case HaActionType::AreaBrightness:
         case HaActionType::LightBrightness:
+        case HaActionType::FanSpeed:
         case HaActionType::AllLights:
         case HaActionType::Scene:
         case HaActionType::MediaVolume:
@@ -1605,6 +1622,18 @@ void process_action_worker(const HaAction &action) {
         code = call_service_with_recovery(action, "light", action.value ? "turn_on" : "turn_off",
                                           body, retried);
         snprintf(description, sizeof(description), "%s brightness", model->name);
+    } else if (action.type == HaActionType::FanSpeed) {
+        HaEntityModel *model = find_entity_worker(action.entity_id);
+        if (!model || !model->available || strcmp(model->domain, "fan") != 0) {
+            record_action_result("Fan no longer available", -103); return;
+        }
+        JsonDocument doc;
+        doc["entity_id"] = model->entity_id;
+        doc["percentage"] = action.value;
+        String body; serializeJson(doc, body);
+        code = call_service_with_recovery(action, "fan", action.value ? "set_percentage" : "turn_off",
+                                          body, retried);
+        snprintf(description, sizeof(description), "%s fan speed", model->name);
     } else if (action.type == HaActionType::AreaBrightness) {
         const bool turn_off = action.value == 0;
         code = call_service_with_recovery(action, "light", turn_off ? "turn_off" : "turn_on",
@@ -1784,7 +1813,18 @@ void worker_task(void *) {
             stop_websocket_worker("Home Assistant credentials changed; reconnecting...");
         }
 
-        if (configured_snapshot() && !g_ws_started) start_websocket_worker();
+        // HTTPS health checks and WSS handshakes both require the small pool
+        // of DMA-capable internal RAM used by the P4 AES engine.  Give a
+        // pending health check exclusive use of that pool before opening WSS.
+        bool health_pending = false;
+        portENTER_CRITICAL(&g_mux);
+        health_pending = g_health_requested || g_health_in_progress;
+        portEXIT_CRITICAL(&g_mux);
+        const bool websocket_cooldown_complete = !g_ws_restart_not_before_ms ||
+            static_cast<int32_t>(millis() - g_ws_restart_not_before_ms) >= 0;
+        if (configured_snapshot() && !g_ws_started && !health_pending && websocket_cooldown_complete) {
+            start_websocket_worker();
+        }
         if (g_ws_started) g_ws.loop();
 
         if (g_action_in_flight &&
@@ -1877,9 +1917,27 @@ void worker_task(void *) {
                     copy_text(g_discovery.message, sizeof(g_discovery.message),
                               "Refreshing media artwork; reconnecting after download...");
                     portEXIT_CRITICAL(&g_mux);
-                    vTaskDelay(pdMS_TO_TICKS(100));
+                    // NetworkClientSecure and the AES DMA driver release
+                    // allocations asynchronously after stop(). Starting the
+                    // artwork TLS client immediately caused the -5 / DMA
+                    // allocation failures seen on the serial console.
+                    vTaskDelay(pdMS_TO_TICKS(HA_TLS_RELEASE_SETTLE_MS));
                 }
-                download_artwork_worker(artwork_entity, artwork_url);
+                const int artwork_result = download_artwork_worker(artwork_entity, artwork_url);
+                portENTER_CRITICAL(&g_mux);
+                if (artwork_result >= 200 && artwork_result < 300) {
+                    g_artwork_last_failed_url[0] = '\0';
+                    g_artwork_retry_not_before_ms = 0;
+                } else {
+                    copy_text(g_artwork_last_failed_url, sizeof(g_artwork_last_failed_url), artwork_url);
+                    g_artwork_retry_not_before_ms = millis() + HA_MEDIA_ARTWORK_FAILURE_RETRY_MS;
+                }
+                // A failed or successful HTTPS transfer both leave the hosted
+                // radio with outstanding RX/TLS cleanup.  Avoid immediately
+                // starting a WSS handshake, which was the path to the SDIO
+                // receive-buffer assertion in the captured crash.
+                g_ws_restart_not_before_ms = millis() + HA_TLS_POST_ARTWORK_COOLDOWN_MS;
+                portEXIT_CRITICAL(&g_mux);
                 g_last_http_ms = millis();
                 if (g_ws_started) g_ws.loop();
                 vTaskDelay(pdMS_TO_TICKS(5));
@@ -1895,7 +1953,10 @@ void worker_task(void *) {
         }
         portEXIT_CRITICAL(&g_mux);
 
-        if (do_health && http_ready) {
+        // Never begin a second TLS connection alongside an active WSS client.
+        // A pending health check is served once the socket is intentionally
+        // released (or before the initial WSS connection starts).
+        if (do_health && http_ready && !g_ws_started && websocket_cooldown_complete) {
             run_health_check_worker();
             g_last_http_ms = millis();
             if (g_ws_started) g_ws.loop();
@@ -1916,6 +1977,8 @@ void snapshot_entity(const HaEntityModel &source, HomeAssistantEntitySnapshot &o
     out.available = source.available;
     out.supports_brightness = source.supports_brightness;
     out.supports_position = source.supports_position;
+    out.supports_fan_speed = source.supports_fan_speed;
+    out.fan_speed_pct = source.fan_speed_pct;
 }
 
 
@@ -2254,6 +2317,7 @@ bool home_assistant_request_media_artwork(const char *entity_id) {
     if (!entity_id || !entity_id[0] || !g_worker || !configured_snapshot()) return false;
 
     bool found = false;
+    bool queued = false;
     char picture[HA_MEDIA_ARTWORK_URL_LEN] = {};
     portENTER_CRITICAL(&g_mux);
     for (size_t i = 0; i < g_entity_count; ++i) {
@@ -2266,16 +2330,27 @@ bool home_assistant_request_media_artwork(const char *entity_id) {
         }
     }
     if (found) {
-        copy_text(g_artwork_request_entity_id, sizeof(g_artwork_request_entity_id), entity_id);
-        copy_text(g_artwork_request_url, sizeof(g_artwork_request_url), picture);
-        g_artwork_requested = true;
+        const uint32_t now = millis();
+        const bool in_failure_backoff =
+            strcmp(g_artwork_last_failed_url, picture) == 0 &&
+            g_artwork_retry_not_before_ms &&
+            static_cast<int32_t>(now - g_artwork_retry_not_before_ms) < 0;
+        const bool already_queued = g_artwork_requested &&
+            strcmp(g_artwork_request_entity_id, entity_id) == 0 &&
+            strcmp(g_artwork_request_url, picture) == 0;
+        if (!in_failure_backoff && !already_queued) {
+            copy_text(g_artwork_request_entity_id, sizeof(g_artwork_request_entity_id), entity_id);
+            copy_text(g_artwork_request_url, sizeof(g_artwork_request_url), picture);
+            g_artwork_requested = true;
+            queued = true;
+        }
     }
     portEXIT_CRITICAL(&g_mux);
-    if (found) {
+    if (queued) {
         Serial0.printf("[HA] Media artwork queued: entity=%s picture_chars=%u\n",
                        entity_id, static_cast<unsigned>(strlen(picture)));
     }
-    return found;
+    return queued;
 }
 
 void home_assistant_get_media_artwork_info(HomeAssistantMediaArtworkInfo &out) {
@@ -2433,6 +2508,15 @@ bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t bright
     action.type = HaActionType::LightBrightness;
     copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
     action.value = constrain(static_cast<int>(brightness_pct), 0, 100);
+    return queue_action(action);
+}
+
+bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage) {
+    if (!entity_id || strncmp(entity_id, "fan.", 4) != 0) return false;
+    HaAction action = {};
+    action.type = HaActionType::FanSpeed;
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    action.value = constrain(static_cast<int>(percentage), 0, 100);
     return queue_action(action);
 }
 

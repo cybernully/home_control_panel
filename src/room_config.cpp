@@ -13,12 +13,18 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
         JsonVariant item = doc[i];
         const char *id = item["entity_id"] | "";
         const char *label = item["label"] | "";
+        const char *device_type = item["device_type"] | "auto";
         if (!item["entity_id"].is<const char *>() || !id[0] || strlen(id) >= 96 ||
             !item["label"].is<const char *>() || strlen(label) >= 64 ||
+            (!item["device_type"].isNull() && (!item["device_type"].is<const char *>() || strlen(device_type) >= 12)) ||
             !item["placement"].is<unsigned>() || item["placement"].as<unsigned>() > 2 ||
             (!item["room_index"].isNull() && (!item["room_index"].is<unsigned>() || item["room_index"].as<unsigned>() >= PANEL_MAX_ROOMS))) {
             error = "Invalid room entry: entity, label (max 63 UTF-8 bytes), and placement 0-2 required.";
             return false;
+        }
+        if (strcmp(device_type,"auto") && strcmp(device_type,"light") && strcmp(device_type,"switch") &&
+            strcmp(device_type,"fan") && strcmp(device_type,"cover") && strcmp(device_type,"scene")) {
+            error = "Device type must be auto, light, switch, fan, cover, or scene."; return false;
         }
         const char *dot = strchr(id, '.');
         if (!dot || !dot[1] || !(strncmp(id,"light.",6)==0 || strncmp(id,"switch.",7)==0 ||
@@ -48,6 +54,7 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
         snprintf(out.label, sizeof(out.label), "%s", item["label"].as<const char *>());
         out.placement = item["placement"].as<uint8_t>();
         out.room_index = item["room_index"] | 0;
+        snprintf(out.device_type, sizeof(out.device_type), "%s", item["device_type"] | "auto");
     }
     return true;
 }

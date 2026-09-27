@@ -42,6 +42,8 @@ struct HomeAssistantEntitySnapshot {
     bool available;
     bool supports_brightness;
     bool supports_position;
+    bool supports_fan_speed;
+    uint8_t fan_speed_pct;
 };
 
 struct HomeAssistantLightStats {
@@ -145,5 +147,6 @@ size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t
 size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size_t max_count);
 
 bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct);
+bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage);
 
 bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySnapshot &out);

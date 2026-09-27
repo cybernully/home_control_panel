@@ -12,11 +12,13 @@ public:
     void on_deactivate() override;
 private:
     struct Tile {
+        struct FanChoice { Tile *tile = nullptr; uint8_t percentage = 0; lv_obj_t *button = nullptr; };
         RoomModule *owner = nullptr;
-        lv_obj_t *root = nullptr, *name = nullptr, *detail = nullptr;
+        lv_obj_t *root = nullptr, *name = nullptr, *detail = nullptr, *icon_outer = nullptr, *icon_inner = nullptr;
         char entity_id[96] = {};
         bool scene = false;
         lv_obj_t *slider = nullptr;
+        FanChoice fan_choices[4];
         bool dragging = false, pressed = false;
     };
     struct Group {
@@ -40,6 +42,7 @@ private:
     void bind(Tile &tile, const HomeAssistantEntitySnapshot *entity);
     void render_popup();
     static void brightness_cb(lv_event_t *e);
+    static void fan_speed_cb(lv_event_t *e);
     static void action_cb(lv_event_t *e);
     static void group_cb(lv_event_t *e);
     static void close_cb(lv_event_t *e);

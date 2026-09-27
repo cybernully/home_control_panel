@@ -16,6 +16,9 @@ struct PanelRoomControl {
     char label[64];
     uint8_t placement;
     uint8_t room_index;
+    // "auto" uses the entity's Home Assistant domain; an explicit value lets
+    // the owner render a compatible device as light, switch, fan, cover, or scene.
+    char device_type[12];
 };
 
 struct PanelRoom {

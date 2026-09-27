@@ -27,6 +27,7 @@ bool home_assistant_commands_ready(){return true;}
 bool home_assistant_queue_toggle(const char *id){target=id;++toggles;return true;}
 bool home_assistant_queue_scene(const char *id){target=id;return true;}
 bool home_assistant_queue_light_brightness(const char *id,uint8_t){target=id;++brightness_calls;return true;}
+bool home_assistant_queue_fan_speed(const char *id,uint8_t){target=id;++brightness_calls;return true;}
 static unsigned char buffer[1280*658*4];
 static void flush(lv_display_t *display,const lv_area_t *,uint8_t *){lv_display_flush_ready(display);}
 static void shot(const char *name) {

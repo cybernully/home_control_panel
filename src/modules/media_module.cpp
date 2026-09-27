@@ -877,15 +877,15 @@ void MediaModule::update() {
                                    cached.data_size > 0;
         const uint32_t now = millis();
         // A request can be accepted by the worker but fail later (expired proxy
-        // URL, transient Wi-Fi, or artwork decode response). Retry the same
-        // cover with a bounded interval until the cache holds this exact URL.
-        if (!cache_matches && (!artwork_request_ms_ || now - artwork_request_ms_ >= 8000UL)) {
+        // URL, transient Wi-Fi, or artwork decode response). Retrying every few
+        // seconds creates a continuous cycle of TLS handshakes on ESP-Hosted.
+        // A changed cover remains immediate; an unchanged failed cover waits.
+        if (!cache_matches && (!artwork_request_ms_ || now - artwork_request_ms_ >= HA_MEDIA_ARTWORK_RETRY_MS)) {
             if (home_assistant_request_media_artwork(active.entity_id)) {
                 artwork_request_ms_ = now;
             } else {
                 artwork_request_ms_ = now;
-                Serial0.printf("[Media] Artwork request could not be queued for %s\n",
-                               active.entity_id);
+                Serial0.printf("[Media] Artwork retry deferred for %s\n", active.entity_id);
             }
         }
     } else {

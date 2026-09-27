@@ -30,6 +30,10 @@ bool hidden(const char *id) {
     const auto *p = preference(id);
     return p && p->placement == 2;
 }
+const char *display_type(const HomeAssistantEntitySnapshot &entity) {
+    const auto *p = preference(entity.entity_id);
+    return p && p->device_type[0] && strcmp(p->device_type, "auto") != 0 ? p->device_type : entity.domain;
+}
 void display(lv_obj_t *obj, const char *text) {
     char safe[256]; panel_display_text(safe, sizeof(safe), text);
     lv_label_set_text(obj, safe);
@@ -46,8 +50,8 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
     lv_obj_set_style_radius(t.root, 22, LV_PART_MAIN);
     t.name = lv_obj_get_child(t.root, 0);
     lv_obj_set_style_text_font(t.name, &lv_font_montserrat_20, LV_PART_MAIN);
-    ellipsis(t.name, w - 40);
-    lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, 20, 20);
+    ellipsis(t.name, w - 96);
+    lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, 78, 20);
     t.detail = label(t.root, "", &lv_font_montserrat_14, MUTED);
     ellipsis(t.detail, w - 40);
     lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, 20, -20);
@@ -62,7 +66,28 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
         lv_obj_remove_flag(t.slider, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_add_event_cb(t.slider, brightness_cb, LV_EVENT_ALL, &t);
         lv_obj_add_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
+        const char *fan_labels[] = {"Off", "Low", "Med", "High"};
+        const uint8_t fan_values[] = {0, 33, 66, 100};
+        for (uint8_t i = 0; i < 4; ++i) {
+            t.fan_choices[i].tile = &t;
+            t.fan_choices[i].percentage = fan_values[i];
+            t.fan_choices[i].button = button(t.root, fan_labels[i], 244 + i * 52, 82, 48, 28, CARD_ALT);
+            lv_obj_set_style_text_font(lv_obj_get_child(t.fan_choices[i].button, 0), &lv_font_montserrat_12, LV_PART_MAIN);
+            lv_obj_remove_flag(t.fan_choices[i].button, LV_OBJ_FLAG_EVENT_BUBBLE);
+            lv_obj_add_event_cb(t.fan_choices[i].button, fan_speed_cb, LV_EVENT_CLICKED, &t.fan_choices[i]);
+            lv_obj_add_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
+        }
     }
+    // Keep decorative icon layers after the established text/controls so
+    // they cannot alter the slider's child ordering or input behavior.
+    t.icon_outer = lv_obj_create(t.root);
+    lv_obj_set_size(t.icon_outer, 42, 42); lv_obj_set_pos(t.icon_outer, 20, 56);
+    lv_obj_set_style_radius(t.icon_outer, 21, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(t.icon_outer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(t.icon_outer, 3, LV_PART_MAIN);
+    t.icon_inner = lv_obj_create(t.icon_outer);
+    lv_obj_set_size(t.icon_inner, 20, 20); lv_obj_center(t.icon_inner);
+    lv_obj_set_style_radius(t.icon_inner, 10, LV_PART_MAIN);
     lv_obj_add_flag(t.root, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -89,6 +114,16 @@ void RoomModule::create(lv_obj_t *parent) {
         g.button = button(parent, GROUP_NAMES[i], 24 + i * 312, 452, 296, 90);
         lv_obj_set_style_radius(g.button, 45, LV_PART_MAIN);
         g.text = lv_obj_get_child(g.button, 0);
+        lv_obj_set_pos(g.text, 58, 34);
+        // Three small bars form a menu icon without relying on an optional
+        // Unicode icon font.
+        for (int line = 0; line < 3; ++line) {
+            lv_obj_t *menu_line = lv_obj_create(g.button);
+            lv_obj_set_size(menu_line, 25, 3); lv_obj_set_pos(menu_line, 22, 29 + line * 9);
+            lv_obj_set_style_radius(menu_line, 2, LV_PART_MAIN);
+            lv_obj_set_style_bg_color(menu_line, lv_color_hex(TEXT), LV_PART_MAIN);
+            lv_obj_set_style_border_width(menu_line, 0, LV_PART_MAIN);
+        }
         lv_obj_add_event_cb(g.button, group_cb, LV_EVENT_CLICKED, &g);
     }
     status_ = label(parent, "Connecting to Home Assistant...", &lv_font_montserrat_14, MUTED);
@@ -129,14 +164,17 @@ void RoomModule::bind(Tile &t, const HomeAssistantEntitySnapshot *e) {
     t.scene = strcmp(e->domain, "scene") == 0;
     const auto *p = preference(e->entity_id);
     display(t.name, p && p->label[0] ? p->label : e->name[0] ? e->name : e->entity_id);
+    const char *type = display_type(*e);
     const bool active = strcmp(e->state,"on")==0 || strcmp(e->state,"open")==0 || strcmp(e->state,"opening")==0;
     char detail[112];
     if (!e->available) snprintf(detail, sizeof(detail), "Unavailable");
     else if (t.scene) snprintf(detail, sizeof(detail), "Scene  |  Tap to activate");
-    else if (strcmp(e->domain,"cover")==0) snprintf(detail,sizeof(detail),"%s  |  Tap to %s",e->state,active?"close":"open");
+    else if (strcmp(type,"cover")==0) snprintf(detail,sizeof(detail),"%s  |  Tap to %s",e->state,active?"close":"open");
+    else if (strcmp(type,"fan")==0) snprintf(detail,sizeof(detail),active?"Fan %u%%":"Fan off",e->fan_speed_pct);
     else if (e->supports_brightness && active) snprintf(detail,sizeof(detail),"On at %u%%  |  Tap to turn off",e->brightness_pct);
     else snprintf(detail,sizeof(detail),"%s  |  Tap to turn %s",active?"On":"Off",active?"off":"on");
-    const bool dimmer = t.slider && e->supports_brightness && strcmp(e->domain, "light") == 0;
+    const bool dimmer = t.slider && e->supports_brightness && strcmp(type, "light") == 0;
+    const bool fan = t.fan_choices[0].button && strcmp(type, "fan") == 0;
     if (t.slider) {
         if (dimmer) {
             lv_obj_remove_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
@@ -144,12 +182,27 @@ void RoomModule::bind(Tile &t, const HomeAssistantEntitySnapshot *e) {
             set_enabled(t.slider, e->available);
             snprintf(detail,sizeof(detail), e->available ? "Brightness  %u%%" : "Unavailable", active ? e->brightness_pct : 0);
         } else lv_obj_add_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
-        ellipsis(t.detail, dimmer ? 208 : 444);
+        for (uint8_t i = 0; i < 4; ++i) {
+            if (fan) {
+                lv_obj_remove_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
+                const bool selected = (i == 0 && !active) ||
+                    (i > 0 && active && e->fan_speed_pct >= t.fan_choices[i].percentage - 16 && e->fan_speed_pct <= t.fan_choices[i].percentage + 17);
+                lv_obj_set_style_bg_color(t.fan_choices[i].button, lv_color_hex(selected ? ACCENT : CARD_ALT), LV_PART_MAIN);
+                set_enabled(t.fan_choices[i].button, e->available);
+            } else lv_obj_add_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
+        }
+        ellipsis(t.detail, (dimmer || fan) ? 208 : 444);
     }
     display(t.detail, detail);
     set_enabled(t.root, e->available);
     lv_obj_set_style_bg_color(t.root, lv_color_hex(active ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
     lv_obj_set_style_border_color(t.root, lv_color_hex(active ? 0x38BDF8 : BORDER), LV_PART_MAIN);
+    // A hollow glyph represents an inactive device; the filled color glyph
+    // makes active/open devices recognizable at a glance.
+    const uint32_t icon_color = !e->available ? MUTED : active ? 0x38BDF8 : BORDER;
+    lv_obj_set_style_border_color(t.icon_outer, lv_color_hex(icon_color), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(t.icon_inner, lv_color_hex(active ? icon_color : CARD_ALT), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(t.icon_inner, active ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_remove_flag(t.root, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -298,4 +351,15 @@ void RoomModule::brightness_cb(lv_event_t *e) {
                 (home_assistant_commands_ready() ? "Command queue busy. Please try again." :
                  "Home Assistant reconnecting. Please wait."));
     }
+}
+
+void RoomModule::fan_speed_cb(lv_event_t *e) {
+    auto *choice = static_cast<Tile::FanChoice *>(lv_event_get_user_data(e));
+    if (!choice || !choice->tile || !choice->tile->owner || !choice->tile->entity_id[0]) return;
+    Tile *tile = choice->tile;
+    RoomModule *self = tile->owner;
+    const bool queued = home_assistant_queue_fan_speed(tile->entity_id, choice->percentage);
+    display(self->status_, queued ? "Fan speed queued. Waiting for Home Assistant." :
+            (home_assistant_commands_ready() ? "Command queue busy. Please try again." : "Home Assistant reconnecting. Please wait."));
+    self->feedback_until_ = millis() + 4000;
 }

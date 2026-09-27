@@ -81,6 +81,7 @@ bool save_internal(const PanelConfig &cfg) {
         item["label"] = cfg.room_controls[i].label;
         item["placement"] = cfg.room_controls[i].placement;
         item["room_index"] = cfg.room_controls[i].room_index;
+        item["device_type"] = cfg.room_controls[i].device_type;
     }
     JsonArray rooms = doc["rooms"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.room_count; ++i) { JsonObject item = rooms.add<JsonObject>(); item["tab_label"] = cfg.rooms[i].tab_label; item["header"] = cfg.rooms[i].header; }
