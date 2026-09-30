@@ -2,19 +2,20 @@
 #include <lvgl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "ui_theme.h"
 
 namespace module_ui {
-constexpr uint32_t BG = 0x0F172A;
-constexpr uint32_t CARD = 0x172033;
-constexpr uint32_t CARD_ALT = 0x1E293B;
-constexpr uint32_t BORDER = 0x334155;
-constexpr uint32_t TEXT = 0xF8FAFC;
-constexpr uint32_t MUTED = 0x94A3B8;
-constexpr uint32_t ACCENT = 0x2563EB;
-constexpr uint32_t ACCENT_SOFT = 0x1D4ED8;
-constexpr uint32_t SUCCESS = 0x22C55E;
-constexpr uint32_t WARN = 0xF59E0B;
-constexpr uint32_t DANGER = 0xEF4444;
+constexpr uint32_t BG = ui_theme::BG;
+constexpr uint32_t CARD = ui_theme::SURFACE;
+constexpr uint32_t CARD_ALT = ui_theme::SURFACE_RAISED;
+constexpr uint32_t BORDER = ui_theme::BORDER;
+constexpr uint32_t TEXT = ui_theme::TEXT;
+constexpr uint32_t MUTED = ui_theme::MUTED;
+constexpr uint32_t ACCENT = ui_theme::ACCENT;
+constexpr uint32_t ACCENT_SOFT = ui_theme::ACCENT_DARK;
+constexpr uint32_t SUCCESS = ui_theme::SUCCESS;
+constexpr uint32_t WARN = ui_theme::WARN;
+constexpr uint32_t DANGER = ui_theme::DANGER;
 
 inline void box(lv_obj_t *o, uint32_t bg = CARD, int radius = 14, int border = 1) {
     lv_obj_set_style_bg_color(o, lv_color_hex(bg), LV_PART_MAIN);

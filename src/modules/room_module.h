@@ -1,7 +1,8 @@
 #pragma once
-#include "app_config.h"
-#include "home_assistant.h"
+
 #include "module.h"
+#include "ui_card.h"
+#include "ui_state_model.h"
 
 class RoomModule final : public PanelModule {
 public:
@@ -10,43 +11,44 @@ public:
     void create(lv_obj_t *parent) override;
     void update() override;
     void on_deactivate() override;
+
 private:
-    struct Tile {
-        struct FanChoice { Tile *tile = nullptr; uint8_t percentage = 0; lv_obj_t *button = nullptr; };
+    struct BoundCard {
         RoomModule *owner = nullptr;
-        lv_obj_t *root = nullptr, *name = nullptr, *detail = nullptr, *icon = nullptr;
-        char entity_id[96] = {};
-        bool scene = false;
-        lv_obj_t *slider = nullptr;
-        FanChoice fan_choices[4];
-        bool dragging = false, pressed = false;
+        UiCard card = {};
+        RoomControlViewModel control = {};
+        bool dragging = false;
     };
-    struct Group {
+    struct GroupCard {
         RoomModule *owner = nullptr;
-        int index = 0;
-        lv_obj_t *button = nullptr, *text = nullptr, *count = nullptr, *icon = nullptr;
+        uint8_t index = 0;
+        UiCard card = {};
     };
-    struct RoomTab { RoomModule *owner = nullptr; uint8_t index = 0; lv_obj_t *button = nullptr; };
-    Tile favorites_[6], popup_tiles_[6];
-    RoomTab room_tabs_[PANEL_MAX_ROOMS];
-    Group groups_[4];
-    // Persistent storage avoids placing the 48-entity snapshot on loopTask's stack.
-    HomeAssistantEntitySnapshot entities_[HA_MAX_AREA_ENTITIES] = {};
-    size_t count_ = 0;
-    lv_obj_t *heading_ = nullptr, *status_ = nullptr, *empty_ = nullptr;
-    lv_obj_t *overlay_ = nullptr, *popup_title_ = nullptr, *popup_hint_ = nullptr, *page_label_ = nullptr;
-    lv_obj_t *previous_ = nullptr, *next_ = nullptr;
-    int group_ = -1, page_ = 0;
-    uint32_t feedback_until_ = 0;
-    void make_tile(Tile &tile, lv_obj_t *parent, int x, int y, int w, int h);
-    void bind(Tile &tile, const HomeAssistantEntitySnapshot *entity);
-    void render_icon(Tile &tile, const char *type, bool active, bool available);
+
+    RoomViewModel room_ = {};
+    RoomControlViewModel controls_[PANEL_MAX_ROOM_CONTROLS] = {};
+    size_t control_count_ = 0;
+    BoundCard favorites_[4] = {};
+    BoundCard popup_cards_[6] = {};
+    GroupCard groups_[4] = {};
+    lv_obj_t *room_selector_ = nullptr;
+    lv_obj_t *status_values_[4] = {};
+    lv_obj_t *status_captions_[4] = {};
+    lv_obj_t *empty_ = nullptr;
+    lv_obj_t *overlay_ = nullptr;
+    lv_obj_t *popup_title_ = nullptr;
+    lv_obj_t *popup_feedback_ = nullptr;
+    lv_obj_t *previous_ = nullptr;
+    lv_obj_t *next_ = nullptr;
+    int group_ = -1;
+    int page_ = 0;
+
+    void bind(BoundCard &slot, const RoomControlViewModel *control);
     void render_popup();
-    static void brightness_cb(lv_event_t *e);
-    static void fan_speed_cb(lv_event_t *e);
-    static void action_cb(lv_event_t *e);
-    static void group_cb(lv_event_t *e);
-    static void close_cb(lv_event_t *e);
-    static void page_cb(lv_event_t *e);
-    static void room_tab_cb(lv_event_t *e);
+    static void action_cb(lv_event_t *event);
+    static void slider_cb(lv_event_t *event);
+    static void group_cb(lv_event_t *event);
+    static void close_cb(lv_event_t *event);
+    static void page_cb(lv_event_t *event);
+    static void room_changed_cb(lv_event_t *event);
 };

@@ -9,11 +9,12 @@ required=[
     "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/ha_icons_font.c","include/ha_icons_font.h","src/config_service.cpp","src/module_registry.cpp","src/runtime_stats.cpp","include/runtime_stats.h",
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp",
+    "src/ui_state_model.cpp","src/ui_card.cpp","src/ui_theme.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "include/display_text.h", "include/web_ui.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
@@ -26,7 +27,7 @@ assert 1<=len(cfg["modules"])<=8
 assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=3
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.5.3"' in app
+assert '#define APP_VERSION "1.6.1"' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 3' in app
 assert '#define PANEL_MAX_MEDIA_FAVORITES 6' in app
@@ -96,5 +97,5 @@ for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM
     assert feature in stb_impl
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.5.3 structure validation passed.")
+print("Home Control Panel v1.6.1 structure validation passed.")
 

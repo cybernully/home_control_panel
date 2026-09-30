@@ -1,0 +1,184 @@
+#include "ui_state_model.h"
+
+#include "config_service.h"
+#include "home_assistant.h"
+#include "network_service.h"
+
+#include <algorithm>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+namespace {
+uint8_t g_active_room = 0;
+HomeAssistantEntitySnapshot g_entity_snapshot[HA_MAX_AREA_ENTITIES] = {};
+
+void copy_text(char *out, size_t out_len, const char *value) {
+    if (!out || !out_len) return;
+    snprintf(out, out_len, "%s", value ? value : "");
+}
+
+bool contains_ci(const char *text, const char *needle) {
+    if (!text || !needle || !needle[0]) return false;
+    for (const char *start = text; *start; ++start) {
+        const char *a = start, *b = needle;
+        while (*a && *b) {
+            char left = *a, right = *b;
+            if (left >= 'A' && left <= 'Z') left = static_cast<char>(left - 'A' + 'a');
+            if (right >= 'A' && right <= 'Z') right = static_cast<char>(right - 'A' + 'a');
+            if (left != right) break;
+            ++a; ++b;
+        }
+        if (!*b) return true;
+    }
+    return false;
+}
+
+UiControlKind kind_from(const PanelRoomControl &pref, const HomeAssistantEntitySnapshot *entity) {
+    const char *type = pref.device_type[0] && strcmp(pref.device_type, "auto") != 0
+                           ? pref.device_type
+                           : entity ? entity->domain : "";
+    if (strcmp(type, "light") == 0) return UiControlKind::Light;
+    if (strcmp(type, "fan") == 0) return UiControlKind::Fan;
+    if (strcmp(type, "cover") == 0) return UiControlKind::Cover;
+    if (strcmp(type, "scene") == 0) return UiControlKind::Scene;
+    if (strcmp(type, "switch") == 0) {
+        const char *name = pref.label[0] ? pref.label : entity ? entity->name : "";
+        if (contains_ci(name, "light") || contains_ci(name, "lamp")) return UiControlKind::Light;
+        if (contains_ci(name, "fan")) return UiControlKind::Fan;
+        if (contains_ci(name, "shade") || contains_ci(name, "blind") || contains_ci(name, "curtain"))
+            return UiControlKind::Cover;
+        return UiControlKind::Switch;
+    }
+    return UiControlKind::Unknown;
+}
+
+int group_for(UiControlKind kind) {
+    if (kind == UiControlKind::Light) return 0;
+    if (kind == UiControlKind::Cover) return 2;
+    if (kind == UiControlKind::Scene) return 3;
+    return 1;
+}
+
+const HomeAssistantEntitySnapshot *find_entity(const char *entity_id, size_t count) {
+    if (!entity_id || !entity_id[0]) return nullptr;
+    for (size_t i = 0; i < count; ++i)
+        if (strcmp(g_entity_snapshot[i].entity_id, entity_id) == 0) return &g_entity_snapshot[i];
+    return nullptr;
+}
+
+void format_sensor(char *out, size_t out_len, const char *entity_id,
+                   size_t entity_count, const char *suffix) {
+    const auto *entity = find_entity(entity_id, entity_count);
+    if (!entity || !entity->available || !entity->state[0] ||
+        strcmp(entity->state, "unknown") == 0 || strcmp(entity->state, "unavailable") == 0) {
+        copy_text(out, out_len, "--");
+        return;
+    }
+    snprintf(out, out_len, "%s%s", entity->state, suffix ? suffix : "");
+}
+
+void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
+                   const HomeAssistantEntitySnapshot *entity) {
+    memset(&out, 0, sizeof(out));
+    copy_text(out.entity_id, sizeof(out.entity_id), pref.entity_id);
+    copy_text(out.title, sizeof(out.title), pref.label[0] ? pref.label :
+              entity && entity->name[0] ? entity->name : pref.entity_id);
+    out.kind = kind_from(pref, entity);
+    out.available = entity && entity->available;
+    out.active = entity && (strcmp(entity->state, "on") == 0 ||
+                            strcmp(entity->state, "open") == 0 ||
+                            strcmp(entity->state, "opening") == 0);
+    out.favorite = pref.placement == 1;
+    if (entity) {
+        out.supports_level = (out.kind == UiControlKind::Light && entity->supports_brightness) ||
+                             (out.kind == UiControlKind::Fan && entity->supports_fan_speed);
+        out.level_pct = out.kind == UiControlKind::Fan ? entity->fan_speed_pct : entity->brightness_pct;
+    }
+    if (!out.available) copy_text(out.state_text, sizeof(out.state_text), "Unavailable");
+    else if (out.kind == UiControlKind::Scene) copy_text(out.state_text, sizeof(out.state_text), "Scene");
+    else if (out.kind == UiControlKind::Cover)
+        snprintf(out.state_text, sizeof(out.state_text), "%s", out.active ? "Open" : "Closed");
+    else if (out.supports_level && out.active)
+        snprintf(out.state_text, sizeof(out.state_text), "On  |  %u%%", static_cast<unsigned>(out.level_pct));
+    else copy_text(out.state_text, sizeof(out.state_text), out.active ? "On" : "Off");
+}
+}  // namespace
+
+uint8_t ui_state_model_active_room() { return g_active_room; }
+
+void ui_state_model_set_active_room(uint8_t room_index) {
+    const auto &cfg = config_service_get();
+    g_active_room = cfg.room_count ? std::min<uint8_t>(room_index, cfg.room_count - 1) : 0;
+}
+
+void ui_state_model_next_room() {
+    const auto &cfg = config_service_get();
+    if (cfg.room_count > 1) g_active_room = static_cast<uint8_t>((g_active_room + 1) % cfg.room_count);
+}
+
+bool ui_state_model_snapshot_room(RoomViewModel &room,
+                                  RoomControlViewModel *controls,
+                                  size_t control_capacity,
+                                  size_t &control_count) {
+    memset(&room, 0, sizeof(room));
+    control_count = 0;
+    const auto &cfg = config_service_get();
+    if (g_active_room >= cfg.room_count) g_active_room = 0;
+    room.active_room = g_active_room;
+    room.room_count = cfg.room_count;
+    const PanelRoom *configured_room = cfg.room_count ? &cfg.rooms[g_active_room] : nullptr;
+    copy_text(room.room_name, sizeof(room.room_name), configured_room ? configured_room->tab_label : "Room");
+    copy_text(room.room_heading, sizeof(room.room_heading), configured_room ? configured_room->header : "Your room");
+
+    const size_t entity_count = home_assistant_get_layout_entities(g_entity_snapshot, HA_MAX_AREA_ENTITIES);
+    format_sensor(room.temperature, sizeof(room.temperature),
+                  configured_room ? configured_room->temperature_entity_id : "", entity_count, "°");
+    format_sensor(room.humidity, sizeof(room.humidity),
+                  configured_room ? configured_room->humidity_entity_id : "", entity_count, "%");
+
+    for (uint8_t i = 0; i < cfg.room_control_count; ++i) {
+        const auto &pref = cfg.room_controls[i];
+        if (pref.room_index != g_active_room || pref.placement == 2) continue;
+        RoomControlViewModel item = {};
+        build_control(item, pref, find_entity(pref.entity_id, entity_count));
+        const int group = group_for(item.kind);
+        ++room.group_total[group];
+        if (item.available && (group == 1 || item.active || item.kind == UiControlKind::Scene))
+            ++room.group_active[group];
+        ++room.device_count;
+        if (item.available) ++room.devices_online;
+        if (item.favorite && room.favorite_count < 4) room.favorites[room.favorite_count++] = item;
+        if (controls && control_count < control_capacity) controls[control_count++] = item;
+    }
+
+    HomeAssistantDiscoveryStatus discovery = {};
+    home_assistant_get_discovery_status(discovery);
+    room.healthy = network_service_connected() && discovery.websocket_authenticated && discovery.discovery_complete;
+    room.busy = network_service_connected() && !room.healthy;
+    copy_text(room.system_status, sizeof(room.system_status),
+              room.healthy ? "All good" : room.busy ? "Syncing" : "Offline");
+    copy_text(room.system_detail, sizeof(room.system_detail),
+              discovery.last_action[0] ? discovery.last_action :
+              discovery.message[0] ? discovery.message : "Waiting for Home Assistant");
+    return configured_room != nullptr;
+}
+
+bool ui_state_model_activate(const RoomControlViewModel &control) {
+    if (!control.available || !control.entity_id[0]) return false;
+    HomeAssistantEntitySnapshot current = {};
+    if (!home_assistant_get_room_entity(control.entity_id, current) || !current.available) return false;
+    return control.kind == UiControlKind::Scene
+               ? home_assistant_queue_scene(control.entity_id)
+               : home_assistant_queue_toggle(control.entity_id);
+}
+
+bool ui_state_model_set_level(const RoomControlViewModel &control, uint8_t level_pct) {
+    if (!control.available || !control.supports_level || !control.entity_id[0]) return false;
+    HomeAssistantEntitySnapshot current = {};
+    if (!home_assistant_get_room_entity(control.entity_id, current) || !current.available) return false;
+    return control.kind == UiControlKind::Fan
+               ? home_assistant_queue_fan_speed(control.entity_id, level_pct)
+               : home_assistant_queue_light_brightness(control.entity_id, level_pct);
+}
+

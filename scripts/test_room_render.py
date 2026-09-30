@@ -16,9 +16,9 @@ args=['-O0','-Itests/host','-Iinclude','-Isrc/modules',f'-I{lvgl}',*flags,
 if media:
     jpeg=root/'.pio/libdeps/jc8012p4a1c_2635/JPEGDEC/src'
     # Third-party embedded codecs use integer operations outside UBSan's host assumptions.
-    args += ['-fno-sanitize=undefined','-D__LINUX__',f'-I{jpeg}','-Ilib/stb','src/modules/media_module.cpp','src/stb_image_impl.cpp',str(jpeg/'JPEGDEC.cpp')]
+    args += ['-fno-sanitize=undefined','-D__LINUX__',f'-I{jpeg}','-Ilib/stb','src/modules/media_module.cpp','src/ui_state_model.cpp','src/ui_theme.cpp','src/ha_icons_font.c','src/stb_image_impl.cpp',str(jpeg/'JPEGDEC.cpp')]
 else:
-    args += ['src/modules/room_module.cpp','src/ha_icons_font.c']
+    args += ['src/modules/room_module.cpp','src/ui_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 args += ['-x','c']
 args += [str(p) for p in (lvgl/'src').rglob('*.c')]
 args += ['-o',executable]

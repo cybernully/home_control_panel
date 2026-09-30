@@ -1,5 +1,6 @@
 #include "room_module.h"
 #include "config_service.h"
+#include "home_assistant.h"
 #include <lvgl.h>
 #include <cstdio>
 #include <cstring>
@@ -15,6 +16,9 @@ size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out,size_t 
     size_t n = count < capacity ? count : capacity;
     memcpy(out,entities,n*sizeof(*out));return n;
 }
+size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out,size_t capacity) {
+    return home_assistant_get_room_entities(out,capacity);
+}
 bool home_assistant_get_room_entity(const char *id, HomeAssistantEntitySnapshot &out) {
     for(size_t i=0;i<count;++i) if(strcmp(entities[i].entity_id,id)==0){out=entities[i];return true;}
     return false;
@@ -22,6 +26,7 @@ bool home_assistant_get_room_entity(const char *id, HomeAssistantEntitySnapshot 
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) {
     out={};snprintf(out.area_name,sizeof(out.area_name),"Office — upstairs");
     snprintf(out.message,sizeof(out.message),"Connected to Home Assistant");
+    out.websocket_authenticated=true;out.discovery_complete=true;
 }
 void home_assistant_get_status(HomeAssistantStatus &out) { out={};out.configured=true;out.connected=true;out.authenticated=true; }
 bool home_assistant_commands_ready(){return true;}
@@ -74,7 +79,7 @@ public:
     void update() override{}
 };
 static RoomModule room;
-static Placeholder overview("Overview"),media("Media"),climate("Climate"),security("Security"),settings("Settings");
+static Placeholder overview("Overview"),media("Media"),climate("Climate"),security("Security"),settings("settings");
 static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&settings};
 size_t module_registry_count(){return 6;}
 PanelModule *module_registry_at(size_t i){return i<6?modules[i]:nullptr;}
@@ -90,16 +95,20 @@ static void full_shot(const char *name){
 int main(){
     lv_init();auto *display=lv_display_create(1280,800);lv_display_set_color_format(display,LV_COLOR_FORMAT_XRGB8888);
     lv_display_set_buffers(display,full_buffer,nullptr,sizeof(full_buffer),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(display,flush);
-    snprintf(config.display_name,sizeof(config.display_name),"Home Panel");snprintf(config.profile,sizeof(config.profile),"room");
+    snprintf(config.display_name,sizeof(config.display_name),"Home Panel");snprintf(config.profile,sizeof(config.profile),"room");config.room_count=1;snprintf(config.rooms[0].tab_label,sizeof(config.rooms[0].tab_label),"Office");snprintf(config.rooms[0].header,sizeof(config.rooms[0].header),"Office");snprintf(config.rooms[0].temperature_entity_id,sizeof(config.rooms[0].temperature_entity_id),"sensor.office_temperature");snprintf(config.rooms[0].humidity_entity_id,sizeof(config.rooms[0].humidity_entity_id),"sensor.office_humidity");
     snprintf(config.area_id,sizeof(config.area_id),"Office — upstairs");
     entity("light.desk","Desk — warm","light","on");entity("light.ceiling","Ceiling","light","off");
     entity("scene.focus","Focus","scene","scening");entity("cover.window","Window shades","cover","open");
     entity("switch.fan","Desk fan","switch","on");
+    entity("sensor.office_temperature","Office temperature","sensor","72");entity("sensor.office_humidity","Office humidity","sensor","45");
     pref("light.desk","",1);pref("light.ceiling","",1);pref("scene.focus","",1);
     pref("cover.window","",1);pref("switch.fan","",1);pref("light.missing","Reading lamp",1);
     ui_shell_begin();show_module(1);lv_obj_update_layout(lv_screen_active());
     full_shot(".test-build/header-refined.ppm");
     assert(g_clock && lv_label_get_text(g_clock)[0]);
+    assert(strcmp(lv_label_get_text(g_header_title),"Home Panel")==0);
+    assert(!lv_obj_check_type(lv_obj_get_parent(g_header_title),&lv_button_class));
+    assert(g_nav_buttons[5]==nullptr);
     lv_obj_send_event(g_status_button,LV_EVENT_CLICKED,nullptr);
     assert(!lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
     assert(lv_label_get_text(g_status_message)[0]);
@@ -125,6 +134,7 @@ int main(){
     snprintf(config.display_name,sizeof(config.display_name),"A deliberately long panel name — upstairs");
     snprintf(config.area_id,sizeof(config.area_id),"A very long area name to check header bounds and alignment");
     ui_shell_refresh_header();full_shot(".test-build/header-long-title.ppm");
+    lv_obj_send_event(g_settings_button,LV_EVENT_CLICKED,nullptr);assert(g_active_index==5);
     puts("Header renders passed: aligned battery, bounded fill, empty/invalid states, offline status and long labels.");
 }
 

@@ -24,6 +24,8 @@ struct PanelRoomControl {
 struct PanelRoom {
     char tab_label[PANEL_ROOM_NAME_LEN];
     char header[PANEL_ROOM_NAME_LEN];
+    char temperature_entity_id[96];
+    char humidity_entity_id[96];
 };
 
 // span is the number of columns in Overview's four-column widget grid: 1, 2,
@@ -54,7 +56,7 @@ struct PanelConfig {
     // They are shown first in the Media > Browse sheet.
     PanelMediaShortcut media_favorites[PANEL_MAX_MEDIA_FAVORITES];
     uint8_t media_favorite_count;
-    PanelRoomControl room_controls[HA_MAX_AREA_ENTITIES];
+    PanelRoomControl room_controls[PANEL_MAX_ROOM_CONTROLS];
     uint8_t room_control_count;
     PanelRoom rooms[PANEL_MAX_ROOMS];
     uint8_t room_count;

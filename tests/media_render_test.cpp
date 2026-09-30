@@ -18,6 +18,13 @@ const PanelConfig &config_service_get(){return config;}
 size_t home_assistant_get_media_players(HomeAssistantMediaSnapshot *out,size_t capacity){size_t n=player_count<capacity?player_count:capacity;memcpy(out,players,n*sizeof(*out));return n;}
 size_t home_assistant_get_media_favorites(HomeAssistantMediaFavorite *out,size_t capacity){size_t n=favorite_count<capacity?favorite_count:capacity;memcpy(out,favorites,n*sizeof(*out));return n;}
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out){out={};snprintf(out.area_name,sizeof(out.area_name),"Office");snprintf(out.area_id,sizeof(out.area_id),"office");}
+void home_assistant_get_status(HomeAssistantStatus &out){out={};out.configured=true;out.connected=true;out.authenticated=true;}
+size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *,size_t){return 0;}
+bool home_assistant_get_room_entity(const char *,HomeAssistantEntitySnapshot &){return false;}
+bool home_assistant_queue_toggle(const char *){return false;}
+bool home_assistant_queue_scene(const char *){return false;}
+bool home_assistant_queue_light_brightness(const char *,uint8_t){return false;}
+bool home_assistant_queue_fan_speed(const char *,uint8_t){return false;}
 bool home_assistant_commands_ready(){return true;}
 bool home_assistant_request_media_browse(const char *){return true;}
 bool home_assistant_request_media_artwork(const char *){return true;}
@@ -47,7 +54,7 @@ public:
     void update() override{}
 };
 static MediaModule media;
-static Placeholder overview("Overview"),room("Room"),climate("Climate"),security("Security"),settings("Settings");
+static Placeholder overview("Overview"),room("Room"),climate("Climate"),security("Security"),settings("settings");
 static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&settings};
 size_t module_registry_count(){return 6;}
 PanelModule *module_registry_at(size_t i){return i<6?modules[i]:nullptr;}

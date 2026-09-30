@@ -206,7 +206,13 @@ void handle_get_config() {
         item["device_type"] = cfg.room_controls[i].device_type;
     }
     JsonArray rooms = doc["rooms"].to<JsonArray>();
-    for (uint8_t i = 0; i < cfg.room_count; ++i) { JsonObject item = rooms.add<JsonObject>(); item["tab_label"] = cfg.rooms[i].tab_label; item["header"] = cfg.rooms[i].header; }
+    for (uint8_t i = 0; i < cfg.room_count; ++i) {
+        JsonObject item = rooms.add<JsonObject>();
+        item["tab_label"] = cfg.rooms[i].tab_label;
+        item["header"] = cfg.rooms[i].header;
+        item["temperature_entity_id"] = cfg.rooms[i].temperature_entity_id;
+        item["humidity_entity_id"] = cfg.rooms[i].humidity_entity_id;
+    }
     JsonArray players = doc["media_players"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
     JsonArray widgets = doc["overview_widgets"].to<JsonArray>();

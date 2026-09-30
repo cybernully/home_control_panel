@@ -1,442 +1,317 @@
 #include "room_module.h"
+
 #include "config_service.h"
 #include "display_text.h"
 #include "ha_icons_font.h"
 #include "module_ui.h"
+#include "ui_shell.h"
+#include "ui_theme.h"
+
 #include <Arduino.h>
-#include <algorithm>
+#include <stdio.h>
 #include <string.h>
+
 using namespace module_ui;
 
 namespace {
-uint8_t g_active_room = 0;
-const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
-const uint32_t GROUP_ICONS[] = {0xF0335, 0xF07E9, 0xF00AC, 0xF03D8};
-int entity_group(const char *domain) {
-    if (strcmp(domain, "light") == 0) return 0;
-    if (strcmp(domain, "cover") == 0) return 2;
-    if (strcmp(domain, "scene") == 0) return 3;
+constexpr const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
+constexpr uint32_t GROUP_ICONS[] = {0xF0335, 0xF07E9, 0xF00AC, 0xF03D8};
+// Keep the glyph set within the small embedded MDI subset compiled into
+// ha_icons_font; this avoids missing-glyph boxes on the panel.
+constexpr uint32_t STATUS_ICONS[] = {0xF0335, 0xF1011, 0xF07E9, 0xF0425};
+
+void display(lv_obj_t *label, const char *value) {
+    if (!label) return;
+    char safe[192];
+    panel_display_text(safe, sizeof(safe), value ? value : "");
+    lv_label_set_text(label, safe);
+}
+
+int group_for(UiControlKind kind) {
+    if (kind == UiControlKind::Light) return 0;
+    if (kind == UiControlKind::Cover) return 2;
+    if (kind == UiControlKind::Scene) return 3;
     return 1;
 }
-const PanelRoomControl *preference(const char *id) {
-    const auto &cfg = config_service_get();
-    for (size_t i = 0; i < cfg.room_control_count; ++i)
-        if (cfg.room_controls[i].room_index == g_active_room && strcmp(cfg.room_controls[i].entity_id, id) == 0) return &cfg.room_controls[i];
-    return nullptr;
-}
-int order(const char *id) {
-    const auto *pref = preference(id);
-    return pref ? static_cast<int>(pref - config_service_get().room_controls) : HA_MAX_AREA_ENTITIES;
-}
-bool hidden(const char *id) {
-    const auto *p = preference(id);
-    return p && p->placement == 2;
-}
-bool contains_ci(const char *text, const char *needle) {
-    if (!text || !needle || !needle[0]) return false;
-    for (const char *start = text; *start; ++start) {
-        const char *a = start;
-        const char *b = needle;
-        while (*a && *b) {
-            char left = *a, right = *b;
-            if (left >= 'A' && left <= 'Z') left = static_cast<char>(left - 'A' + 'a');
-            if (right >= 'A' && right <= 'Z') right = static_cast<char>(right - 'A' + 'a');
-            if (left != right) break;
-            ++a; ++b;
-        }
-        if (!*b) return true;
-    }
-    return false;
-}
-const char *display_type(const HomeAssistantEntitySnapshot &entity) {
-    const auto *p = preference(entity.entity_id);
-    if (p && p->device_type[0] && strcmp(p->device_type, "auto") != 0) return p->device_type;
-    if (strcmp(entity.domain, "switch") != 0) return entity.domain;
 
-    // HA exposes many RF/legacy devices as switches. Make the default useful
-    // without requiring IDs or manual type selection for obvious names. A web
-    // override above always wins for ambiguous devices.
-    const char *name = p && p->label[0] ? p->label : entity.name;
-    if (contains_ci(name, "light") || contains_ci(name, "lamp")) return "light";
-    if (contains_ci(name, "fan")) return "fan";
-    if (contains_ci(name, "shade") || contains_ci(name, "blind") ||
-        contains_ci(name, "curtain")) return "cover";
-    return entity.domain;
-}
-void display(lv_obj_t *obj, const char *text) {
-    char safe[256]; panel_display_text(safe, sizeof(safe), text);
-    lv_label_set_text(obj, safe);
-}
-void ellipsis(lv_obj_t *obj, int width) {
-    lv_obj_set_width(obj, width);
-    lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
-}
-void set_icon_glyph(lv_obj_t *label_obj, uint32_t codepoint) {
-    // MDI glyphs live in Unicode's private-use area.  Encode explicitly so
-    // the source remains portable regardless of the compiler file encoding.
-    char text[5] = {};
-    text[0] = static_cast<char>(0xF0 | (codepoint >> 18));
-    text[1] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-    text[2] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-    text[3] = static_cast<char>(0x80 | (codepoint & 0x3F));
-    lv_label_set_text(label_obj, text);
-}
+uint32_t glyph_for(UiControlKind kind, bool active) {
+    switch (kind) {
+        case UiControlKind::Light: return active ? 0xF0335 : 0xF0336;
+        case UiControlKind::Fan: return active ? 0xF0210 : 0xF081D;
+        case UiControlKind::Cover: return active ? 0xF1011 : 0xF00AC;
+        case UiControlKind::Scene: return active ? 0xF03D8 : 0xF0E0C;
+        case UiControlKind::Switch: return active ? 0xF07E9 : 0xF0902;
+        default: return 0xF0425;
+    }
 }
 
-void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h) {
-    t.owner = this;
-    t.root = button(parent, "", x, y, w, h, CARD);
-    const bool compact = h <= 100;
-    lv_obj_set_style_radius(t.root, compact ? 16 : 22, LV_PART_MAIN);
-    t.name = lv_obj_get_child(t.root, 0);
-    lv_obj_set_style_text_font(t.name, compact ? &lv_font_montserrat_18 : &lv_font_montserrat_20, LV_PART_MAIN);
-    ellipsis(t.name, w - (compact ? 86 : 96));
-    lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, compact ? 66 : 78, compact ? 13 : 20);
-    t.detail = label(t.root, "", &lv_font_montserrat_14, MUTED);
-    // Reserve the left column for the device glyph.  The old detail position
-    // started below the glyph, which made the icon appear over its first words.
-    ellipsis(t.detail, w - (compact ? 86 : 96));
-    lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, compact ? 66 : 78, compact ? -13 : -20);
-    lv_obj_add_event_cb(t.root, action_cb, LV_EVENT_ALL, &t);
-    // The wider popup tiles have an independent brightness target.
-    if (w == 484) {
-        t.slider = lv_slider_create(t.root);
-        lv_obj_set_pos(t.slider, 244, 82); lv_obj_set_size(t.slider, 208, 24);
-        lv_obj_set_ext_click_area(t.slider, 14);
-        lv_slider_set_range(t.slider, 0, 100); style_slider(t.slider);
-        lv_obj_set_style_bg_color(t.slider, lv_color_hex(BORDER), LV_PART_MAIN);
-        lv_obj_remove_flag(t.slider, LV_OBJ_FLAG_EVENT_BUBBLE);
-        lv_obj_add_event_cb(t.slider, brightness_cb, LV_EVENT_ALL, &t);
-        lv_obj_add_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
-        const char *fan_labels[] = {"Off", "Low", "Med", "High"};
-        const uint8_t fan_values[] = {0, 33, 66, 100};
-        for (uint8_t i = 0; i < 4; ++i) {
-            t.fan_choices[i].tile = &t;
-            t.fan_choices[i].percentage = fan_values[i];
-            t.fan_choices[i].button = button(t.root, fan_labels[i], 244 + i * 52, 82, 48, 28, CARD_ALT);
-            lv_obj_set_style_text_font(lv_obj_get_child(t.fan_choices[i].button, 0), &lv_font_montserrat_12, LV_PART_MAIN);
-            lv_obj_remove_flag(t.fan_choices[i].button, LV_OBJ_FLAG_EVENT_BUBBLE);
-            lv_obj_add_event_cb(t.fan_choices[i].button, fan_speed_cb, LV_EVENT_CLICKED, &t.fan_choices[i]);
-            lv_obj_add_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    // A label backed by Home Assistant's MDI icon family is decorative only.
-    // It deliberately has no click target, leaving the entire tile reliable
-    // for touch actions.
-    t.icon = label(t.root, "", &ha_icons_font, MUTED);
-    lv_obj_set_size(t.icon, compact ? 36 : 44, compact ? 36 : 44); lv_obj_set_pos(t.icon, compact ? 16 : 18, compact ? 13 : 15);
-    lv_obj_set_style_text_align(t.icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_remove_flag(t.icon, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(t.icon, LV_OBJ_FLAG_EVENT_BUBBLE);
-    lv_obj_add_flag(t.root, LV_OBJ_FLAG_HIDDEN);
+UiCardVariant variant_for(const RoomControlViewModel &control) {
+    if (control.kind == UiControlKind::Scene) return UiCardVariant::ACTION;
+    if (control.supports_level) return UiCardVariant::SLIDER;
+    return UiCardVariant::CONTROL;
+}
+
+lv_obj_t *section_heading(lv_obj_t *parent, const char *value, int y) {
+    lv_obj_t *heading = label(parent, value, &lv_font_montserrat_24, TEXT);
+    lv_obj_set_pos(heading, 26, y);
+    return heading;
+}
 }
 
 void RoomModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    const PanelConfig &cfg = config_service_get();
-    heading_ = module_ui::title(parent, "Your room", "Your selected controls, organized for quick touch access.");
-    ellipsis(heading_, 1000);
-    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) { room_tabs_[i].owner=this; room_tabs_[i].index=i; room_tabs_[i].button=button(parent,cfg.rooms[i].tab_label,24+i*210,88,196,42,CARD_ALT); lv_obj_add_event_cb(room_tabs_[i].button,room_tab_cb,LV_EVENT_CLICKED,&room_tabs_[i]); }
-    auto *caption = label(parent, "FAVORITES", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 140);
-    for (int i = 0; i < 6; ++i)
-        make_tile(favorites_[i], parent, 24 + (i % 3) * 416, 164 + (i / 3) * 102, 400, 92);
-    empty_ = card(parent, 24, 164, 1232, 194);
-    auto *text = label(empty_, "Make this room yours", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(text, 28, 42);
-    text = label(empty_, "Open a control group below, then choose favorites in the web manager for one-tap access.", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(text, 28, 94);
-    lv_obj_set_width(text, 1150);
-    caption = label(parent, "EXPLORE ROOM", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 382);
-    for (int i = 0; i < 4; ++i) {
-        auto &g = groups_[i]; g.owner = this; g.index = i;
-        g.button = button(parent, "", 24 + i * 312, 410, 296, 72);
-        lv_obj_set_style_radius(g.button, 16, LV_PART_MAIN);
-        g.text = lv_obj_get_child(g.button, 0);
-        lv_obj_set_style_text_font(g.text, &lv_font_montserrat_16, LV_PART_MAIN);
-        lv_obj_set_pos(g.text, 58, 25);
-        g.icon = label(g.button, "", &ha_icons_font, MUTED);
-        lv_obj_set_pos(g.icon, 18, 20); lv_obj_set_size(g.icon, 28, 28);
-        lv_obj_set_style_text_align(g.icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        set_icon_glyph(g.icon, GROUP_ICONS[i]);
-        lv_obj_remove_flag(g.icon, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_flag(g.icon, LV_OBJ_FLAG_EVENT_BUBBLE);
-        g.count = label(g.button, "0", &lv_font_montserrat_14, MUTED);
-        lv_obj_set_width(g.count, 42); lv_obj_set_style_text_align(g.count, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-        lv_obj_set_pos(g.count, 238, 28);
-        lv_obj_remove_flag(g.count, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_flag(g.count, LV_OBJ_FLAG_EVENT_BUBBLE);
-        lv_obj_add_event_cb(g.button, group_cb, LV_EVENT_CLICKED, &g);
-    }
-    status_ = label(parent, "Connecting to Home Assistant...", &lv_font_montserrat_14, MUTED);
-    lv_obj_add_flag(status_, LV_OBJ_FLAG_HIDDEN);
+    ui_state_model_snapshot_room(room_, controls_, PANEL_MAX_ROOM_CONTROLS, control_count_);
 
-    // A page-owned scrim blocks underlying controls and disappears on navigation.
-    overlay_ = card(parent, 0, 0, 1280, 658);
-    box(overlay_, 0x030712, 0, 0);
+    lv_obj_t *room_status = card(parent, 24, 10, 1232, 78);
+    lv_obj_set_style_radius(room_status, 14, LV_PART_MAIN);
+    room_selector_ = lv_dropdown_create(room_status);
+    lv_obj_set_pos(room_selector_, 12, 10);
+    lv_obj_set_size(room_selector_, 270, 58);
+    ui_theme::surface(room_selector_, ui_theme::SURFACE_RAISED, 12, 1);
+    lv_obj_set_style_text_font(room_selector_, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(room_selector_, lv_color_hex(TEXT), LV_PART_MAIN);
+    lv_obj_set_style_pad_left(room_selector_, 18, LV_PART_MAIN);
+    lv_dropdown_set_symbol(room_selector_, nullptr);
+    char room_options[PANEL_MAX_ROOMS * (PANEL_ROOM_NAME_LEN + 1)] = {};
+    const PanelConfig &cfg = config_service_get();
+    for (uint8_t i = 0; i < cfg.room_count; ++i) {
+        char safe[PANEL_ROOM_NAME_LEN];
+        panel_display_text(safe, sizeof(safe), cfg.rooms[i].tab_label);
+        if (i) strncat(room_options, "\n", sizeof(room_options) - strlen(room_options) - 1);
+        strncat(room_options, safe, sizeof(room_options) - strlen(room_options) - 1);
+    }
+    lv_dropdown_set_options(room_selector_, room_options[0] ? room_options : "Room");
+    lv_dropdown_set_selected(room_selector_, room_.active_room);
+    lv_obj_set_ext_click_area(room_selector_, 8);
+    lv_obj_add_event_cb(room_selector_, room_changed_cb, LV_EVENT_VALUE_CHANGED, this);
+    lv_obj_t *room_chevron = label(room_status, "v", &lv_font_montserrat_18, MUTED);
+    lv_obj_set_pos(room_chevron, 254, 29);
+
+    const int metric_x[] = {310, 530, 750, 970};
+    for (int i = 0; i < 4; ++i) {
+        lv_obj_t *divider = lv_obj_create(room_status);
+        box(divider, BORDER, 0, 0);
+        lv_obj_set_pos(divider, metric_x[i] - 12, 14);
+        lv_obj_set_size(divider, 1, 50);
+        lv_obj_t *icon = label(room_status, "", &ha_icons_font,
+                               i == 0 ? 0xFF715F : i == 1 ? 0x4AA5FF : i == 3 ? ui_theme::SUCCESS : TEXT);
+        ui_theme::set_glyph(icon, STATUS_ICONS[i]);
+        lv_obj_set_pos(icon, metric_x[i], 22);
+        lv_obj_set_size(icon, 42, 40);
+        lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        status_values_[i] = label(room_status, "--", &lv_font_montserrat_18, TEXT);
+        lv_obj_set_pos(status_values_[i], metric_x[i] + 50, 13);
+        lv_obj_set_width(status_values_[i], i == 3 ? 170 : 140);
+        status_captions_[i] = label(room_status, "", &lv_font_montserrat_12, MUTED);
+        lv_obj_set_pos(status_captions_[i], metric_x[i] + 50, 43);
+    }
+    display(status_captions_[0], "Temperature");
+    display(status_captions_[1], "Humidity");
+    display(status_captions_[2], "Devices Online");
+    display(status_captions_[3], "System Status");
+
+    section_heading(parent, "Favorite Controls", 102);
+    for (int i = 0; i < 4; ++i) {
+        favorites_[i].owner = this;
+        const UiCardVariant variant = i < room_.favorite_count
+                                          ? variant_for(room_.favorites[i])
+                                          : UiCardVariant::CONTROL;
+        ui_card_create(favorites_[i].card, parent, variant, 24 + i * 312, 138, 296, 170);
+        lv_obj_add_event_cb(favorites_[i].card.root, action_cb, LV_EVENT_CLICKED, &favorites_[i]);
+        if (favorites_[i].card.slider)
+            lv_obj_add_event_cb(favorites_[i].card.slider, slider_cb, LV_EVENT_ALL, &favorites_[i]);
+    }
+
+    empty_ = card(parent, 24, 138, 1232, 170);
+    lv_obj_t *empty_title = label(empty_, "Build your favorites", &lv_font_montserrat_24, TEXT);
+    lv_obj_set_pos(empty_title, 28, 38);
+    lv_obj_t *empty_copy = label(empty_, "Choose up to four primary controls in Web Admin. Everything else remains available below.",
+                                 &lv_font_montserrat_16, MUTED);
+    lv_obj_set_pos(empty_copy, 28, 82);
+
+    section_heading(parent, "Quick Access", 340);
+    for (int i = 0; i < 4; ++i) {
+        groups_[i].owner = this;
+        groups_[i].index = static_cast<uint8_t>(i);
+        ui_card_create(groups_[i].card, parent, UiCardVariant::NAVIGATION,
+                       24 + i * 312, 376, 296, 154);
+        lv_obj_add_event_cb(groups_[i].card.root, group_cb, LV_EVENT_CLICKED, &groups_[i]);
+    }
+
+    overlay_ = lv_obj_create(parent);
+    lv_obj_set_pos(overlay_, 0, 0);
+    lv_obj_set_size(overlay_, 1280, lv_pct(100));
+    box(overlay_, 0x020A14, 0, 0);
     lv_obj_set_style_bg_opa(overlay_, LV_OPA_80, LV_PART_MAIN);
     lv_obj_add_event_cb(overlay_, close_cb, LV_EVENT_CLICKED, this);
-    auto *sheet = card(overlay_, 124, 24, 1032, 610);
-    lv_obj_set_style_radius(sheet, 28, LV_PART_MAIN);
+    lv_obj_t *sheet = card(overlay_, 116, 18, 1048, 590);
+    lv_obj_set_style_radius(sheet, 24, LV_PART_MAIN);
+    lv_obj_remove_flag(sheet, LV_OBJ_FLAG_EVENT_BUBBLE);
     popup_title_ = label(sheet, "", &lv_font_montserrat_24, TEXT);
     lv_obj_set_pos(popup_title_, 24, 22);
-    popup_hint_ = label(sheet, "", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(popup_hint_, 180, 30); ellipsis(popup_hint_, 650);
-    auto *close = button(sheet, "Close", 866, 14, 142, 56);
+    popup_feedback_ = label(sheet, "", &lv_font_montserrat_14, MUTED);
+    lv_obj_align(popup_feedback_, LV_ALIGN_BOTTOM_MID, 0, -24);
+    lv_obj_t *close = button(sheet, "Close", 870, 12, 154, 52);
     lv_obj_add_event_cb(close, close_cb, LV_EVENT_CLICKED, this);
-    for (int i = 0; i < 6; ++i)
-        make_tile(popup_tiles_[i], sheet, 24 + (i % 2) * 500, 90 + (i / 2) * 144, 484, 128);
-    previous_ = button(sheet, "Previous", 24, 534, 170, 56);
-    next_ = button(sheet, "Next", 838, 534, 170, 56);
+    for (int i = 0; i < 6; ++i) {
+        popup_cards_[i].owner = this;
+        ui_card_create(popup_cards_[i].card, sheet, UiCardVariant::SLIDER,
+                       24 + (i % 2) * 508, 80 + (i / 2) * 140, 492, 124);
+        lv_obj_add_event_cb(popup_cards_[i].card.root, action_cb, LV_EVENT_CLICKED, &popup_cards_[i]);
+        lv_obj_add_event_cb(popup_cards_[i].card.slider, slider_cb, LV_EVENT_ALL, &popup_cards_[i]);
+    }
+    previous_ = button(sheet, "Previous", 24, 522, 160, 48);
+    next_ = button(sheet, "Next", 864, 522, 160, 48);
     lv_obj_add_event_cb(previous_, page_cb, LV_EVENT_CLICKED, this);
     lv_obj_add_event_cb(next_, page_cb, LV_EVENT_CLICKED, this);
-    page_label_ = label(sheet, "", &lv_font_montserrat_16, MUTED);
-    lv_obj_align(page_label_, LV_ALIGN_BOTTOM_MID, 0, -28);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
+    update();
 }
 
-void RoomModule::bind(Tile &t, const HomeAssistantEntitySnapshot *e) {
-    if (!e) {
-        t.dragging = false; t.pressed = false; t.entity_id[0] = 0;
-        lv_obj_add_flag(t.root, LV_OBJ_FLAG_HIDDEN); return;
+void RoomModule::bind(BoundCard &slot, const RoomControlViewModel *control) {
+    if (!control) {
+        slot.dragging = false;
+        slot.control = {};
+        ui_card_set_visible(slot.card, false);
+        return;
     }
-    if (hidden(t.entity_id)) { t.dragging = false; t.pressed = false; }
-    if (t.dragging || t.pressed) return; // Keep identity and thumb stable until release.
-    snprintf(t.entity_id, sizeof(t.entity_id), "%s", e->entity_id);
-    t.scene = strcmp(e->domain, "scene") == 0;
-    const auto *p = preference(e->entity_id);
-    display(t.name, p && p->label[0] ? p->label : e->name[0] ? e->name : e->entity_id);
-    const char *type = display_type(*e);
-    const bool active = strcmp(e->state,"on")==0 || strcmp(e->state,"open")==0 || strcmp(e->state,"opening")==0;
-    char detail[112];
-    if (!e->available) snprintf(detail, sizeof(detail), "Unavailable");
-    else if (t.scene) snprintf(detail, sizeof(detail), "Scene  |  Tap to activate");
-    else if (strcmp(type,"cover")==0) snprintf(detail,sizeof(detail),"%s  |  Tap to %s",e->state,active?"close":"open");
-    else if (strcmp(type,"fan")==0) snprintf(detail,sizeof(detail),active?"Fan %u%%":"Fan off",e->fan_speed_pct);
-    else if (e->supports_brightness && active) snprintf(detail,sizeof(detail),"On at %u%%  |  Tap to turn off",e->brightness_pct);
-    else snprintf(detail,sizeof(detail),"%s  |  Tap to turn %s",active?"On":"Off",active?"off":"on");
-    const bool dimmer = t.slider && e->supports_brightness && strcmp(type, "light") == 0;
-    const bool fan = t.fan_choices[0].button && strcmp(type, "fan") == 0;
-    if (t.slider) {
-        if (dimmer) {
-            lv_obj_remove_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
-            lv_slider_set_value(t.slider, active ? e->brightness_pct : 0, LV_ANIM_OFF);
-            set_enabled(t.slider, e->available);
-            snprintf(detail,sizeof(detail), e->available ? "Brightness  %u%%" : "Unavailable", active ? e->brightness_pct : 0);
-        } else lv_obj_add_flag(t.slider, LV_OBJ_FLAG_HIDDEN);
-        for (uint8_t i = 0; i < 4; ++i) {
-            if (fan) {
-                lv_obj_remove_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
-                const bool selected = (i == 0 && !active) ||
-                    (i > 0 && active && e->fan_speed_pct >= t.fan_choices[i].percentage - 16 && e->fan_speed_pct <= t.fan_choices[i].percentage + 17);
-                lv_obj_set_style_bg_color(t.fan_choices[i].button, lv_color_hex(selected ? ACCENT : CARD_ALT), LV_PART_MAIN);
-                set_enabled(t.fan_choices[i].button, e->available);
-            } else lv_obj_add_flag(t.fan_choices[i].button, LV_OBJ_FLAG_HIDDEN);
+    if (slot.dragging) return;
+    slot.control = *control;
+    const uint32_t icon_color = !control->available ? MUTED :
+                                control->kind == UiControlKind::Light ? ui_theme::YELLOW :
+                                control->kind == UiControlKind::Fan ? ui_theme::CYAN : 0x8EA7FF;
+    ui_card_set_content(slot.card, glyph_for(control->kind, control->active), icon_color,
+                        control->title, control->state_text);
+    ui_card_set_state(slot.card, control->active, control->available);
+    if (slot.card.slider) {
+        const bool show_level = control->supports_level && control->kind != UiControlKind::Scene;
+        if (show_level) lv_obj_remove_flag(slot.card.slider, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(slot.card.slider, LV_OBJ_FLAG_HIDDEN);
+        if (slot.card.value) {
+            if (show_level) lv_obj_remove_flag(slot.card.value, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(slot.card.value, LV_OBJ_FLAG_HIDDEN);
         }
-        ellipsis(t.detail, (dimmer || fan) ? 208 : 444);
+        if (show_level) ui_card_set_level(slot.card, control->active ? control->level_pct : 0);
     }
-    display(t.detail, detail);
-    set_enabled(t.root, e->available);
-    lv_obj_set_style_bg_color(t.root, lv_color_hex(active ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
-    lv_obj_set_style_border_color(t.root, lv_color_hex(active ? 0x38BDF8 : BORDER), LV_PART_MAIN);
-    render_icon(t, type, active, e->available);
-    lv_obj_remove_flag(t.root, LV_OBJ_FLAG_HIDDEN);
-}
-
-void RoomModule::render_icon(Tile &t, const char *type, bool active, bool available) {
-    // Match the Home Assistant icon language: familiar Material Design Icons
-    // rather than improvised shapes. Off states use the MDI outline/off
-    // variants; active states use their filled counterparts.
-    constexpr uint32_t MDI_BLINDS = 0xF00AC;
-    constexpr uint32_t MDI_FAN = 0xF0210;
-    constexpr uint32_t MDI_LIGHTBULB = 0xF0335;
-    constexpr uint32_t MDI_LIGHTBULB_OUTLINE = 0xF0336;
-    constexpr uint32_t MDI_PALETTE = 0xF03D8;
-    constexpr uint32_t MDI_POWER = 0xF0425;
-    constexpr uint32_t MDI_SOCKET_US = 0xF07E9;
-    constexpr uint32_t MDI_FAN_OFF = 0xF081D;
-    constexpr uint32_t MDI_POWER_OFF = 0xF0902;
-    constexpr uint32_t MDI_PALETTE_OUTLINE = 0xF0E0C;
-    constexpr uint32_t MDI_LIGHTBULB_OFF = 0xF0E4F;
-    constexpr uint32_t MDI_BLINDS_OPEN = 0xF1011;
-    constexpr uint32_t MDI_TOOLS = 0xF1064;
-    const uint32_t color = !available ? MUTED : active ? 0x38BDF8 : MUTED;
-    uint32_t glyph = active ? MDI_POWER : MDI_POWER_OFF;
-    if (strcmp(type, "light") == 0)
-        glyph = active ? MDI_LIGHTBULB : MDI_LIGHTBULB_OUTLINE;
-    else if (strcmp(type, "fan") == 0)
-        glyph = active ? MDI_FAN : MDI_FAN_OFF;
-    else if (strcmp(type, "cover") == 0)
-        glyph = active ? MDI_BLINDS_OPEN : MDI_BLINDS;
-    else if (strcmp(type, "scene") == 0)
-        glyph = active ? MDI_PALETTE : MDI_PALETTE_OUTLINE;
-    else if (strcmp(type, "switch") == 0)
-        glyph = active ? MDI_SOCKET_US : MDI_POWER_OFF;
-    else if (strcmp(type, "tools") == 0)
-        glyph = MDI_TOOLS;
-    if (!available && strcmp(type, "light") == 0) glyph = MDI_LIGHTBULB_OFF;
-    set_icon_glyph(t.icon, glyph);
-    lv_obj_set_style_text_color(t.icon, lv_color_hex(color), LV_PART_MAIN);
+    if (slot.card.toggle) {
+        if (control->kind == UiControlKind::Scene) lv_obj_add_flag(slot.card.toggle, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_remove_flag(slot.card.toggle, LV_OBJ_FLAG_HIDDEN);
+    }
+    ui_card_set_visible(slot.card, true);
 }
 
 void RoomModule::update() {
-    count_ = home_assistant_get_room_entities(entities_, HA_MAX_AREA_ENTITIES);
-    const auto &cfg = config_service_get();
-    if (g_active_room >= cfg.room_count) g_active_room = 0;
-    if (cfg.room_count) {
-        size_t filtered = 0;
-        for (size_t i = 0; i < count_; ++i) {
-            const PanelRoomControl *p = preference(entities_[i].entity_id);
-            if (p) entities_[filtered++] = entities_[i];
-        }
-        count_ = filtered;
-    }
-    std::sort(entities_, entities_ + count_, [](const HomeAssistantEntitySnapshot &a, const HomeAssistantEntitySnapshot &b) {
-        const int ao = order(a.entity_id), bo = order(b.entity_id);
-        if (ao != bo) return ao < bo;
-        const int name = strcmp(a.name, b.name);
-        return name ? name < 0 : strcmp(a.entity_id, b.entity_id) < 0;
-    });
-    size_t favorite_count = 0;
-    // A missing favorite retains its position instead of becoming another device.
-    for (size_t i = 0; i < cfg.room_control_count && favorite_count < 6; ++i) {
-        const auto &p = cfg.room_controls[i];
-        if (p.room_index != g_active_room || p.placement != 1) continue;
-        const HomeAssistantEntitySnapshot *found = nullptr;
-        for (size_t j = 0; j < count_; ++j)
-            if (strcmp(p.entity_id, entities_[j].entity_id)==0) { found = &entities_[j]; break; }
-        HomeAssistantEntitySnapshot missing = {};
-        snprintf(missing.entity_id,sizeof(missing.entity_id),"%s",p.entity_id);
-        bind(favorites_[favorite_count++], found ? found : &missing);
-    }
-    for (size_t i = favorite_count; i < 6; ++i) bind(favorites_[i], nullptr);
-    if (favorite_count) lv_obj_add_flag(empty_, LV_OBJ_FLAG_HIDDEN);
+    ui_state_model_snapshot_room(room_, controls_, PANEL_MAX_ROOM_CONTROLS, control_count_);
+    if (room_selector_ && lv_dropdown_get_selected(room_selector_) != room_.active_room)
+        lv_dropdown_set_selected(room_selector_, room_.active_room);
+    for (int i = 0; i < 4; ++i)
+        bind(favorites_[i], i < room_.favorite_count ? &room_.favorites[i] : nullptr);
+    if (room_.favorite_count) lv_obj_add_flag(empty_, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(empty_, LV_OBJ_FLAG_HIDDEN);
-    for (int g = 0; g < 4; ++g) {
-        size_t total = 0;
-        for (size_t i = 0; i < count_; ++i)
-            if (!hidden(entities_[i].entity_id) && entity_group(entities_[i].domain)==g) ++total;
-        display(groups_[g].text, GROUP_NAMES[g]);
-        char count_text[16]; snprintf(count_text, sizeof(count_text), "%u", static_cast<unsigned>(total));
-        display(groups_[g].count, count_text);
-        lv_obj_set_style_text_color(groups_[g].icon, lv_color_hex(total ? 0x38BDF8 : MUTED), LV_PART_MAIN);
-        set_enabled(groups_[g].button,total > 0);
-    }
-    HomeAssistantDiscoveryStatus discovery = {};
-    home_assistant_get_discovery_status(discovery);
-    display(heading_, cfg.room_count && cfg.rooms[g_active_room].header[0] ? cfg.rooms[g_active_room].header : discovery.area_name[0] ? discovery.area_name : "Your room");
-    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) if (room_tabs_[i].button) lv_obj_set_style_bg_color(room_tabs_[i].button,lv_color_hex(i==g_active_room?ACCENT:CARD_ALT),LV_PART_MAIN);
-    if (!feedback_until_ || static_cast<int32_t>(millis() - feedback_until_) >= 0) {
-        if (discovery.last_action_ms && millis() - discovery.last_action_ms < 12000) {
-            display(status_, discovery.last_action);
-            if (group_ >= 0 && discovery.last_action_http_code >= 400)
-                display(page_label_, "Home Assistant rejected the command");
-        } else display(status_, discovery.message[0] ? discovery.message : "Waiting for Home Assistant");
-    }
-    if (group_ >= 0) {
-        render_popup();
-        if (discovery.last_action_ms && millis() - discovery.last_action_ms < 12000 &&
-            (discovery.last_action_http_code < 0 || discovery.last_action_http_code >= 400))
-            display(page_label_, "Command failed. Check Home Assistant.");
-    }
+
+    char summary[48];
+    snprintf(summary, sizeof(summary), "%u on / %u total", room_.group_active[0], room_.group_total[0]);
+    ui_card_set_content(groups_[0].card, GROUP_ICONS[0], ui_theme::YELLOW, "Lights", summary);
+    snprintf(summary, sizeof(summary), "%u online", room_.devices_online);
+    ui_card_set_content(groups_[1].card, GROUP_ICONS[1], 0xAFC6FF, "Devices", summary);
+    snprintf(summary, sizeof(summary), "%u open", room_.group_active[2]);
+    ui_card_set_content(groups_[2].card, GROUP_ICONS[2], 0xAFC6FF, "Shades", summary);
+    snprintf(summary, sizeof(summary), "%u available", room_.group_total[3]);
+    ui_card_set_content(groups_[3].card, GROUP_ICONS[3], 0xD8FF26, "Scenes", summary);
+    for (int i = 0; i < 4; ++i) ui_theme::interactive(groups_[i].card.root, false, room_.group_total[i] > 0);
+
+    display(status_values_[0], room_.temperature);
+    display(status_values_[1], room_.humidity);
+    snprintf(summary, sizeof(summary), "%u", room_.devices_online);
+    display(status_values_[2], summary);
+    display(status_values_[3], room_.system_status);
+    lv_obj_set_style_text_color(status_values_[3], lv_color_hex(room_.healthy ? ui_theme::SUCCESS : ui_theme::WARN), LV_PART_MAIN);
+    if (group_ >= 0) render_popup();
 }
 
 void RoomModule::render_popup() {
-    size_t indices[HA_MAX_AREA_ENTITIES], total = 0;
-    for (size_t i = 0; i < count_; ++i)
-        if (!hidden(entities_[i].entity_id) && entity_group(entities_[i].domain)==group_) indices[total++] = i;
-    const int pages = total ? (total + 5) / 6 : 1;
+    size_t matching[PANEL_MAX_ROOM_CONTROLS];
+    size_t total = 0;
+    for (size_t i = 0; i < control_count_; ++i)
+        if (group_for(controls_[i].kind) == group_) matching[total++] = i;
+    const int pages = total ? static_cast<int>((total + 5) / 6) : 1;
     if (page_ >= pages) page_ = pages - 1;
     display(popup_title_, GROUP_NAMES[group_]);
-    display(popup_hint_, group_ == 0 ? "Tap a tile to toggle. Slide to dim." :
-                         group_ == 3 ? "Tap a scene to activate." :
-                         group_ == 2 ? "Tap a shade to open or close." : "Tap a device to turn it on or off.");
-    for (size_t i = 0; i < 6; ++i) {
-        size_t offset = page_ * 6 + i;
-        bind(popup_tiles_[i], offset < total ? &entities_[indices[offset]] : nullptr);
+    for (int i = 0; i < 6; ++i) {
+        const size_t item = static_cast<size_t>(page_ * 6 + i);
+        bind(popup_cards_[i], item < total ? &controls_[matching[item]] : nullptr);
     }
-    char text[64];
-    if (total) snprintf(text,sizeof(text),"%d / %d",page_+1,pages);
-    else snprintf(text,sizeof(text),"No visible controls");
-    if (!feedback_until_ || static_cast<int32_t>(millis() - feedback_until_) >= 0) display(page_label_,text);
-    set_enabled(previous_,page_>0); set_enabled(next_,page_+1<pages);
+    char page_text[48];
+    if (total) snprintf(page_text, sizeof(page_text), "%d / %d", page_ + 1, pages);
+    else snprintf(page_text, sizeof(page_text), "No controls in this group");
+    display(popup_feedback_, page_text);
+    set_enabled(previous_, page_ > 0);
+    set_enabled(next_, page_ + 1 < pages);
 }
 
-void RoomModule::action_cb(lv_event_t *e) {
-    auto *t = static_cast<Tile *>(lv_event_get_user_data(e));
-    if (!t) return;
-    const auto code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSED) { t->pressed = true; return; }
-    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) { t->pressed = false; return; }
-    if (code != LV_EVENT_CLICKED || !t->entity_id[0] || hidden(t->entity_id)) return;
-    // Revalidate against fresh HA state; never send an old tile's stale action.
-    auto *self = t->owner;
-    HomeAssistantEntitySnapshot current = {};
-    if (!home_assistant_get_room_entity(t->entity_id, current) || !current.available) {
-        self->update(); return;
+void RoomModule::action_cb(lv_event_t *event) {
+    BoundCard *slot = static_cast<BoundCard *>(lv_event_get_user_data(event));
+    if (!slot || !slot->owner || slot->dragging || !slot->control.entity_id[0]) return;
+    const bool queued = ui_state_model_activate(slot->control);
+    ui_shell_report_status(queued ? "Command queued for Home Assistant" : "Command could not be queued");
+    slot->owner->update();
+}
+
+void RoomModule::slider_cb(lv_event_t *event) {
+    BoundCard *slot = static_cast<BoundCard *>(lv_event_get_user_data(event));
+    if (!slot || !slot->owner || !slot->card.slider) return;
+    const lv_event_code_t code = lv_event_get_code(event);
+    if (code == LV_EVENT_PRESSED) slot->dragging = true;
+    else if (code == LV_EVENT_VALUE_CHANGED && slot->dragging)
+        ui_card_set_level(slot->card, static_cast<uint8_t>(lv_slider_get_value(slot->card.slider)), false);
+    else if (code == LV_EVENT_PRESS_LOST) {
+        slot->dragging = false;
+        slot->owner->update();
+    } else if (code == LV_EVENT_RELEASED && slot->dragging) {
+        const uint8_t level = static_cast<uint8_t>(lv_slider_get_value(slot->card.slider));
+        slot->dragging = false;
+        const bool queued = ui_state_model_set_level(slot->control, level);
+        ui_shell_report_status(queued ? "Level change queued for Home Assistant" : "Level change could not be queued");
+        slot->owner->update();
     }
-    const bool queued = t->scene ? home_assistant_queue_scene(t->entity_id) : home_assistant_queue_toggle(t->entity_id);
-    display(self->status_,queued ? "Command queued. Waiting for Home Assistant." :
-            (home_assistant_commands_ready() ? "Command queue busy. Please try again." :
-             "Home Assistant reconnecting. Please wait."));
-    self->feedback_until_ = millis()+4000;
-    // Feedback remains visible above the popup's pagination controls.
-    if (self->group_ >= 0) display(self->page_label_,queued ? "Command queued" :
-                                    (home_assistant_commands_ready() ? "Queue busy - try again" : "HA reconnecting"));
 }
-void RoomModule::group_cb(lv_event_t *e) {
-    auto *g = static_cast<Group *>(lv_event_get_user_data(e));
-    g->owner->feedback_until_ = 0; g->owner->group_ = g->index; g->owner->page_ = 0;
-    g->owner->update(); lv_obj_remove_flag(g->owner->overlay_,LV_OBJ_FLAG_HIDDEN);
+
+void RoomModule::group_cb(lv_event_t *event) {
+    GroupCard *group = static_cast<GroupCard *>(lv_event_get_user_data(event));
+    if (!group || !group->owner) return;
+    group->owner->group_ = group->index;
+    group->owner->page_ = 0;
+    group->owner->render_popup();
+    lv_obj_remove_flag(group->owner->overlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(group->owner->overlay_);
 }
-void RoomModule::close_cb(lv_event_t *e) {
-    static_cast<RoomModule *>(lv_event_get_user_data(e))->on_deactivate();
+
+void RoomModule::close_cb(lv_event_t *event) {
+    RoomModule *self = static_cast<RoomModule *>(lv_event_get_user_data(event));
+    if (self) self->on_deactivate();
 }
-void RoomModule::page_cb(lv_event_t *e) {
-    auto *self = static_cast<RoomModule *>(lv_event_get_user_data(e));
-    for (auto &tile : self->popup_tiles_) tile.dragging = false;
-    self->feedback_until_ = 0;
-    self->page_ += lv_event_get_target(e)==self->next_ ? 1 : -1;
+
+void RoomModule::page_cb(lv_event_t *event) {
+    RoomModule *self = static_cast<RoomModule *>(lv_event_get_user_data(event));
+    if (!self) return;
+    for (auto &slot : self->popup_cards_) slot.dragging = false;
+    self->page_ += lv_event_get_target(event) == self->next_ ? 1 : -1;
     if (self->page_ < 0) self->page_ = 0;
     self->render_popup();
 }
-void RoomModule::room_tab_cb(lv_event_t *e) { auto *tab=static_cast<RoomTab *>(lv_event_get_user_data(e)); if(!tab)return; g_active_room=tab->index; tab->owner->on_deactivate(); tab->owner->update(); }
+
+void RoomModule::room_changed_cb(lv_event_t *event) {
+    RoomModule *self = static_cast<RoomModule *>(lv_event_get_user_data(event));
+    if (!self || !self->room_selector_) return;
+    self->on_deactivate();
+    ui_state_model_set_active_room(static_cast<uint8_t>(lv_dropdown_get_selected(self->room_selector_)));
+    self->update();
+}
+
 void RoomModule::on_deactivate() {
-    group_ = -1; page_ = 0;
-    for (auto &tile : popup_tiles_) { tile.dragging = false; tile.pressed = false; }
-    for (auto &tile : favorites_) tile.pressed = false;
-    if (overlay_) lv_obj_add_flag(overlay_,LV_OBJ_FLAG_HIDDEN);
-}
-
-void RoomModule::brightness_cb(lv_event_t *e) {
-    auto *t = static_cast<Tile *>(lv_event_get_user_data(e));
-    const auto code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSED) t->dragging = true;
-    else if (code == LV_EVENT_PRESS_LOST) { t->dragging = false; t->owner->update(); }
-    else if (code == LV_EVENT_VALUE_CHANGED) {
-        char text[32]; snprintf(text,sizeof(text),"Brightness  %d%%",static_cast<int>(lv_slider_get_value(t->slider)));
-        display(t->detail,text);
-    } else if (code == LV_EVENT_RELEASED && t->dragging) {
-        t->dragging = false;
-        if (hidden(t->entity_id)) { t->owner->update(); return; }
-        const bool queued = home_assistant_queue_light_brightness(t->entity_id,lv_slider_get_value(t->slider));
-        display(t->owner->page_label_,queued ? "Brightness queued" :
-                (home_assistant_commands_ready() ? "Queue busy - try again" : "HA reconnecting"));
-        t->owner->feedback_until_ = millis()+4000;
-        display(t->owner->status_,queued ? "Brightness queued. Waiting for Home Assistant." :
-                (home_assistant_commands_ready() ? "Command queue busy. Please try again." :
-                 "Home Assistant reconnecting. Please wait."));
-    }
-}
-
-void RoomModule::fan_speed_cb(lv_event_t *e) {
-    auto *choice = static_cast<Tile::FanChoice *>(lv_event_get_user_data(e));
-    if (!choice || !choice->tile || !choice->tile->owner || !choice->tile->entity_id[0]) return;
-    Tile *tile = choice->tile;
-    RoomModule *self = tile->owner;
-    const bool queued = home_assistant_queue_fan_speed(tile->entity_id, choice->percentage);
-    display(self->status_, queued ? "Fan speed queued. Waiting for Home Assistant." :
-            (home_assistant_commands_ready() ? "Command queue busy. Please try again." : "Home Assistant reconnecting. Please wait."));
-    self->feedback_until_ = millis() + 4000;
+    group_ = -1;
+    page_ = 0;
+    for (auto &slot : favorites_) slot.dragging = false;
+    for (auto &slot : popup_cards_) slot.dragging = false;
+    if (overlay_) lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
 }

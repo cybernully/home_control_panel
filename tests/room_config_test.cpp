@@ -38,5 +38,10 @@ int main() {
     panel_display_text(out,3,"éé"); assert(strcmp(out,"é")==0);
     panel_display_text(out,sizeof(out),"bad\xe2\x80"); assert(strcmp(out,"bad")==0);
     panel_display_text(out,2,"—"); assert(strcmp(out,"-")==0);
+    auto parse_rooms = [&](const String &s) { return config_service_parse_rooms(s, config, error); };
+    assert(parse_rooms(R"([{"tab_label":"Office","header":"Office controls","temperature_entity_id":"sensor.office_temperature","humidity_entity_id":"sensor.office_humidity"}])"));
+    assert(config.room_count == 1 && strcmp(config.rooms[0].temperature_entity_id,"sensor.office_temperature") == 0);
+    assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","temperature_entity_id":"light.not_a_sensor"}])"));
+    assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","humidity_entity_id":"binary_sensor.office"}])"));
     std::cout << "Room parser and UTF-8 regression tests passed.\n";
 }

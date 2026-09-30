@@ -315,7 +315,8 @@ bool is_supported_domain(const char *domain) {
            strcmp(domain, "scene") == 0 ||
            strcmp(domain, "media_player") == 0 ||
            strcmp(domain, "weather") == 0 ||
-           strcmp(domain, "calendar") == 0;
+           strcmp(domain, "calendar") == 0 ||
+           strcmp(domain, "sensor") == 0;
 }
 
 void fallback_name_from_id(const char *entity_id, char *out, size_t out_len) {
@@ -651,6 +652,9 @@ bool is_layout_entity(const char *entity_id) {
     if (!cfg.explicit_layout) return true;
     for (uint8_t i = 0; i < cfg.room_control_count; ++i)
         if (strcmp(cfg.room_controls[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.room_count; ++i)
+        if ((cfg.rooms[i].temperature_entity_id[0] && strcmp(cfg.rooms[i].temperature_entity_id, entity_id) == 0) ||
+            (cfg.rooms[i].humidity_entity_id[0] && strcmp(cfg.rooms[i].humidity_entity_id, entity_id) == 0)) return true;
     for (uint8_t i = 0; i < cfg.media_player_count; ++i)
         if (strcmp(cfg.media_players[i], entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i)
@@ -704,6 +708,10 @@ void populate_configured_layout_entities_worker() {
     };
 
     for (uint8_t i = 0; i < cfg.room_control_count; ++i) add_entity(cfg.room_controls[i].entity_id);
+    for (uint8_t i = 0; i < cfg.room_count; ++i) {
+        add_entity(cfg.rooms[i].temperature_entity_id);
+        add_entity(cfg.rooms[i].humidity_entity_id);
+    }
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) add_entity(cfg.media_players[i]);
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) add_entity(cfg.media_shortcuts[i].entity_id);
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) add_entity(cfg.media_favorites[i].entity_id);
@@ -1304,7 +1312,7 @@ void run_rest_discovery_worker() {
     // which is why large installations reported the opaque -103 failure.
     static const char entity_picker_template[] =
         "{% set ns = namespace(items=[]) %}"
-        "{% for s in states if s.domain in ['light','switch','fan','cover','scene','media_player','weather','calendar'] %}"
+        "{% for s in states if s.domain in ['light','switch','fan','cover','scene','media_player','weather','calendar'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
         "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
         "{% endfor %}{{ ns.items | to_json }}";
 

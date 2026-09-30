@@ -4,7 +4,7 @@
 
 bool config_service_parse_room_controls(const String &json, PanelConfig &config, String &error) {
     JsonDocument doc;
-    if (deserializeJson(doc, json) || !doc.is<JsonArray>() || doc.size() > HA_MAX_AREA_ENTITIES) {
+    if (deserializeJson(doc, json) || !doc.is<JsonArray>() || doc.size() > PANEL_MAX_ROOM_CONTROLS) {
         error = "Room controls must be an array of at most 48 entries.";
         return false;
     }
@@ -67,11 +67,19 @@ bool config_service_parse_rooms(const String &json, PanelConfig &config, String 
     PanelRoom parsed[PANEL_MAX_ROOMS] = {};
     for (size_t i = 0; i < doc.size(); ++i) {
         const char *tab = doc[i]["tab_label"] | ""; const char *header = doc[i]["header"] | "";
+        const char *temperature = doc[i]["temperature_entity_id"] | "";
+        const char *humidity = doc[i]["humidity_entity_id"] | "";
         if (!tab[0] || !header[0] || strlen(tab) >= PANEL_ROOM_NAME_LEN || strlen(header) >= PANEL_ROOM_NAME_LEN) {
             error = "Every room needs a tab label and header of at most 31 characters."; return false;
         }
+        if ((temperature[0] && (strncmp(temperature, "sensor.", 7) != 0 || strlen(temperature) >= 96)) ||
+            (humidity[0] && (strncmp(humidity, "sensor.", 7) != 0 || strlen(humidity) >= 96))) {
+            error = "Room temperature and humidity entities must be sensor entity IDs."; return false;
+        }
         snprintf(parsed[i].tab_label, sizeof(parsed[i].tab_label), "%s", tab);
         snprintf(parsed[i].header, sizeof(parsed[i].header), "%s", header);
+        snprintf(parsed[i].temperature_entity_id, sizeof(parsed[i].temperature_entity_id), "%s", temperature);
+        snprintf(parsed[i].humidity_entity_id, sizeof(parsed[i].humidity_entity_id), "%s", humidity);
     }
     config.room_count = static_cast<uint8_t>(doc.size()); memset(config.rooms, 0, sizeof(config.rooms)); memcpy(config.rooms, parsed, sizeof(parsed)); return true;
 }
