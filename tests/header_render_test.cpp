@@ -114,10 +114,23 @@ int main(){
     assert(lv_label_get_text(g_status_message)[0]);
     lv_obj_send_event(g_status_overlay,LV_EVENT_CLICKED,nullptr);
     assert(lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
-    lv_area_t body,tip,fill,text;
+    lv_area_t body,tip,fill,text,status_icon,status_text,wifi_first,wifi_last,wifi_text,settings_icon,settings_text;
     lv_obj_get_coords(g_battery_body,&body);lv_obj_get_coords(g_battery_tip,&tip);lv_obj_get_coords(g_battery_label,&text);
     assert(body.y1+body.y2==tip.y1+tip.y2);
-    assert(abs((body.y1+body.y2)-(text.y1+text.y2))<=1);
+    assert(abs((body.x1+tip.x2)-(text.x1+text.x2))<=2);
+    assert(text.y1>body.y2);
+    lv_obj_get_coords(g_status_dot,&status_icon);lv_obj_get_coords(g_status_label,&status_text);
+    assert(abs((status_icon.x1+status_icon.x2)-(status_text.x1+status_text.x2))<=2);
+    assert(status_text.y1>status_icon.y2);
+    lv_obj_get_coords(g_signal_bars[0],&wifi_first);lv_obj_get_coords(g_signal_bars[3],&wifi_last);lv_obj_get_coords(g_wifi,&wifi_text);
+    assert(abs((wifi_first.x1+wifi_last.x2)-(wifi_text.x1+wifi_text.x2))<=2);
+    assert(wifi_text.y1>wifi_last.y2);
+    lv_obj_get_coords(g_settings_icon,&settings_icon);lv_obj_get_coords(g_settings_label,&settings_text);
+    assert(abs((settings_icon.x1+settings_icon.x2)-(settings_text.x1+settings_text.x2))<=2);
+    assert(settings_text.y1>settings_icon.y2);
+    auto *footer=lv_obj_get_parent(g_nav_buttons[0]);
+    assert(lv_obj_get_style_border_width(footer,LV_PART_MAIN)==0);
+    for(size_t i=0;i<5;++i)assert(lv_obj_get_style_border_width(g_nav_buttons[i],LV_PART_MAIN)==0);
     for(int percent : {100,20,10,1,0}){
         battery_percent=percent;ui_shell_refresh_header();lv_obj_update_layout(lv_screen_active());
         lv_obj_get_coords(g_battery_fill,&fill);
@@ -135,7 +148,7 @@ int main(){
     snprintf(config.area_id,sizeof(config.area_id),"A very long area name to check header bounds and alignment");
     ui_shell_refresh_header();full_shot(".test-build/header-long-title.ppm");
     lv_obj_send_event(g_settings_button,LV_EVENT_CLICKED,nullptr);assert(g_active_index==5);
-    puts("Header renders passed: aligned battery, bounded fill, empty/invalid states, offline status and long labels.");
+    puts("Header renders passed: right-aligned icon columns, centered captions, unboxed navigation, battery bounds, offline status and long labels.");
 }
 
 
