@@ -2,7 +2,6 @@
 
 #include "config_service.h"
 #include "home_assistant.h"
-#include "network_service.h"
 
 #include <algorithm>
 #include <stdio.h>
@@ -99,6 +98,9 @@ void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
     else if (out.kind == UiControlKind::Scene) copy_text(out.state_text, sizeof(out.state_text), "Scene");
     else if (out.kind == UiControlKind::Cover)
         snprintf(out.state_text, sizeof(out.state_text), "%s", out.active ? "Open" : "Closed");
+    else if (out.kind == UiControlKind::Fan && out.supports_level && out.active)
+        copy_text(out.state_text, sizeof(out.state_text),
+                  out.level_pct <= 40 ? "Low" : out.level_pct <= 75 ? "Medium" : "High");
     else if (out.supports_level && out.active)
         snprintf(out.state_text, sizeof(out.state_text), "On  |  %u%%", static_cast<unsigned>(out.level_pct));
     else copy_text(out.state_text, sizeof(out.state_text), out.active ? "On" : "Off");
@@ -152,15 +154,22 @@ bool ui_state_model_snapshot_room(RoomViewModel &room,
         if (controls && control_count < control_capacity) controls[control_count++] = item;
     }
 
-    HomeAssistantDiscoveryStatus discovery = {};
-    home_assistant_get_discovery_status(discovery);
-    room.healthy = network_service_connected() && discovery.websocket_authenticated && discovery.discovery_complete;
-    room.busy = network_service_connected() && !room.healthy;
-    copy_text(room.system_status, sizeof(room.system_status),
-              room.healthy ? "All good" : room.busy ? "Syncing" : "Offline");
-    copy_text(room.system_detail, sizeof(room.system_detail),
-              discovery.last_action[0] ? discovery.last_action :
-              discovery.message[0] ? discovery.message : "Waiting for Home Assistant");
+    const uint16_t unavailable = static_cast<uint16_t>(room.device_count - room.devices_online);
+    room.healthy = room.device_count > 0 && unavailable == 0;
+    room.busy = room.device_count > 0 && unavailable > 0;
+    if (room.device_count == 0) {
+        copy_text(room.system_status, sizeof(room.system_status), "No controls");
+        copy_text(room.system_detail, sizeof(room.system_detail), "No controls are assigned to this room.");
+    } else if (unavailable == 0) {
+        copy_text(room.system_status, sizeof(room.system_status), "All ready");
+        snprintf(room.system_detail, sizeof(room.system_detail), "%u room controls are available.",
+                 static_cast<unsigned>(room.device_count));
+    } else {
+        snprintf(room.system_status, sizeof(room.system_status), "%u offline",
+                 static_cast<unsigned>(unavailable));
+        snprintf(room.system_detail, sizeof(room.system_detail), "%u of %u room controls are unavailable.",
+                 static_cast<unsigned>(unavailable), static_cast<unsigned>(room.device_count));
+    }
     return configured_room != nullptr;
 }
 

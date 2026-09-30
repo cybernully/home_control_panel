@@ -18,7 +18,7 @@ namespace {
 constexpr int SCREEN_W=1280,SCREEN_H=800,HEADER_H=96,FOOTER_H=78,PAGE_Y=HEADER_H,PAGE_H=SCREEN_H-HEADER_H-FOOTER_H;
 constexpr uint32_t BG=ui_theme::BG,PANEL=ui_theme::SURFACE,TEXT=ui_theme::TEXT,MUTED=ui_theme::MUTED,ACCENT=ui_theme::ACCENT,BORDER=ui_theme::BORDER,SUCCESS=ui_theme::SUCCESS,WARN=ui_theme::WARN,BAD=ui_theme::DANGER;
 lv_obj_t *g_screen=nullptr,*g_header_title=nullptr,*g_clock=nullptr,*g_wifi=nullptr,*g_battery_label=nullptr,*g_battery_body=nullptr,*g_battery_fill=nullptr,*g_battery_tip=nullptr,*g_settings_button=nullptr,*g_settings_icon=nullptr,*g_settings_label=nullptr;
-lv_obj_t *g_status_button=nullptr,*g_status_dot=nullptr,*g_status_label=nullptr,*g_status_overlay=nullptr,*g_status_message=nullptr,*g_status_time=nullptr;
+lv_obj_t *g_status_button=nullptr,*g_status_dot=nullptr,*g_status_label=nullptr,*g_comm_button=nullptr,*g_comm_icon=nullptr,*g_comm_label=nullptr,*g_status_overlay=nullptr,*g_status_message=nullptr,*g_status_time=nullptr;
 lv_obj_t *g_signal_bars[4] = {};
 lv_obj_t *g_pages[PANEL_MAX_MODULES]={},*g_nav_buttons[PANEL_MAX_MODULES]={},*g_nav_icons[PANEL_MAX_MODULES]={},*g_nav_labels[PANEL_MAX_MODULES]={};bool g_created[PANEL_MAX_MODULES]={};size_t g_active_index=0;uint32_t g_last_header_ms=0,g_last_activity_ms=0;
 char g_last_status[160] = "Starting Home Assistant connection...";
@@ -112,10 +112,15 @@ void update_header() {
     home_assistant_get_status(health);
     const bool failed = !connected || !health.configured || strstr(live_message, "failed") ||
                         strstr(live_message, "rejected") || strstr(live_message, "invalid");
-    const uint32_t status_color = ready ? SUCCESS : failed ? BAD : WARN;
-    lv_obj_set_style_bg_color(g_status_dot, lv_color_hex(status_color), LV_PART_MAIN);
-    lv_label_set_text(g_status_label, ready ? "All good" : failed ? "Offline" : "Syncing");
-    lv_obj_set_style_text_color(g_status_label, lv_color_hex(status_color), LV_PART_MAIN);
+    const uint32_t comm_color = ready ? SUCCESS : failed ? BAD : WARN;
+    ui_theme::set_glyph(g_comm_icon, ready ? 0xF0318 : failed ? 0xF04E7 : 0xF04E6);
+    lv_obj_set_style_text_color(g_comm_icon, lv_color_hex(comm_color), LV_PART_MAIN);
+    lv_label_set_text(g_comm_label, ready ? "Connected" : failed ? "Offline" : "Syncing");
+    lv_obj_set_style_text_color(g_comm_label, lv_color_hex(comm_color), LV_PART_MAIN);
+    ui_theme::set_glyph(g_status_dot, 0xF05E0);
+    lv_obj_set_style_text_color(g_status_dot, lv_color_hex(SUCCESS), LV_PART_MAIN);
+    lv_label_set_text(g_status_label, "All good");
+    lv_obj_set_style_text_color(g_status_label, lv_color_hex(SUCCESS), LV_PART_MAIN);
     const int rssi = connected ? network_service_rssi() : -127;
     const int strength = !connected ? 0 : rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75 ? 2 : 1;
     lv_label_set_text(g_wifi, connected ? "Wi-Fi" : "Offline");
@@ -148,42 +153,56 @@ void create_header() {
         lv_obj_set_pos(vertical, x, 18);
         lv_obj_set_size(vertical, 1, 60);
     };
-    divider_at(720); divider_at(856); divider_at(992); divider_at(1128);
+    divider_at(720); divider_at(828); divider_at(936); divider_at(1044); divider_at(1152);
 
     g_status_button = lv_obj_create(header);
     lv_obj_add_flag(g_status_button, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_pos(g_status_button, 728, 8);
-    lv_obj_set_size(g_status_button, 124, 80);
+    lv_obj_set_pos(g_status_button, 724, 8);
+    lv_obj_set_size(g_status_button, 100, 80);
     style_box(g_status_button, 0x071D33, 0, 0);
-    g_status_dot = lv_obj_create(g_status_button);
-    style_box(g_status_dot, WARN, 10);
-    lv_obj_set_size(g_status_dot, 20, 20);
-    lv_obj_align(g_status_dot, LV_ALIGN_TOP_MID, 0, 12);
+    g_status_dot = label(g_status_button, "", &ha_icons_font, SUCCESS);
+    lv_obj_set_width(g_status_dot, 100);
+    lv_obj_set_style_text_align(g_status_dot, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(g_status_dot, 0, 9);
     g_status_label = label(g_status_button, "Syncing", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_width(g_status_label, 124);
+    lv_obj_set_width(g_status_label, 100);
     lv_obj_set_style_text_align(g_status_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_status_label, 0, 48);
-    lv_obj_add_event_cb(g_status_button, status_button_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_set_pos(g_status_label, 0, 51);
+
+    g_comm_button = lv_obj_create(header);
+    lv_obj_add_flag(g_comm_button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_pos(g_comm_button, 832, 8);
+    lv_obj_set_size(g_comm_button, 100, 80);
+    style_box(g_comm_button, 0x071D33, 0, 0);
+    g_comm_icon = label(g_comm_button, "", &ha_icons_font, WARN);
+    lv_obj_set_width(g_comm_icon, 100);
+    lv_obj_set_style_text_align(g_comm_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(g_comm_icon, 0, 9);
+    g_comm_label = label(g_comm_button, "Syncing", &lv_font_montserrat_12, WARN);
+    lv_obj_set_width(g_comm_label, 100);
+    lv_obj_set_style_text_align(g_comm_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(g_comm_label, 0, 51);
+    lv_obj_add_event_cb(g_comm_button, status_button_cb, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t *wifi = lv_obj_create(header);
-    lv_obj_set_pos(wifi, 864, 8);
-    lv_obj_set_size(wifi, 124, 80);
+    lv_obj_set_pos(wifi, 940, 8);
+    lv_obj_set_size(wifi, 100, 80);
     style_box(wifi, 0x071D33, 0, 0);
     for (int i = 0; i < 4; ++i) {
         g_signal_bars[i] = lv_obj_create(wifi);
         style_box(g_signal_bars[i], BORDER, 1);
         const int height = 5 + i * 3;
         lv_obj_set_size(g_signal_bars[i], 4, height);
-        lv_obj_set_pos(g_signal_bars[i], 49 + i * 7, 36 - height);
+        lv_obj_set_pos(g_signal_bars[i], 37 + i * 7, 36 - height);
     }
     g_wifi = label(wifi, "Offline", &lv_font_montserrat_12, TEXT);
-    lv_obj_set_width(g_wifi, 124);
+    lv_obj_set_width(g_wifi, 100);
     lv_obj_set_style_text_align(g_wifi, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_pos(g_wifi, 0, 51);
 
     lv_obj_t *battery = lv_obj_create(header);
-    lv_obj_set_pos(battery, 1000, 8);
-    lv_obj_set_size(battery, 124, 80);
+    lv_obj_set_pos(battery, 1048, 8);
+    lv_obj_set_size(battery, 100, 80);
     style_box(battery, 0x071D33, 0, 0);
     lv_obj_t *icon = lv_obj_create(battery);
     style_box(icon, 0x071D33);
@@ -205,16 +224,16 @@ void create_header() {
     lv_obj_set_pos(g_battery_fill, 4, 6);
     lv_obj_add_flag(g_battery_fill, LV_OBJ_FLAG_HIDDEN);
     g_battery_label = label(battery, "--", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_width(g_battery_label, 124);
+    lv_obj_set_width(g_battery_label, 100);
     lv_obj_set_style_text_align(g_battery_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_pos(g_battery_label, 0, 48);
 
-    g_settings_button=lv_obj_create(header);lv_obj_add_flag(g_settings_button,LV_OBJ_FLAG_CLICKABLE);lv_obj_set_pos(g_settings_button,1136,8);lv_obj_set_size(g_settings_button,124,80);
+    g_settings_button=lv_obj_create(header);lv_obj_add_flag(g_settings_button,LV_OBJ_FLAG_CLICKABLE);lv_obj_set_pos(g_settings_button,1156,8);lv_obj_set_size(g_settings_button,100,80);
     style_box(g_settings_button,0x071D33,0,0);lv_obj_add_event_cb(g_settings_button,settings_button_cb,LV_EVENT_CLICKED,nullptr);
     g_settings_icon=label(g_settings_button,"",&ha_icons_font,0xAFC6FF);ui_theme::set_glyph(g_settings_icon,0xF1064);
-    lv_obj_set_width(g_settings_icon,124);lv_obj_set_style_text_align(g_settings_icon,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_icon,0,11);
+    lv_obj_set_width(g_settings_icon,100);lv_obj_set_style_text_align(g_settings_icon,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_icon,0,11);
     g_settings_label=label(g_settings_button,"Settings",&lv_font_montserrat_12,MUTED);
-    lv_obj_set_width(g_settings_label,124);lv_obj_set_style_text_align(g_settings_label,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_label,0,51);
+    lv_obj_set_width(g_settings_label,100);lv_obj_set_style_text_align(g_settings_label,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_label,0,51);
 
     g_status_overlay = lv_obj_create(g_screen);
     lv_obj_set_size(g_status_overlay, SCREEN_W, SCREEN_H);
@@ -299,7 +318,7 @@ void ui_shell_begin() {
         else if (strcmp(module->id(), "media") == 0) glyph = 0xF03D8;
         else if (strcmp(module->id(), "climate") == 0) glyph = 0xF0210;
         else if (strcmp(module->id(), "security") == 0) glyph = 0xF0902;
-        else if (strcmp(module->id(), "weather") == 0) glyph = 0xF1011;
+        else if (strcmp(module->id(), "weather") == 0) glyph = 0xF0595;
         else if (strcmp(module->id(), "calendar") == 0) glyph = 0xF00AC;
         g_nav_buttons[i] = lv_button_create(footer);
         lv_obj_set_size(g_nav_buttons[i], button_w, 64);

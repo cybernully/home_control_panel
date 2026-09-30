@@ -18,7 +18,7 @@ constexpr const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
 constexpr uint32_t GROUP_ICONS[] = {0xF0335, 0xF07E9, 0xF00AC, 0xF03D8};
 // Keep the glyph set within the small embedded MDI subset compiled into
 // ha_icons_font; this avoids missing-glyph boxes on the panel.
-constexpr uint32_t STATUS_ICONS[] = {0xF0335, 0xF1011, 0xF07E9, 0xF0425};
+constexpr uint32_t STATUS_ICONS[] = {0xF050F, 0xF058E, 0xF07E9, 0xF05E0};
 
 void display(lv_obj_t *label, const char *value) {
     if (!label) return;
@@ -47,6 +47,7 @@ uint32_t glyph_for(UiControlKind kind, bool active) {
 
 UiCardVariant variant_for(const RoomControlViewModel &control) {
     if (control.kind == UiControlKind::Scene) return UiCardVariant::ACTION;
+    if (control.kind == UiControlKind::Fan && control.supports_level) return UiCardVariant::FAN;
     if (control.supports_level) return UiCardVariant::SLIDER;
     return UiCardVariant::CONTROL;
 }
@@ -93,12 +94,12 @@ void RoomModule::create(lv_obj_t *parent) {
         box(divider, BORDER, 0, 0);
         lv_obj_set_pos(divider, metric_x[i] - 12, 14);
         lv_obj_set_size(divider, 1, 50);
-        lv_obj_t *icon = label(room_status, "", &ha_icons_font,
-                               i == 0 ? 0xFF715F : i == 1 ? 0x4AA5FF : i == 3 ? ui_theme::SUCCESS : TEXT);
-        ui_theme::set_glyph(icon, STATUS_ICONS[i]);
-        lv_obj_set_pos(icon, metric_x[i], 22);
-        lv_obj_set_size(icon, 42, 40);
-        lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        status_icons_[i] = label(room_status, "", &ha_icons_font,
+                                 i == 0 ? 0xFF715F : i == 1 ? 0x4AA5FF : i == 3 ? ui_theme::SUCCESS : TEXT);
+        ui_theme::set_glyph(status_icons_[i], STATUS_ICONS[i]);
+        lv_obj_set_pos(status_icons_[i], metric_x[i], 22);
+        lv_obj_set_size(status_icons_[i], 42, 40);
+        lv_obj_set_style_text_align(status_icons_[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         status_values_[i] = label(room_status, "--", &lv_font_montserrat_18, TEXT);
         lv_obj_set_pos(status_values_[i], metric_x[i] + 50, 13);
         lv_obj_set_width(status_values_[i], i == 3 ? 170 : 140);
@@ -108,7 +109,7 @@ void RoomModule::create(lv_obj_t *parent) {
     display(status_captions_[0], "Temperature");
     display(status_captions_[1], "Humidity");
     display(status_captions_[2], "Devices Online");
-    display(status_captions_[3], "System Status");
+    display(status_captions_[3], "Room Controls");
 
     section_heading(parent, "Favorite Controls", 102);
     for (int i = 0; i < 4; ++i) {
@@ -116,25 +117,22 @@ void RoomModule::create(lv_obj_t *parent) {
         const UiCardVariant variant = i < room_.favorite_count
                                           ? variant_for(room_.favorites[i])
                                           : UiCardVariant::CONTROL;
-        ui_card_create(favorites_[i].card, parent, variant, 24 + i * 312, 138, 296, 170);
-        lv_obj_add_event_cb(favorites_[i].card.root, action_cb, LV_EVENT_CLICKED, &favorites_[i]);
-        if (favorites_[i].card.slider)
-            lv_obj_add_event_cb(favorites_[i].card.slider, slider_cb, LV_EVENT_ALL, &favorites_[i]);
+        prepare_card(favorites_[i], parent, variant, 24 + i * 312, 138, 296, 132);
     }
 
-    empty_ = card(parent, 24, 138, 1232, 170);
+    empty_ = card(parent, 24, 138, 1232, 132);
     lv_obj_t *empty_title = label(empty_, "Build your favorites", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(empty_title, 28, 38);
+    lv_obj_set_pos(empty_title, 28, 24);
     lv_obj_t *empty_copy = label(empty_, "Choose up to four primary controls in Web Admin. Everything else remains available below.",
                                  &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(empty_copy, 28, 82);
+    lv_obj_set_pos(empty_copy, 28, 68);
 
-    section_heading(parent, "Quick Access", 340);
+    section_heading(parent, "Quick Access", 294);
     for (int i = 0; i < 4; ++i) {
         groups_[i].owner = this;
         groups_[i].index = static_cast<uint8_t>(i);
         ui_card_create(groups_[i].card, parent, UiCardVariant::NAVIGATION,
-                       24 + i * 312, 376, 296, 154);
+                       24 + i * 312, 330, 296, 142);
         lv_obj_add_event_cb(groups_[i].card.root, group_cb, LV_EVENT_CLICKED, &groups_[i]);
     }
 
@@ -155,10 +153,8 @@ void RoomModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(close, close_cb, LV_EVENT_CLICKED, this);
     for (int i = 0; i < 6; ++i) {
         popup_cards_[i].owner = this;
-        ui_card_create(popup_cards_[i].card, sheet, UiCardVariant::SLIDER,
-                       24 + (i % 2) * 508, 80 + (i / 2) * 140, 492, 124);
-        lv_obj_add_event_cb(popup_cards_[i].card.root, action_cb, LV_EVENT_CLICKED, &popup_cards_[i]);
-        lv_obj_add_event_cb(popup_cards_[i].card.slider, slider_cb, LV_EVENT_ALL, &popup_cards_[i]);
+        prepare_card(popup_cards_[i], sheet, UiCardVariant::CONTROL,
+                     24 + (i % 2) * 508, 80 + (i / 2) * 140, 492, 124);
     }
     previous_ = button(sheet, "Previous", 24, 522, 160, 48);
     next_ = button(sheet, "Next", 864, 522, 160, 48);
@@ -166,6 +162,29 @@ void RoomModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(next_, page_cb, LV_EVENT_CLICKED, this);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
     update();
+}
+
+void RoomModule::prepare_card(BoundCard &slot, lv_obj_t *parent, UiCardVariant variant,
+                              int x, int y, int width, int height) {
+    slot.owner = this;
+    slot.parent = parent;
+    slot.x = x;
+    slot.y = y;
+    slot.width = width;
+    slot.height = height;
+    ensure_card_variant(slot, variant);
+}
+
+void RoomModule::ensure_card_variant(BoundCard &slot, UiCardVariant variant) {
+    if (slot.card.root && slot.card.variant == variant) return;
+    slot.dragging = false;
+    if (slot.card.root) lv_obj_delete(slot.card.root);
+    ui_card_create(slot.card, slot.parent, variant, slot.x, slot.y, slot.width, slot.height);
+    lv_obj_add_event_cb(slot.card.root, action_cb, LV_EVENT_CLICKED, &slot);
+    if (slot.card.slider)
+        lv_obj_add_event_cb(slot.card.slider, slider_cb, LV_EVENT_ALL, &slot);
+    for (lv_obj_t *button : slot.card.fan_buttons)
+        if (button) lv_obj_add_event_cb(button, fan_speed_cb, LV_EVENT_CLICKED, &slot);
 }
 
 void RoomModule::bind(BoundCard &slot, const RoomControlViewModel *control) {
@@ -176,6 +195,7 @@ void RoomModule::bind(BoundCard &slot, const RoomControlViewModel *control) {
         return;
     }
     if (slot.dragging) return;
+    ensure_card_variant(slot, variant_for(*control));
     slot.control = *control;
     const uint32_t icon_color = !control->available ? MUTED :
                                 control->kind == UiControlKind::Light ? ui_theme::YELLOW :
@@ -193,10 +213,8 @@ void RoomModule::bind(BoundCard &slot, const RoomControlViewModel *control) {
         }
         if (show_level) ui_card_set_level(slot.card, control->active ? control->level_pct : 0);
     }
-    if (slot.card.toggle) {
-        if (control->kind == UiControlKind::Scene) lv_obj_add_flag(slot.card.toggle, LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_remove_flag(slot.card.toggle, LV_OBJ_FLAG_HIDDEN);
-    }
+    if (slot.card.variant == UiCardVariant::FAN)
+        ui_card_set_fan_level(slot.card, control->level_pct, control->active, control->available);
     ui_card_set_visible(slot.card, true);
 }
 
@@ -225,7 +243,11 @@ void RoomModule::update() {
     snprintf(summary, sizeof(summary), "%u", room_.devices_online);
     display(status_values_[2], summary);
     display(status_values_[3], room_.system_status);
-    lv_obj_set_style_text_color(status_values_[3], lv_color_hex(room_.healthy ? ui_theme::SUCCESS : ui_theme::WARN), LV_PART_MAIN);
+    const uint32_t room_status_color = room_.healthy ? ui_theme::SUCCESS :
+                                       room_.busy ? ui_theme::WARN : ui_theme::MUTED;
+    ui_theme::set_glyph(status_icons_[3], room_.healthy ? 0xF05E0 : room_.busy ? 0xF0028 : 0xF0425);
+    lv_obj_set_style_text_color(status_icons_[3], lv_color_hex(room_status_color), LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_values_[3], lv_color_hex(room_status_color), LV_PART_MAIN);
     if (group_ >= 0) render_popup();
 }
 
@@ -251,10 +273,26 @@ void RoomModule::render_popup() {
 
 void RoomModule::action_cb(lv_event_t *event) {
     BoundCard *slot = static_cast<BoundCard *>(lv_event_get_user_data(event));
-    if (!slot || !slot->owner || slot->dragging || !slot->control.entity_id[0]) return;
+    if (!slot || !slot->owner || slot->dragging || slot->card.variant == UiCardVariant::FAN ||
+        !slot->control.entity_id[0]) return;
     const bool queued = ui_state_model_activate(slot->control);
     ui_shell_report_status(queued ? "Command queued for Home Assistant" : "Command could not be queued");
     slot->owner->update();
+}
+
+void RoomModule::fan_speed_cb(lv_event_t *event) {
+    BoundCard *slot = static_cast<BoundCard *>(lv_event_get_user_data(event));
+    if (!slot || !slot->owner || !slot->control.entity_id[0]) return;
+    lv_obj_t *target = static_cast<lv_obj_t *>(lv_event_get_target(event));
+    static const uint8_t levels[] = {0, 33, 66, 100};
+    for (int i = 0; i < 4; ++i) {
+        if (slot->card.fan_buttons[i] != target) continue;
+        const bool queued = ui_state_model_set_level(slot->control, levels[i]);
+        ui_shell_report_status(queued ? "Fan speed queued for Home Assistant"
+                                      : "Fan speed could not be queued");
+        slot->owner->update();
+        return;
+    }
 }
 
 void RoomModule::slider_cb(lv_event_t *event) {

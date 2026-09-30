@@ -18,6 +18,11 @@ private:
         UiCard card = {};
         RoomControlViewModel control = {};
         bool dragging = false;
+        lv_obj_t *parent = nullptr;
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
     };
     struct GroupCard {
         RoomModule *owner = nullptr;
@@ -32,6 +37,7 @@ private:
     BoundCard popup_cards_[6] = {};
     GroupCard groups_[4] = {};
     lv_obj_t *room_selector_ = nullptr;
+    lv_obj_t *status_icons_[4] = {};
     lv_obj_t *status_values_[4] = {};
     lv_obj_t *status_captions_[4] = {};
     lv_obj_t *empty_ = nullptr;
@@ -44,9 +50,13 @@ private:
     int page_ = 0;
 
     void bind(BoundCard &slot, const RoomControlViewModel *control);
+    void prepare_card(BoundCard &slot, lv_obj_t *parent, UiCardVariant variant,
+                      int x, int y, int width, int height);
+    void ensure_card_variant(BoundCard &slot, UiCardVariant variant);
     void render_popup();
     static void action_cb(lv_event_t *event);
     static void slider_cb(lv_event_t *event);
+    static void fan_speed_cb(lv_event_t *event);
     static void group_cb(lv_event_t *event);
     static void close_cb(lv_event_t *event);
     static void page_cb(lv_event_t *event);

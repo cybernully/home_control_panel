@@ -3,7 +3,7 @@
 #include <lvgl.h>
 #include <stdint.h>
 
-enum class UiCardVariant : uint8_t { CONTROL, SLIDER, ACTION, NAVIGATION, STATUS };
+enum class UiCardVariant : uint8_t { CONTROL, SLIDER, FAN, ACTION, NAVIGATION, STATUS };
 
 struct UiCard {
     UiCardVariant variant = UiCardVariant::CONTROL;
@@ -17,6 +17,8 @@ struct UiCard {
     lv_obj_t *slider = nullptr;
     lv_obj_t *action = nullptr;
     lv_obj_t *action_label = nullptr;
+    lv_obj_t *fan_buttons[4] = {};
+    lv_obj_t *fan_labels[4] = {};
     lv_obj_t *chevron = nullptr;
 };
 
@@ -26,5 +28,6 @@ void ui_card_set_content(UiCard &card, uint32_t glyph, uint32_t glyph_color,
                          const char *title, const char *subtitle);
 void ui_card_set_state(UiCard &card, bool active, bool available);
 void ui_card_set_level(UiCard &card, uint8_t percentage, bool update_slider = true);
+void ui_card_set_fan_level(UiCard &card, uint8_t percentage, bool active, bool available);
 void ui_card_set_action(UiCard &card, const char *label);
 void ui_card_set_visible(UiCard &card, bool visible);
