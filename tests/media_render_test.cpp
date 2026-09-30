@@ -68,6 +68,7 @@ int main(){ setbuf(stdout,nullptr);
     const char *shortcuts[]={"Evening mix","Morning radio","Focus"};
     for(int i=0;i<3;++i){auto &s=config.media_shortcuts[i];snprintf(s.entity_id,sizeof(s.entity_id),"%s",ids[0]);snprintf(s.label,sizeof(s.label),"%s",shortcuts[i]);snprintf(s.media_content_id,sizeof(s.media_content_id),"playlist-%d",i);snprintf(s.media_content_type,sizeof(s.media_content_type),"playlist");
         auto &fav=favorites[i];snprintf(fav.entity_id,sizeof(fav.entity_id),"%s",ids[0]);snprintf(fav.title,sizeof(fav.title),"Browse playlist %d",i+1);snprintf(fav.media_content_id,sizeof(fav.media_content_id),"browse-%d",i);snprintf(fav.media_content_type,sizeof(fav.media_content_type),"playlist");}
+    auto &saved=config.media_favorites[0];snprintf(saved.entity_id,sizeof(saved.entity_id),"%s",ids[0]);snprintf(saved.label,sizeof(saved.label),"Saved jazz");snprintf(saved.media_content_id,sizeof(saved.media_content_id),"saved-jazz");snprintf(saved.media_content_type,sizeof(saved.media_content_type),"playlist");config.media_favorite_count=1;
     config.media_shortcut_count=3;snprintf(config.display_name,sizeof(config.display_name),"Home Panel");snprintf(config.profile,sizeof(config.profile),"room");snprintf(config.area_id,sizeof(config.area_id),"office");
     lv_init();auto *display=lv_display_create(1280,800);lv_display_set_color_format(display,LV_COLOR_FORMAT_XRGB8888);lv_display_set_buffers(display,pixels,nullptr,sizeof(pixels),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(display,flush);
     ui_shell_begin();show_module(2);auto *page=g_pages[2];lv_obj_update_layout(lv_screen_active());shot(".test-build/media-refined.ppm");
@@ -77,9 +78,9 @@ int main(){ setbuf(stdout,nullptr);
     click(page,"Players");auto *popup=lv_obj_get_child(page,-1);shot(".test-build/media-players.ppm");click(popup,"Kitchen display");assert(lv_obj_has_flag(popup,LV_OBJ_FLAG_HIDDEN));click(page,"Pause");assert(target==ids[1]);
     click(page,"Players");click(popup,"Office speaker");
     click(page,"Sources");shot(".test-build/media-sources.ppm");click(popup,"Radio");assert(action=="Radio"&&target==ids[0]);click(popup,"Close");
-    click(page,"Browse");shot(".test-build/media-browse.ppm");click(popup,"Browse playlist 2");assert(action=="browse-1");media.on_deactivate();assert(lv_obj_has_flag(popup,LV_OBJ_FLAG_HIDDEN));
+    click(page,"Browse");media.update();assert(!lv_obj_has_flag(popup,LV_OBJ_FLAG_HIDDEN)&&find(popup,"Saved jazz"));shot(".test-build/media-browse.ppm");click(popup,"Saved jazz");assert(action=="saved-jazz");click(popup,"Browse playlist 2");assert(action=="browse-1");media.on_deactivate();assert(lv_obj_has_flag(popup,LV_OBJ_FLAG_HIDDEN));
     snprintf(p.title,sizeof(p.title),"A very long track title that should remain bounded — extended live recording from the evening");snprintf(p.artist,sizeof(p.artist),"A very long artist credit featuring several guests and a live backing ensemble");p.available=false;media.update();shot(".test-build/media-unavailable.ppm");assert(lv_obj_get_height(track)==lv_font_montserrat_28.line_height);assert(lv_obj_has_state(lv_obj_get_parent(find(page,"Pause")),LV_STATE_DISABLED));
-    player_count=0;config.media_shortcut_count=0;media.update();shot(".test-build/media-empty.ppm");click(page,"Browse");shot(".test-build/media-empty-browse.ppm");
+    player_count=0;config.media_shortcut_count=0;config.media_favorite_count=0;media.update();shot(".test-build/media-empty.ppm");click(page,"Browse");shot(".test-build/media-empty-browse.ppm");
     puts("Media render/interaction checks passed: artwork, playback, shortcuts, selectors, canceled volume drags, unavailable and empty states.");
 }
 

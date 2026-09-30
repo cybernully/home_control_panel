@@ -75,7 +75,21 @@ data:
 ```
 
 Configured shortcuts and automatically discovered Browse favorites have
-separate rows on the Media page, with three buttons available in each row.
+separate rows on the Media page. Version 1.5.2 also adds a separate
+`media_favorites` list: up to six configured actions displayed first in the
+Media > Browse sheet, followed by any favorites the selected integration
+returns dynamically. Each item uses the same four fields as a media shortcut.
+
+```json
+"media_favorites": [
+  {
+    "label": "Focus playlist",
+    "entity_id": "media_player.office_echo_studio",
+    "media_content_id": "play my focus playlist",
+    "media_content_type": "AMAZON_MUSIC"
+  }
+]
+```
 
 Home Assistant URL/token are stored separately in NVS namespace `panel_ha`.
 The token is write-only from the local web manager and is not stored in

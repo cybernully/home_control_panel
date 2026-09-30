@@ -50,6 +50,10 @@ struct PanelConfig {
     uint8_t module_count;
     PanelMediaShortcut media_shortcuts[PANEL_MAX_MEDIA_SHORTCUTS];
     uint8_t media_shortcut_count;
+    // Browse-sheet favorites are separate from the three main-page shortcuts.
+    // They are shown first in the Media > Browse sheet.
+    PanelMediaShortcut media_favorites[PANEL_MAX_MEDIA_FAVORITES];
+    uint8_t media_favorite_count;
     PanelRoomControl room_controls[HA_MAX_AREA_ENTITIES];
     uint8_t room_control_count;
     PanelRoom rooms[PANEL_MAX_ROOMS];

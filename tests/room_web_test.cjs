@@ -8,7 +8,7 @@ for(const feature of [
   "const $=id=>document.getElementById(id)", "function esc(s)",
   "Rooms and controls", "Media players", "Administration", "Search Home Assistant",
   "/api/ha/discover", "/api/ha/entities", "room_controls",
-  "media_players", "shortcut_label_", "Save layout and configuration",
+  "media_players", "mediaAction('shortcut'", "browseFavorite", "Browse favorites", "media_favorites", "Save layout and configuration",
   "explicit layout", "modules.join(',')", "Available widgets",
   "widget_catalog", "overview_widgets", "Full width · 4 columns",
   "widgetLabels={home_status", "weather:'Weather'", "calendar:'Calendar'"

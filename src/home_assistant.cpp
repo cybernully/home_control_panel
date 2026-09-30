@@ -650,6 +650,8 @@ bool is_layout_entity(const char *entity_id) {
         if (strcmp(cfg.media_players[i], entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i)
         if (strcmp(cfg.media_shortcuts[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.media_favorite_count; ++i)
+        if (strcmp(cfg.media_favorites[i].entity_id, entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         if (cfg.overview_quick_actions[i].entity_id[0] &&
             strcmp(cfg.overview_quick_actions[i].entity_id, entity_id) == 0) return true;
@@ -699,6 +701,7 @@ void populate_configured_layout_entities_worker() {
     for (uint8_t i = 0; i < cfg.room_control_count; ++i) add_entity(cfg.room_controls[i].entity_id);
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) add_entity(cfg.media_players[i]);
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) add_entity(cfg.media_shortcuts[i].entity_id);
+    for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) add_entity(cfg.media_favorites[i].entity_id);
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         add_entity(cfg.overview_quick_actions[i].entity_id);
     add_entity(cfg.weather_entity_id);

@@ -296,12 +296,12 @@ void MediaModule::create(lv_obj_t *parent) {
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_event_cb(control.button, source_cb, LV_EVENT_CLICKED, &control);
     }
-    for (int i = 0; i < HA_MAX_MEDIA_FAVORITES; ++i) {
+    for (int i = 0; i < PANEL_MAX_MEDIA_FAVORITES; ++i) {
         auto &control = favorites_[i]; control.owner = this;
-        control.button = button(popup_sections_[2], "", 0, i * 108, 984, 92);
+        control.button = button(popup_sections_[2], "", (i % 2) * 500, (i / 2) * 108, 484, 92);
         lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
         control.label = lv_obj_get_child(control.button, 0);
-        configure_button_label(control.label, 920);
+        configure_button_label(control.label, 436);
         set_enabled(control.button, false);
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
@@ -319,7 +319,7 @@ void MediaModule::popup_cb(lv_event_t *e) {
     auto *self = trigger->owner;
     self->update();
     const char *titles[] = {"Players", "Sources", "Browse favorites"};
-    const char *hints[] = {"Choose where to listen.", "Choose an input for the selected player.", "Play a favorite or playlist from the selected player."};
+    const char *hints[] = {"Choose where to listen.", "Choose an input for the selected player.", "Your configured favorites appear first; Home Assistant browse items fill remaining spots."};
     lv_label_set_text(self->popup_title_, titles[trigger->index]);
     lv_label_set_text(self->popup_hint_, hints[trigger->index]);
     for (int i = 0; i < 3; ++i) {
@@ -645,6 +645,12 @@ void MediaModule::update() {
         set_status("Media buffers could not be allocated; controls are disabled.");
         return;
     }
+    // ui_shell refreshes the active module once per second. Rebinding an
+    // already-visible translucent sheet invalidates the whole modal on this
+    // display port and produces a visible flash. popup_cb() refreshes the
+    // data while the sheet is still hidden, so the modal opens current and
+    // remains visually stable until the user closes it.
+    if (popup_ && !lv_obj_has_flag(popup_, LV_OBJ_FLAG_HIDDEN)) return;
 
     memset(media_cache_, 0,
            HA_MAX_MEDIA_PLAYERS * sizeof(HomeAssistantMediaSnapshot));
@@ -834,29 +840,54 @@ void MediaModule::update() {
 
     memset(favorite_cache_, 0,
            HA_MAX_MEDIA_FAVORITES * sizeof(HomeAssistantMediaFavorite));
-    const size_t favorite_count = home_assistant_get_media_favorites(
+    const size_t discovered_favorite_count = home_assistant_get_media_favorites(
         favorite_cache_, HA_MAX_MEDIA_FAVORITES);
-    for (size_t i = 0; i < HA_MAX_MEDIA_FAVORITES; ++i) {
-        FavoriteControl &control = favorites_[i];
-        if (i < favorite_count &&
-            same_text(favorite_cache_[i].entity_id, selected_entity_id_)) {
+    size_t favorite_slot = 0;
+    for (size_t configured_index = 0;
+         configured_index < panel_config.media_favorite_count &&
+         favorite_slot < PANEL_MAX_MEDIA_FAVORITES;
+         ++configured_index, ++favorite_slot) {
+            FavoriteControl &control = favorites_[favorite_slot];
+            const PanelMediaShortcut &configured =
+                panel_config.media_favorites[configured_index];
             control.bound = true;
-            control.favorite = favorite_cache_[i];
-            set_media_label_text(control.label, favorite_cache_[i].title);
+            memset(&control.favorite, 0, sizeof(control.favorite));
+            snprintf(control.favorite.entity_id, sizeof(control.favorite.entity_id), "%s", configured.entity_id);
+            snprintf(control.favorite.title, sizeof(control.favorite.title), "%s", configured.label);
+            snprintf(control.favorite.media_content_id, sizeof(control.favorite.media_content_id), "%s", configured.media_content_id);
+            snprintf(control.favorite.media_content_type, sizeof(control.favorite.media_content_type), "%s", configured.media_content_type);
+            bool target_available = false;
+            for (size_t player = 0; player < count; ++player)
+                if (same_text(media_cache_[player].entity_id, configured.entity_id)) {
+                    target_available = media_cache_[player].available; break;
+                }
+            set_media_label_text(control.label, configured.label);
+            set_enabled(control.button, target_available);
+            lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+    }
+    for (size_t discovered_index = 0;
+         discovered_index < discovered_favorite_count && favorite_slot < PANEL_MAX_MEDIA_FAVORITES;
+         ++discovered_index) {
+        if (!same_text(favorite_cache_[discovered_index].entity_id, selected_entity_id_)) continue;
+        FavoriteControl &control = favorites_[favorite_slot++];
+            control.bound = true;
+            control.favorite = favorite_cache_[discovered_index];
+            set_media_label_text(control.label, control.favorite.title);
             set_enabled(control.button, active.available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            control.bound = false;
-            memset(&control.favorite, 0, sizeof(control.favorite));
-            lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(control.label, i == 0 ? "No browse items" : "--");
-            set_enabled(control.button, false);
-        }
+    }
+    for (; favorite_slot < PANEL_MAX_MEDIA_FAVORITES; ++favorite_slot) {
+        FavoriteControl &control = favorites_[favorite_slot];
+        control.bound = false;
+        memset(&control.favorite, 0, sizeof(control.favorite));
+        lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(control.label, favorite_slot == 0 ? "No browse items" : "--");
+        set_enabled(control.button, false);
     }
 
     bool has_favorites = false;
     for (const auto &favorite : favorites_) if (favorite.bound) has_favorites = true;
-    lv_label_set_text(popup_empty_[2], "No browse favorites available. Add one-touch actions under Media shortcuts in the web manager, above Room controls.");
+    lv_label_set_text(popup_empty_[2], "No browse favorites available. Add saved Browse favorites in the Media section of the web manager.");
     if (has_favorites) lv_obj_add_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
 

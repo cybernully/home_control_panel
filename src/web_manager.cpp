@@ -188,6 +188,14 @@ void handle_get_config() {
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
     }
+    JsonArray favorites = doc["media_favorites"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) {
+        JsonObject item = favorites.add<JsonObject>();
+        item["label"] = cfg.media_favorites[i].label;
+        item["entity_id"] = cfg.media_favorites[i].entity_id;
+        item["media_content_id"] = cfg.media_favorites[i].media_content_id;
+        item["media_content_type"] = cfg.media_favorites[i].media_content_type;
+    }
     JsonArray room = doc["room_controls"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.room_control_count; ++i) {
         JsonObject item = room.add<JsonObject>();
@@ -292,6 +300,38 @@ bool parse_media_shortcuts(PanelConfig &config, String &error) {
     return true;
 }
 
+bool parse_media_favorites(PanelConfig &config, String &error) {
+    config.media_favorite_count = 0;
+    memset(config.media_favorites, 0, sizeof(config.media_favorites));
+
+    for (uint8_t i = 0; i < PANEL_MAX_MEDIA_FAVORITES; ++i) {
+        char field_name[32] = {};
+        snprintf(field_name, sizeof(field_name), "favorite_label_%u", static_cast<unsigned>(i));
+        String label = g_server.arg(field_name);
+        snprintf(field_name, sizeof(field_name), "favorite_entity_%u", static_cast<unsigned>(i));
+        String entity = g_server.arg(field_name);
+        snprintf(field_name, sizeof(field_name), "favorite_id_%u", static_cast<unsigned>(i));
+        String content_id = g_server.arg(field_name);
+        snprintf(field_name, sizeof(field_name), "favorite_type_%u", static_cast<unsigned>(i));
+        String content_type = g_server.arg(field_name);
+        label.trim(); entity.trim(); entity.toLowerCase(); content_id.trim(); content_type.trim();
+
+        if (label.isEmpty() && entity.isEmpty() && content_id.isEmpty() && content_type.isEmpty()) continue;
+        if (label.isEmpty() || entity.isEmpty() || content_id.isEmpty() || content_type.isEmpty()) {
+            error = "Every populated Browse favorite requires all four fields."; return false;
+        }
+        if (!entity.startsWith("media_player.")) {
+            error = "Browse favorite entities must begin with media_player."; return false;
+        }
+        PanelMediaShortcut &favorite = config.media_favorites[config.media_favorite_count++];
+        snprintf(favorite.label, sizeof(favorite.label), "%s", label.substring(0, PANEL_MEDIA_SHORTCUT_LABEL_LEN - 1).c_str());
+        snprintf(favorite.entity_id, sizeof(favorite.entity_id), "%s", entity.substring(0, PANEL_MEDIA_ENTITY_ID_LEN - 1).c_str());
+        snprintf(favorite.media_content_id, sizeof(favorite.media_content_id), "%s", content_id.substring(0, HA_MEDIA_CONTENT_ID_LEN - 1).c_str());
+        snprintf(favorite.media_content_type, sizeof(favorite.media_content_type), "%s", content_type.substring(0, HA_MEDIA_CONTENT_TYPE_LEN - 1).c_str());
+    }
+    return true;
+}
+
 void handle_save_config() {
     if (!ensure_auth()) return;
     std::unique_ptr<PanelConfig> next_storage(new (std::nothrow) PanelConfig(config_service_get()));
@@ -357,6 +397,11 @@ void handle_save_config() {
     String shortcut_error;
     if (!parse_media_shortcuts(next, shortcut_error)) {
         send_error(400, shortcut_error.c_str());
+        return;
+    }
+    String favorite_error;
+    if (!parse_media_favorites(next, favorite_error)) {
+        send_error(400, favorite_error.c_str());
         return;
     }
     String players_error;

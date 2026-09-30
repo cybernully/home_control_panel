@@ -12,6 +12,7 @@
     "settings"
   ],
   "media_shortcuts": [],
+  "media_favorites": [],
   "backlight": 80,
   "dark_mode": true,
   "screen_timeout_seconds": 120,

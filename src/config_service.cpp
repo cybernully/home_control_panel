@@ -74,6 +74,14 @@ bool save_internal(const PanelConfig &cfg) {
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
     }
+    JsonArray favorites = doc["media_favorites"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) {
+        JsonObject item = favorites.add<JsonObject>();
+        item["label"] = cfg.media_favorites[i].label;
+        item["entity_id"] = cfg.media_favorites[i].entity_id;
+        item["media_content_id"] = cfg.media_favorites[i].media_content_id;
+        item["media_content_type"] = cfg.media_favorites[i].media_content_type;
+    }
     JsonArray room = doc["room_controls"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.room_control_count; ++i) {
         JsonObject item = room.add<JsonObject>();
@@ -177,6 +185,23 @@ bool config_service_begin() {
             copy_text(shortcut.media_content_type, sizeof(shortcut.media_content_type), content_type);
         }
     }
+    JsonArray favorites = doc["media_favorites"].as<JsonArray>();
+    if (!favorites.isNull()) {
+        for (JsonObject item : favorites) {
+            if (loaded.media_favorite_count >= PANEL_MAX_MEDIA_FAVORITES) break;
+            const char *label = item["label"] | "";
+            const char *entity_id = item["entity_id"] | "";
+            const char *content_id = item["media_content_id"] | "";
+            const char *content_type = item["media_content_type"] | "";
+            if (!label[0] || !entity_id[0] || !content_id[0] || !content_type[0]) continue;
+            PanelMediaShortcut &favorite =
+                loaded.media_favorites[loaded.media_favorite_count++];
+            copy_text(favorite.label, sizeof(favorite.label), label);
+            copy_text(favorite.entity_id, sizeof(favorite.entity_id), entity_id);
+            copy_text(favorite.media_content_id, sizeof(favorite.media_content_id), content_id);
+            copy_text(favorite.media_content_type, sizeof(favorite.media_content_type), content_type);
+        }
+    }
     if (!doc["room_controls"].isNull()) {
         String json, error;
         serializeJson(doc["room_controls"], json);
@@ -208,10 +233,11 @@ bool config_service_begin() {
                   PANEL_MEDIA_ENTITY_ID_LEN, id);
     }
     g_config = loaded;
-    Serial0.printf("[Config] %s profile=%s modules=%u media_shortcuts=%u\n",
+    Serial0.printf("[Config] %s profile=%s modules=%u media_shortcuts=%u media_favorites=%u\n",
                    g_config.device_id, g_config.profile,
                    static_cast<unsigned>(g_config.module_count),
-                   static_cast<unsigned>(g_config.media_shortcut_count));
+                   static_cast<unsigned>(g_config.media_shortcut_count),
+                   static_cast<unsigned>(g_config.media_favorite_count));
     return true;
 }
 
@@ -225,6 +251,9 @@ bool config_service_save(const PanelConfig &config) {
     clean.backlight = constrain(static_cast<int>(clean.backlight), 10, 100);
     if (clean.media_shortcut_count > PANEL_MAX_MEDIA_SHORTCUTS) {
         clean.media_shortcut_count = PANEL_MAX_MEDIA_SHORTCUTS;
+    }
+    if (clean.media_favorite_count > PANEL_MAX_MEDIA_FAVORITES) {
+        clean.media_favorite_count = PANEL_MAX_MEDIA_FAVORITES;
     }
     if (clean.media_player_count > PANEL_MAX_MEDIA_PLAYERS) {
         clean.media_player_count = PANEL_MAX_MEDIA_PLAYERS;
