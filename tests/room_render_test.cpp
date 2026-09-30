@@ -67,7 +67,7 @@ int main() {
     lv_obj_update_layout(root); assert(find(root,"Office - upstairs"));assert(find(root,"Desk - warm"));
     shot(".test-build/room-favorites.ppm");
     click(root,"Desk - warm");assert(target=="light.desk");
-    click(root,"Lights   11");shot(".test-build/room-lights.ppm");
+    click(root,"Lights");shot(".test-build/room-lights.ppm");
     auto *overlay=lv_obj_get_child(root,-1);
     auto *sheet=lv_obj_get_child(overlay,0);
     auto *desk=lv_obj_get_parent(find(sheet,"Desk - warm"));
@@ -86,13 +86,13 @@ int main() {
     lv_obj_send_event(slider,LV_EVENT_RELEASED,nullptr);
     assert(brightness_calls==1); // Lost touch never sends a brightness action.
     click(root,"Next");shot(".test-build/room-lights-page2.ppm");assert(find(root,"2 / 2"));
-    click(root,"Close");click(root,"Devices   2");assert(!find(root,"Hidden control"));
+    click(root,"Close");click(root,"Devices");assert(!find(root,"Hidden control"));
     room.on_deactivate();
     config.room_control_count=0;room.update();shot(".test-build/room-empty.ppm");
-    click(root,"Lights   11");
+    click(root,"Lights");
     for(size_t i=0;i<count;++i) if(strcmp(entities[i].domain,"light")==0)pref(entities[i].entity_id,"",2);
     room.update();assert(find(root,"No visible controls"));
-    auto *group_button=lv_obj_get_parent(find(root,"Lights   0"));
+    auto *group_button=lv_obj_get_parent(find(root,"Lights"));
     assert(lv_obj_has_state(group_button,LV_STATE_DISABLED));
     room.on_deactivate();assert(lv_obj_has_flag(overlay,LV_OBJ_FLAG_HIDDEN));
     puts("Actual LVGL room render and interaction tests passed.");

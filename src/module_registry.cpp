@@ -14,12 +14,11 @@ OverviewModule g_overview;
 InfoModule g_calendar("calendar", "Calendar", "Calendar module boundary. Family Calendar remains a separate project; this panel will later consume selected calendar data without replacing that application.");
 InfoModule g_weather("weather", "Weather", "Weather module boundary for current conditions and forecasts from Home Assistant.");
 RoomModule g_room;
-InfoModule g_rooms("rooms", "All Rooms", "Whole-home room browser placeholder. Area discovery and entity binding are the next implementation step.");
 MediaModule g_media;
 ClimateModule g_climate;
 SecurityModule g_security;
 SettingsModule g_settings;
-PanelModule *g_known[] = {&g_overview,&g_calendar,&g_weather,&g_room,&g_rooms,&g_media,&g_climate,&g_security,&g_settings};
+PanelModule *g_known[] = {&g_overview,&g_calendar,&g_weather,&g_room,&g_media,&g_climate,&g_security,&g_settings};
 PanelModule *g_active[PANEL_MAX_MODULES] = {};
 size_t g_active_count = 0;
 }

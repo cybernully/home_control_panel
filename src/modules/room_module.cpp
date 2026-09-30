@@ -11,6 +11,7 @@ using namespace module_ui;
 namespace {
 uint8_t g_active_room = 0;
 const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
+const uint32_t GROUP_ICONS[] = {0xF0335, 0xF07E9, 0xF00AC, 0xF03D8};
 int entity_group(const char *domain) {
     if (strcmp(domain, "light") == 0) return 0;
     if (strcmp(domain, "cover") == 0) return 2;
@@ -85,16 +86,17 @@ void set_icon_glyph(lv_obj_t *label_obj, uint32_t codepoint) {
 void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h) {
     t.owner = this;
     t.root = button(parent, "", x, y, w, h, CARD);
-    lv_obj_set_style_radius(t.root, 22, LV_PART_MAIN);
+    const bool compact = h <= 100;
+    lv_obj_set_style_radius(t.root, compact ? 16 : 22, LV_PART_MAIN);
     t.name = lv_obj_get_child(t.root, 0);
-    lv_obj_set_style_text_font(t.name, &lv_font_montserrat_20, LV_PART_MAIN);
-    ellipsis(t.name, w - 96);
-    lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, 78, 20);
+    lv_obj_set_style_text_font(t.name, compact ? &lv_font_montserrat_18 : &lv_font_montserrat_20, LV_PART_MAIN);
+    ellipsis(t.name, w - (compact ? 86 : 96));
+    lv_obj_align(t.name, LV_ALIGN_TOP_LEFT, compact ? 66 : 78, compact ? 13 : 20);
     t.detail = label(t.root, "", &lv_font_montserrat_14, MUTED);
     // Reserve the left column for the device glyph.  The old detail position
     // started below the glyph, which made the icon appear over its first words.
-    ellipsis(t.detail, w - 96);
-    lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, 78, -20);
+    ellipsis(t.detail, w - (compact ? 86 : 96));
+    lv_obj_align(t.detail, LV_ALIGN_BOTTOM_LEFT, compact ? 66 : 78, compact ? -13 : -20);
     lv_obj_add_event_cb(t.root, action_cb, LV_EVENT_ALL, &t);
     // The wider popup tiles have an independent brightness target.
     if (w == 484) {
@@ -122,7 +124,7 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
     // It deliberately has no click target, leaving the entire tile reliable
     // for touch actions.
     t.icon = label(t.root, "", &ha_icons_font, MUTED);
-    lv_obj_set_size(t.icon, 44, 44); lv_obj_set_pos(t.icon, 18, 15);
+    lv_obj_set_size(t.icon, compact ? 36 : 44, compact ? 36 : 44); lv_obj_set_pos(t.icon, compact ? 16 : 18, compact ? 13 : 15);
     lv_obj_set_style_text_align(t.icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_remove_flag(t.icon, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(t.icon, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -132,44 +134,43 @@ void RoomModule::make_tile(Tile &t, lv_obj_t *parent, int x, int y, int w, int h
 void RoomModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
     const PanelConfig &cfg = config_service_get();
-    heading_ = module_ui::title(parent, "Your room", "Favorites within reach. Tap a group to explore.");
+    heading_ = module_ui::title(parent, "Your room", "Your selected controls, organized for quick touch access.");
     ellipsis(heading_, 1000);
-    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) { room_tabs_[i].owner=this; room_tabs_[i].index=i; room_tabs_[i].button=button(parent,cfg.rooms[i].tab_label,24+i*210,92,196,42,CARD_ALT); lv_obj_add_event_cb(room_tabs_[i].button,room_tab_cb,LV_EVENT_CLICKED,&room_tabs_[i]); }
+    for (uint8_t i = 0; i < cfg.room_count && i < PANEL_MAX_ROOMS; ++i) { room_tabs_[i].owner=this; room_tabs_[i].index=i; room_tabs_[i].button=button(parent,cfg.rooms[i].tab_label,24+i*210,88,196,42,CARD_ALT); lv_obj_add_event_cb(room_tabs_[i].button,room_tab_cb,LV_EVENT_CLICKED,&room_tabs_[i]); }
     auto *caption = label(parent, "FAVORITES", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 142);
+    lv_obj_set_pos(caption, 24, 140);
     for (int i = 0; i < 6; ++i)
-        make_tile(favorites_[i], parent, 24 + (i % 3) * 416, 170 + (i / 3) * 142, 400, 126);
-    empty_ = card(parent, 24, 170, 1232, 238);
+        make_tile(favorites_[i], parent, 24 + (i % 3) * 416, 164 + (i / 3) * 102, 400, 92);
+    empty_ = card(parent, 24, 164, 1232, 194);
     auto *text = label(empty_, "Make this room yours", &lv_font_montserrat_24, TEXT);
-    lv_obj_set_pos(text, 28, 60);
-    text = label(empty_, "Open a group below to control your room.\nChoose up to six favorites, rename, reorder or hide controls in the web manager.", &lv_font_montserrat_18, MUTED);
-    lv_obj_set_pos(text, 28, 110);
+    lv_obj_set_pos(text, 28, 42);
+    text = label(empty_, "Open a control group below, then choose favorites in the web manager for one-tap access.", &lv_font_montserrat_16, MUTED);
+    lv_obj_set_pos(text, 28, 94);
     lv_obj_set_width(text, 1150);
     caption = label(parent, "EXPLORE ROOM", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 422);
+    lv_obj_set_pos(caption, 24, 382);
     for (int i = 0; i < 4; ++i) {
         auto &g = groups_[i]; g.owner = this; g.index = i;
-        g.button = button(parent, GROUP_NAMES[i], 24 + i * 312, 452, 296, 90);
-        lv_obj_set_style_radius(g.button, 45, LV_PART_MAIN);
+        g.button = button(parent, "", 24 + i * 312, 410, 296, 72);
+        lv_obj_set_style_radius(g.button, 16, LV_PART_MAIN);
         g.text = lv_obj_get_child(g.button, 0);
-        lv_obj_set_pos(g.text, 58, 34);
-        // Three small bars form a menu icon without relying on an optional
-        // Unicode icon font.
-        for (int line = 0; line < 3; ++line) {
-            lv_obj_t *menu_line = lv_obj_create(g.button);
-            lv_obj_set_size(menu_line, 25, 3); lv_obj_set_pos(menu_line, 22, 29 + line * 9);
-            lv_obj_set_style_radius(menu_line, 2, LV_PART_MAIN);
-            lv_obj_set_style_bg_color(menu_line, lv_color_hex(TEXT), LV_PART_MAIN);
-            lv_obj_set_style_border_width(menu_line, 0, LV_PART_MAIN);
-            // The menu bars decorate the button; they must not become an
-            // independent touch target above it.
-            lv_obj_remove_flag(menu_line, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_add_flag(menu_line, LV_OBJ_FLAG_EVENT_BUBBLE);
-        }
+        lv_obj_set_style_text_font(g.text, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_pos(g.text, 58, 25);
+        g.icon = label(g.button, "", &ha_icons_font, MUTED);
+        lv_obj_set_pos(g.icon, 18, 20); lv_obj_set_size(g.icon, 28, 28);
+        lv_obj_set_style_text_align(g.icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        set_icon_glyph(g.icon, GROUP_ICONS[i]);
+        lv_obj_remove_flag(g.icon, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(g.icon, LV_OBJ_FLAG_EVENT_BUBBLE);
+        g.count = label(g.button, "0", &lv_font_montserrat_14, MUTED);
+        lv_obj_set_width(g.count, 42); lv_obj_set_style_text_align(g.count, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+        lv_obj_set_pos(g.count, 238, 28);
+        lv_obj_remove_flag(g.count, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(g.count, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_add_event_cb(g.button, group_cb, LV_EVENT_CLICKED, &g);
     }
     status_ = label(parent, "Connecting to Home Assistant...", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(status_, 24, 577); ellipsis(status_, 1220);
+    lv_obj_add_flag(status_, LV_OBJ_FLAG_HIDDEN);
 
     // A page-owned scrim blocks underlying controls and disappears on navigation.
     overlay_ = card(parent, 0, 0, 1280, 658);
@@ -316,8 +317,11 @@ void RoomModule::update() {
         size_t total = 0;
         for (size_t i = 0; i < count_; ++i)
             if (!hidden(entities_[i].entity_id) && entity_group(entities_[i].domain)==g) ++total;
-        char text[48]; snprintf(text,sizeof(text),"%s   %u",GROUP_NAMES[g],static_cast<unsigned>(total));
-        display(groups_[g].text,text); set_enabled(groups_[g].button,total > 0);
+        display(groups_[g].text, GROUP_NAMES[g]);
+        char count_text[16]; snprintf(count_text, sizeof(count_text), "%u", static_cast<unsigned>(total));
+        display(groups_[g].count, count_text);
+        lv_obj_set_style_text_color(groups_[g].icon, lv_color_hex(total ? 0x38BDF8 : MUTED), LV_PART_MAIN);
+        set_enabled(groups_[g].button,total > 0);
     }
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);

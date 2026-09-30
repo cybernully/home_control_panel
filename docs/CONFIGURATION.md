@@ -120,7 +120,7 @@ Whole-home panel:
   "display_name": "Whole Home",
   "profile": "whole_home",
   "area_id": "",
-  "modules": ["overview", "rooms", "media", "climate", "security", "settings"],
+  "modules": ["overview", "room", "media", "climate", "security", "settings"],
   "backlight": 80,
   "dark_mode": true,
   "screen_timeout_seconds": 120

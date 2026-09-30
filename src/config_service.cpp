@@ -24,6 +24,9 @@ bool valid_module_id(const char *id) {
 }
 
 void add_module(PanelConfig &cfg, const char *id) {
+    // v1.5.3 retires the separate All Rooms placeholder. Existing layouts
+    // keep their room controls by migrating it to the real Room module.
+    if (id && strcmp(id, "rooms") == 0) id = "room";
     if (!valid_module_id(id) || cfg.module_count >= PANEL_MAX_MODULES) return;
     for (uint8_t i = 0; i < cfg.module_count; ++i) if (strcmp(cfg.modules[i], id) == 0) return;
     copy_text(cfg.modules[cfg.module_count], PANEL_MODULE_ID_LEN, id);
@@ -121,7 +124,7 @@ void config_service_set_profile_defaults(PanelConfig &cfg) {
     if (strcmp(cfg.profile, "calendar") == 0) {
         add_module(cfg, "overview"); add_module(cfg, "calendar"); add_module(cfg, "weather"); add_module(cfg, "security"); add_module(cfg, "settings");
     } else if (strcmp(cfg.profile, "whole_home") == 0) {
-        add_module(cfg, "overview"); add_module(cfg, "rooms"); add_module(cfg, "media"); add_module(cfg, "climate"); add_module(cfg, "security"); add_module(cfg, "settings");
+        add_module(cfg, "overview"); add_module(cfg, "room"); add_module(cfg, "media"); add_module(cfg, "climate"); add_module(cfg, "security"); add_module(cfg, "settings");
     } else if (strcmp(cfg.profile, "custom") == 0) {
         add_module(cfg, "overview"); add_module(cfg, "settings");
     } else {

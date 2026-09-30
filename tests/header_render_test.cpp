@@ -23,6 +23,7 @@ void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) {
     out={};snprintf(out.area_name,sizeof(out.area_name),"Office — upstairs");
     snprintf(out.message,sizeof(out.message),"Connected to Home Assistant");
 }
+void home_assistant_get_status(HomeAssistantStatus &out) { out={};out.configured=true;out.connected=true;out.authenticated=true; }
 bool home_assistant_commands_ready(){return true;}
 bool home_assistant_queue_toggle(const char *id){target=id;++toggles;return true;}
 bool home_assistant_queue_scene(const char *id){target=id;return true;}
@@ -98,6 +99,12 @@ int main(){
     pref("cover.window","",1);pref("switch.fan","",1);pref("light.missing","Reading lamp",1);
     ui_shell_begin();show_module(1);lv_obj_update_layout(lv_screen_active());
     full_shot(".test-build/header-refined.ppm");
+    assert(g_clock && lv_label_get_text(g_clock)[0]);
+    lv_obj_send_event(g_status_button,LV_EVENT_CLICKED,nullptr);
+    assert(!lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
+    assert(lv_label_get_text(g_status_message)[0]);
+    lv_obj_send_event(g_status_overlay,LV_EVENT_CLICKED,nullptr);
+    assert(lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
     lv_area_t body,tip,fill,text;
     lv_obj_get_coords(g_battery_body,&body);lv_obj_get_coords(g_battery_tip,&tip);lv_obj_get_coords(g_battery_label,&text);
     assert(body.y1+body.y2==tip.y1+tip.y2);
@@ -113,7 +120,7 @@ int main(){
     battery_valid=false;connected=false;ui_shell_refresh_header();
     assert(strcmp(lv_label_get_text(g_battery_label),"--")==0);
     assert(lv_obj_has_flag(g_battery_fill,LV_OBJ_FLAG_HIDDEN));
-    assert(strcmp(lv_label_get_text(g_wifi),"Wi-Fi offline")==0);
+    assert(strcmp(lv_label_get_text(g_wifi),"Offline")==0);
     full_shot(".test-build/header-offline.ppm");
     snprintf(config.display_name,sizeof(config.display_name),"A deliberately long panel name — upstairs");
     snprintf(config.area_id,sizeof(config.area_id),"A very long area name to check header bounds and alignment");

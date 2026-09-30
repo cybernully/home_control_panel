@@ -24,7 +24,7 @@ private:
     struct Group {
         RoomModule *owner = nullptr;
         int index = 0;
-        lv_obj_t *button = nullptr, *text = nullptr;
+        lv_obj_t *button = nullptr, *text = nullptr, *count = nullptr, *icon = nullptr;
     };
     struct RoomTab { RoomModule *owner = nullptr; uint8_t index = 0; lv_obj_t *button = nullptr; };
     Tile favorites_[6], popup_tiles_[6];
