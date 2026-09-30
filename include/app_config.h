@@ -50,7 +50,7 @@
 // unusually long quiet period, using the existing WSS connection.
 #define HA_ENTITY_SUBSCRIPTION_REFRESH_MS 90000UL
 #define HA_DISCOVERY_TIMEOUT_MS 15000UL
-#define HA_MAX_AREA_ENTITIES 48
+#define HA_MAX_AREA_ENTITIES 160
 #define HA_MAX_ROOM_CONTROLS 4
 #define HA_MAX_AREA_SCENES 3
 #define HA_MAX_MEDIA_PLAYERS 4

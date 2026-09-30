@@ -104,6 +104,10 @@ bool g_health_requested = false;
 bool g_health_in_progress = false;
 bool g_discovery_requested = false;
 bool g_full_discovery_requested = false;
+// The web editor's whole-home picker deliberately uses the REST states
+// endpoint.  It must remain usable while the live WSS subscription is
+// reconnecting, and the browser never receives the Home Assistant token.
+bool g_rest_discovery_requested = false;
 bool g_reconnect_requested = false;
 bool g_network_ready = false;
 bool g_action_in_flight = false;
@@ -116,6 +120,7 @@ uint32_t g_last_http_ms = 0;
 uint32_t g_ws_restart_not_before_ms = 0;
 uint32_t g_last_entity_subscription_refresh_ms = 0;
 uint32_t g_discovery_started_ms = 0;
+constexpr uint32_t HA_REST_DISCOVERY_RECONNECT_DELAY_MS = 15000UL;
 uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
 uint32_t g_extract_request_id = 0;
@@ -1246,6 +1251,133 @@ int http_get_api(String &payload) {
     return code;
 }
 
+int http_post_template_worker(const char *ha_template, String &payload) {
+    payload = "";
+    if (!ha_template) return -100;
+
+    char base[sizeof(g_base_url)] = {};
+    char token[sizeof(g_token)] = {};
+    credentials_snapshot(base, sizeof(base), token, sizeof(token));
+    if (!base[0] || !token[0]) return -100;
+
+    String base_url(base);
+    base_url.trim();
+    while (base_url.endsWith("/")) base_url.remove(base_url.length() - 1);
+    const String url = base_url + "/api/template";
+
+    JsonDocument request_doc;
+    request_doc["template"] = ha_template;
+    String request_body;
+    serializeJson(request_doc, request_body);
+
+    HTTPClient http;
+    http.setConnectTimeout(HA_HTTP_CONNECT_TIMEOUT_MS);
+    http.setTimeout(HA_HTTP_TIMEOUT_MS);
+
+    int code = -1;
+    if (url.startsWith("https://")) {
+        WiFiClientSecure client;
+#if HA_TLS_ALLOW_INSECURE
+        client.setInsecure();
+#endif
+        if (!http.begin(client, url)) return -101;
+        http.addHeader("Authorization", String("Bearer ") + token);
+        http.addHeader("Content-Type", "application/json");
+        code = http.POST(request_body);
+        if (code >= 200 && code < 300) payload = http.getString();
+        http.end();
+    } else {
+        WiFiClient client;
+        if (!http.begin(client, url)) return -101;
+        http.addHeader("Authorization", String("Bearer ") + token);
+        http.addHeader("Content-Type", "application/json");
+        code = http.POST(request_body);
+        if (code >= 200 && code < 300) payload = http.getString();
+        http.end();
+    }
+    return code;
+}
+
+void run_rest_discovery_worker() {
+    // Home Assistant renders the compact picker result.  Fetching /api/states
+    // directly required the panel to allocate every state on the installation,
+    // which is why large installations reported the opaque -103 failure.
+    static const char entity_picker_template[] =
+        "{% set ns = namespace(items=[]) %}"
+        "{% for s in states if s.domain in ['light','switch','fan','cover','scene','media_player','weather','calendar'] %}"
+        "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
+        "{% endfor %}{{ ns.items | to_json }}";
+
+    set_discovery_message("Searching Home Assistant directly...");
+    String payload;
+    const uint32_t started = millis();
+    const int code = http_post_template_worker(entity_picker_template, payload);
+    if (code < 200 || code >= 300) {
+        char message[128] = {};
+        snprintf(message, sizeof(message), "Direct Home Assistant search failed (%d).", code);
+        set_discovery_message(message);
+        return;
+    }
+
+    JsonDocument doc;
+    const DeserializationError error = deserializeJson(doc, payload);
+    if (error) {
+        char message[128] = {};
+        snprintf(message, sizeof(message), "Direct search response could not be read: %s.", error.c_str());
+        set_discovery_message(message);
+        Serial0.printf("[HA] REST entity search JSON error: %s\n", error.c_str());
+        return;
+    }
+
+    JsonArrayConst states = doc.as<JsonArrayConst>();
+    if (states.isNull()) {
+        set_discovery_message("Direct Home Assistant search returned an invalid control list.");
+        return;
+    }
+
+    size_t count = 0;
+    bool truncated = false;
+    portENTER_CRITICAL(&g_mux);
+    g_entity_count = 0;
+    for (JsonObjectConst item : states) {
+        const char *entity_id = item["entity_id"] | "";
+        if (!entity_id[0]) continue;
+        char domain[16] = {};
+        domain_from_entity_id(entity_id, domain, sizeof(domain));
+        if (!is_supported_domain(domain)) continue;
+        if (g_entity_count >= HA_MAX_AREA_ENTITIES) {
+            truncated = true;
+            break;
+        }
+        HaEntityModel &model = g_entities[g_entity_count++];
+        memset(&model, 0, sizeof(model));
+        copy_text(model.entity_id, sizeof(model.entity_id), entity_id);
+        copy_text(model.domain, sizeof(model.domain), domain);
+        const char *name = item["name"] | "";
+        if (name[0]) copy_text(model.name, sizeof(model.name), name);
+        else fallback_name_from_id(entity_id, model.name, sizeof(model.name));
+        const char *state = item["state"] | "unknown";
+        copy_text(model.state, sizeof(model.state), state);
+        model.available = strcmp(state, "unavailable") != 0 && strcmp(state, "unknown") != 0;
+        model.position_pct = -1;
+        ++count;
+    }
+    g_discovery.discovery_complete = true;
+    g_discovery.area_found = true;
+    g_discovery.device_count = static_cast<uint16_t>(states.size());
+    update_discovery_counts_locked();
+    g_discovery.last_discovery_ms = millis();
+    copy_text(g_discovery.area_id, sizeof(g_discovery.area_id), "all");
+    copy_text(g_discovery.area_name, sizeof(g_discovery.area_name), "All Home Assistant");
+    snprintf(g_discovery.message, sizeof(g_discovery.message),
+             truncated ? "Direct search found %u supported controls (limited to %u)." :
+                         "Direct search found %u supported controls.",
+             static_cast<unsigned>(count), static_cast<unsigned>(HA_MAX_AREA_ENTITIES));
+    portEXIT_CRITICAL(&g_mux);
+    Serial0.printf("[HA] REST entity search: %u supported controls in %lums\n",
+                   static_cast<unsigned>(count), static_cast<unsigned long>(millis() - started));
+}
+
 int http_post_service(const char *domain, const char *service, const String &body) {
     char base[sizeof(g_base_url)] = {};
     char token[sizeof(g_token)] = {};
@@ -1827,6 +1959,34 @@ void worker_task(void *) {
             continue;
         }
 
+        // A full editor search is a one-shot REST request rather than a WSS
+        // registry request.  Release the WSS TLS session first: ESP32-P4 has
+        // a small DMA-capable TLS pool, and this also lets search succeed when
+        // the subscription itself is in a reconnect loop.
+        if (take_flag(g_rest_discovery_requested)) {
+            if (g_ws_started) {
+                g_ws.disconnect();
+                g_ws_started = false;
+                g_ws_authenticated = false;
+                portENTER_CRITICAL(&g_mux);
+                g_discovery.websocket_connected = false;
+                g_discovery.websocket_authenticated = false;
+                g_discovery.discovery_complete = false;
+                portEXIT_CRITICAL(&g_mux);
+                vTaskDelay(pdMS_TO_TICKS(HA_TLS_RELEASE_SETTLE_MS));
+            }
+            g_resume_entities_after_reconnect = false;
+            g_resubscribe_requested = false;
+            run_rest_discovery_worker();
+            // Keep the completed REST result available long enough for the
+            // browser's poll to consume it.  The live subscription will then
+            // reconnect normally and rebuild only the saved panel layout.
+            g_ws_restart_not_before_ms = millis() + HA_REST_DISCOVERY_RECONNECT_DELAY_MS;
+            g_last_http_ms = millis();
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+
         if (take_flag(g_reconnect_requested)) {
             stop_websocket_worker("Home Assistant credentials changed; reconnecting...");
         }
@@ -2167,11 +2327,11 @@ bool home_assistant_request_discovery() {
 bool home_assistant_request_full_discovery() {
     if (!g_worker || !configured_snapshot()) return false;
     portENTER_CRITICAL(&g_mux);
-    g_full_discovery_requested = true;
-    g_discovery_requested = true;
+    g_full_discovery_requested = false;
+    g_rest_discovery_requested = true;
     g_discovery.discovery_complete = false;
     copy_text(g_discovery.message, sizeof(g_discovery.message),
-              "Whole-home device search requested for the web layout editor...");
+              "Direct Home Assistant search requested for the web layout editor...");
     portEXIT_CRITICAL(&g_mux);
     return true;
 }
