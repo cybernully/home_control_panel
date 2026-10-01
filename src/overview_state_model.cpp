@@ -39,13 +39,31 @@ bool csv_contains_state(const char *csv, const char *state) {
     return false;
 }
 
+void format_timer(char *out, size_t out_len, uint32_t total_seconds, bool paused) {
+    const uint32_t hours = total_seconds / 3600U;
+    const uint32_t minutes = (total_seconds / 60U) % 60U;
+    const uint32_t seconds = total_seconds % 60U;
+    if (paused) snprintf(out, out_len, "Paused | %02lu:%02lu:%02lu",
+                         static_cast<unsigned long>(hours), static_cast<unsigned long>(minutes),
+                         static_cast<unsigned long>(seconds));
+    else snprintf(out, out_len, "%02lu:%02lu:%02lu",
+                  static_cast<unsigned long>(hours), static_cast<unsigned long>(minutes),
+                  static_cast<unsigned long>(seconds));
+}
+
 void build_entity(OverviewCardViewModel &out, const PanelOverviewItem &item) {
     HomeAssistantEntitySnapshot entity = {};
     const bool found = home_assistant_get_entity(item.entity_id, entity);
     out.available = found && entity.available;
     out.active = out.available && csv_contains_state(item.active_states, entity.state);
-    out.actionable = out.available && strcmp(item.action, "none") != 0;
     if (!out.available) copy_text(out.state_text, sizeof(out.state_text), "Unavailable");
+    else if (strcmp(entity.domain, "timer") == 0 && strcmp(entity.state, "idle") == 0)
+        copy_text(out.state_text, sizeof(out.state_text), "Idle");
+    else if (strcmp(entity.domain, "timer") == 0 && entity.timer_has_remaining)
+        format_timer(out.state_text, sizeof(out.state_text), entity.timer_remaining_seconds,
+                     strcmp(entity.state, "paused") == 0);
+    else if (strcmp(entity.domain, "timer") == 0)
+        copy_text(out.state_text, sizeof(out.state_text), entity.state);
     else if (out.active && item.active_label[0]) copy_text(out.state_text, sizeof(out.state_text), item.active_label);
     else if (!out.active && item.inactive_label[0]) copy_text(out.state_text, sizeof(out.state_text), item.inactive_label);
     else if (strcmp(entity.domain, "scene") == 0) copy_text(out.state_text, sizeof(out.state_text), "Ready");
@@ -69,6 +87,8 @@ size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t cap
         memset(&out, 0, sizeof(out));
         copy_text(out.type, sizeof(out.type), item.type);
         copy_text(out.entity_id, sizeof(out.entity_id), item.entity_id);
+        copy_text(out.action_entity_id, sizeof(out.action_entity_id),
+                  item.action_entity_id[0] ? item.action_entity_id : item.entity_id);
         copy_text(out.title, sizeof(out.title), item.label);
         copy_text(out.icon, sizeof(out.icon), item.icon);
         copy_text(out.color, sizeof(out.color), item.color);
@@ -108,20 +128,26 @@ size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t cap
             out.available = true;
             copy_text(out.state_text, sizeof(out.state_text), "Customize cards in Web Admin");
         }
+        if (strcmp(item.action, "none") != 0 && strcmp(item.action, "all_lights") != 0) {
+            HomeAssistantEntitySnapshot target = {};
+            out.actionable = out.action_entity_id[0] &&
+                             home_assistant_get_entity(out.action_entity_id, target) &&
+                             target.available;
+        }
     }
     return count;
 }
 
 bool ui_state_model_activate_overview(const OverviewCardViewModel &card) {
-    if (!card.available || !card.actionable) return false;
+    if (!card.actionable) return false;
     if (strcmp(card.action, "all_lights") == 0) {
         HomeAssistantLightStats lights = {};
         home_assistant_get_light_stats(lights);
         return lights.total && home_assistant_queue_all_lights(lights.on == 0);
     }
     HomeAssistantEntitySnapshot current = {};
-    if (!home_assistant_get_entity(card.entity_id, current) || !current.available) return false;
-    if (strcmp(card.action, "scene") == 0) return home_assistant_queue_scene(card.entity_id);
-    if (strcmp(card.action, "toggle") == 0) return home_assistant_queue_toggle(card.entity_id);
+    if (!home_assistant_get_entity(card.action_entity_id, current) || !current.available) return false;
+    if (strcmp(card.action, "scene") == 0) return home_assistant_queue_scene(card.action_entity_id);
+    if (strcmp(card.action, "toggle") == 0) return home_assistant_queue_toggle(card.action_entity_id);
     return false;
 }

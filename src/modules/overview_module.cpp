@@ -37,6 +37,7 @@ const char *effective_icon(const OverviewCardViewModel &model) {
     if (strncmp(model.entity_id, "binary_sensor.", 14) == 0)
         return contains_ci(model.title, "motion") ? "motion" : "door";
     if (strncmp(model.entity_id, "weather.", 8) == 0) return "weather";
+    if (strncmp(model.entity_id, "timer.", 6) == 0) return "timer";
     if (strncmp(model.entity_id, "sensor.", 7) == 0 && contains_ci(model.title, "humidity")) return "humidity";
     if (strncmp(model.entity_id, "sensor.", 7) == 0 && contains_ci(model.title, "temp")) return "temperature";
     if (strcmp(model.type, "home_status") == 0) return "shield";
@@ -61,6 +62,7 @@ uint32_t glyph_for(const OverviewCardViewModel &model) {
     if (strcmp(icon, "humidity") == 0) return 0xF058E;
     if (strcmp(icon, "power") == 0) return model.active ? 0xF0425 : 0xF0902;
     if (strcmp(icon, "weather") == 0) return 0xF0595;
+    if (strcmp(icon, "timer") == 0) return 0xF00AC;
     return model.active ? 0xF05E0 : 0xF0028;
 }
 
@@ -146,14 +148,19 @@ void OverviewModule::update() {
 }
 
 void OverviewModule::request_action(BoundCard &card) {
-    if (!card.model.actionable || !card.model.available) return;
+    if (!card.model.actionable) return;
     if (!card.model.confirm) { execute_action(card); return; }
     pending_ = &card;
     char title[96];
     snprintf(title, sizeof(title), "%s?", card.model.title);
     safe_text(confirm_title_, title);
-    char detail[160];
-    snprintf(detail, sizeof(detail), "Current status: %s\n\nDo you want to continue with this Home Assistant action?", card.model.state_text);
+    char detail[192];
+    if (card.model.action_entity_id[0] && strcmp(card.model.action_entity_id, card.model.entity_id) != 0) {
+        snprintf(detail, sizeof(detail), "Current status: %.48s\nAction target: %.80s\n\nContinue?",
+                 card.model.state_text, card.model.action_entity_id);
+    } else {
+        snprintf(detail, sizeof(detail), "Current status: %s\n\nDo you want to continue with this Home Assistant action?", card.model.state_text);
+    }
     safe_text(confirm_detail_, detail);
     lv_obj_remove_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(overlay_);

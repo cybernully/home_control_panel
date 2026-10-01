@@ -15,8 +15,10 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 namespace {
 
@@ -32,6 +34,10 @@ struct HaEntityModel {
     bool supports_position;
     bool supports_fan_speed;
     uint8_t fan_speed_pct;
+    bool timer_has_remaining;
+    uint32_t timer_remaining_seconds;
+    uint32_t timer_sample_ms;
+    int64_t timer_finishes_at_epoch;
 
     // media_player state retained in the same PSRAM model so there is still a
     // single Home Assistant subscription/cache.
@@ -316,6 +322,7 @@ bool is_supported_domain(const char *domain) {
            strcmp(domain, "media_player") == 0 ||
            strcmp(domain, "weather") == 0 ||
            strcmp(domain, "calendar") == 0 ||
+           strcmp(domain, "timer") == 0 ||
            strcmp(domain, "sensor") == 0 ||
            strcmp(domain, "binary_sensor") == 0 ||
            strcmp(domain, "lock") == 0 ||
@@ -360,6 +367,46 @@ void update_discovery_counts_locked() {
     g_discovery.entity_count = static_cast<uint16_t>(g_entity_count);
 }
 
+bool parse_timer_duration(const char *value, uint32_t &seconds) {
+    if (!value || !value[0]) return false;
+    unsigned long hours = 0, minutes = 0, secs = 0;
+    char trailing = '\0';
+    if (sscanf(value, "%lu:%lu:%lu%c", &hours, &minutes, &secs, &trailing) != 3 ||
+        minutes >= 60 || secs >= 60 || hours > 1193046UL) return false;
+    seconds = static_cast<uint32_t>(hours * 3600UL + minutes * 60UL + secs);
+    return true;
+}
+
+int64_t days_from_civil(int year, unsigned month, unsigned day) {
+    year -= month <= 2;
+    const int era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned year_of_era = static_cast<unsigned>(year - era * 400);
+    const unsigned adjusted_month = month > 2 ? month - 3U : month + 9U;
+    const unsigned day_of_year = (153U * adjusted_month + 2U) / 5U + day - 1U;
+    const unsigned day_of_era = year_of_era * 365U + year_of_era / 4U - year_of_era / 100U + day_of_year;
+    return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(day_of_era) - 719468;
+}
+
+bool parse_timer_finish(const char *value, int64_t &epoch) {
+    if (!value) return false;
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    if (sscanf(value, "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute, &second) != 6 ||
+        month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 60) return false;
+    epoch = days_from_civil(year, static_cast<unsigned>(month), static_cast<unsigned>(day)) * 86400 +
+            hour * 3600 + minute * 60 + second;
+    const char *zone = value + 19;
+    while (*zone && *zone != 'Z' && *zone != '+' && *zone != '-') ++zone;
+    if (*zone == '+' || *zone == '-') {
+        int offset_hour = 0, offset_minute = 0;
+        if (sscanf(zone + 1, "%d:%d", &offset_hour, &offset_minute) != 2 ||
+            offset_hour > 23 || offset_minute > 59) return false;
+        const int offset = offset_hour * 3600 + offset_minute * 60;
+        epoch += *zone == '+' ? -offset : offset;
+    }
+    return true;
+}
+
 void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
     if (attrs.isNull()) return;
 
@@ -382,6 +429,19 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
     if (strcmp(model.domain, "fan") == 0 && !attrs["percentage"].isNull()) {
         model.fan_speed_pct = static_cast<uint8_t>(constrain(attrs["percentage"].as<int>(), 0, 100));
         model.supports_fan_speed = true;
+    }
+
+    if (strcmp(model.domain, "timer") == 0) {
+        if (!attrs["remaining"].isNull()) {
+            uint32_t seconds = 0;
+            model.timer_has_remaining = parse_timer_duration(attrs["remaining"] | "", seconds);
+            model.timer_remaining_seconds = model.timer_has_remaining ? seconds : 0;
+            model.timer_sample_ms = millis();
+        }
+        if (!attrs["finishes_at"].isNull()) {
+            int64_t finish = 0;
+            model.timer_finishes_at_epoch = parse_timer_finish(attrs["finishes_at"] | "", finish) ? finish : 0;
+        }
     }
 
     if (strcmp(model.domain, "media_player") == 0) {
@@ -475,6 +535,12 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
                 } else if (strcmp(key, "percentage") == 0) {
                     model->fan_speed_pct = 0;
                     model->supports_fan_speed = false;
+                } else if (strcmp(key, "remaining") == 0) {
+                    model->timer_has_remaining = false;
+                    model->timer_remaining_seconds = 0;
+                    model->timer_sample_ms = 0;
+                } else if (strcmp(key, "finishes_at") == 0) {
+                    model->timer_finishes_at_epoch = 0;
                 } else if (strcmp(key, "friendly_name") == 0) {
                     fallback_name_from_id(model->entity_id, model->name, sizeof(model->name));
                 } else if (strcmp(key, "volume_level") == 0) {
@@ -672,9 +738,12 @@ bool is_layout_entity(const char *entity_id) {
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         if (cfg.overview_quick_actions[i].entity_id[0] &&
             strcmp(cfg.overview_quick_actions[i].entity_id, entity_id) == 0) return true;
-    for (uint8_t i = 0; i < cfg.overview_item_count; ++i)
-        if (cfg.overview_items[i].entity_id[0] &&
-            strcmp(cfg.overview_items[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i) {
+        if ((cfg.overview_items[i].entity_id[0] &&
+             strcmp(cfg.overview_items[i].entity_id, entity_id) == 0) ||
+            (cfg.overview_items[i].action_entity_id[0] &&
+             strcmp(cfg.overview_items[i].action_entity_id, entity_id) == 0)) return true;
+    }
     if ((cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) ||
         (cfg.calendar_entity_id[0] && strcmp(cfg.calendar_entity_id, entity_id) == 0)) return true;
     const char *dot = strchr(entity_id, '.');
@@ -728,8 +797,10 @@ void populate_configured_layout_entities_worker() {
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) add_entity(cfg.media_favorites[i].entity_id);
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         add_entity(cfg.overview_quick_actions[i].entity_id);
-    for (uint8_t i = 0; i < cfg.overview_item_count; ++i)
-        add_entity(cfg.overview_items[i].entity_id, strcmp(cfg.overview_items[i].action, "none") == 0);
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i) {
+        add_entity(cfg.overview_items[i].entity_id, true);
+        add_entity(cfg.overview_items[i].action_entity_id);
+    }
     add_entity(cfg.weather_entity_id);
     add_entity(cfg.calendar_entity_id);
 
@@ -1325,7 +1396,7 @@ void run_rest_discovery_worker() {
     // which is why large installations reported the opaque -103 failure.
     static const char entity_picker_template[] =
         "{% set ns = namespace(items=[]) %}"
-        "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','scene','media_player','weather','calendar','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
+        "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','scene','media_player','weather','calendar','timer','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
         "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
         "{% endfor %}{{ ns.items | to_json }}";
 
@@ -1802,7 +1873,7 @@ void process_action_worker(const HaAction &action) {
         }
         JsonDocument doc;
         doc["entity_id"] = model->entity_id;
-        doc["percentage"] = action.value;
+        if (action.value) doc["percentage"] = action.value;
         String body; serializeJson(doc, body);
         code = call_service_with_recovery(action, "fan", action.value ? "set_percentage" : "turn_off",
                                           body, retried);
@@ -2193,6 +2264,25 @@ void snapshot_entity(const HaEntityModel &source, HomeAssistantEntitySnapshot &o
     out.supports_position = source.supports_position;
     out.supports_fan_speed = source.supports_fan_speed;
     out.fan_speed_pct = source.fan_speed_pct;
+    if (strcmp(source.domain, "timer") == 0) {
+        out.timer_has_remaining = source.timer_has_remaining;
+        out.timer_remaining_seconds = source.timer_remaining_seconds;
+        if (strcmp(source.state, "idle") == 0) {
+            out.timer_has_remaining = true;
+            out.timer_remaining_seconds = 0;
+        } else if (strcmp(source.state, "active") == 0) {
+            const time_t now = time(nullptr);
+            if (source.timer_finishes_at_epoch > 0 && now > 1600000000) {
+                const int64_t remaining = source.timer_finishes_at_epoch - static_cast<int64_t>(now);
+                out.timer_has_remaining = true;
+                out.timer_remaining_seconds = remaining > 0 ? static_cast<uint32_t>(remaining) : 0;
+            } else if (out.timer_has_remaining) {
+                const uint32_t elapsed = (millis() - source.timer_sample_ms) / 1000U;
+                out.timer_remaining_seconds = elapsed < out.timer_remaining_seconds
+                                                  ? out.timer_remaining_seconds - elapsed : 0;
+            }
+        }
+    }
 }
 
 

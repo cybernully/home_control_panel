@@ -51,9 +51,10 @@ static void add_entity(const char *id, const char *name, const char *domain, con
 }
 static void add_card(const char *type, const char *id, const char *label, const char *icon,
                      const char *action, const char *states, const char *active, const char *inactive,
-                     const char *color, int span, bool confirm) {
+                     const char *color, int span, bool confirm, const char *action_target = "") {
     auto &item = config.overview_items[config.overview_item_count++];
     snprintf(item.type, sizeof(item.type), "%s", type); snprintf(item.entity_id, sizeof(item.entity_id), "%s", id);
+    snprintf(item.action_entity_id, sizeof(item.action_entity_id), "%s", action_target);
     snprintf(item.label, sizeof(item.label), "%s", label); snprintf(item.icon, sizeof(item.icon), "%s", icon);
     snprintf(item.action, sizeof(item.action), "%s", action); snprintf(item.active_states, sizeof(item.active_states), "%s", states);
     snprintf(item.active_label, sizeof(item.active_label), "%s", active); snprintf(item.inactive_label, sizeof(item.inactive_label), "%s", inactive);
@@ -65,20 +66,28 @@ int main() {
     lv_display_set_buffers(display, buffer, nullptr, sizeof(buffer), LV_DISPLAY_RENDER_MODE_FULL); lv_display_set_flush_cb(display, flush);
     add_entity("cover.garage", "Garage door", "cover", "open");
     add_entity("binary_sensor.side_door", "Side door", "binary_sensor", "off");
+    add_entity("switch.hall_light", "Hall light", "switch", "off");
     add_entity("lock.front", "Front lock", "lock", "locked");
+    add_entity("timer.office_energy_saver_countdown", "Office energy saver", "timer", "active");
+    entities[entity_count - 1].timer_has_remaining = true;
+    entities[entity_count - 1].timer_remaining_seconds = 754;
     add_card("home_status", "", "Home", "shield", "none", "", "All good", "Attention", "green", 1, false);
     add_card("entity", "cover.garage", "Garage Door", "garage", "toggle", "open,opening", "Open", "Closed", "yellow", 2, true);
-    add_card("entity", "binary_sensor.side_door", "Side Door", "door", "none", "on", "Open", "Closed", "yellow", 1, false);
+    add_card("entity", "binary_sensor.side_door", "Side Door", "door", "toggle", "on", "Open", "Closed", "yellow", 1, true, "switch.hall_light");
     add_card("entity", "lock.front", "Front Lock", "lock", "toggle", "unlocked,unlocking", "Unlocked", "Locked", "red", 1, true);
     add_card("all_lights", "", "All Lights", "light", "all_lights", "", "Turn all off", "Turn all on", "yellow", 1, true);
+    add_card("entity", "timer.office_energy_saver_countdown", "Office energy saver", "timer", "none", "active,paused", "", "", "cyan", 1, false);
 
     OverviewCardViewModel model[12] = {};
-    assert(ui_state_model_snapshot_overview(model, 12) == 5);
+    assert(ui_state_model_snapshot_overview(model, 12) == 6);
     assert(model[1].active && strcmp(model[1].state_text, "Open") == 0 && model[1].confirm);
-    assert(!model[2].active && !model[2].actionable && strcmp(model[2].state_text, "Closed") == 0);
+    assert(!model[2].active && model[2].actionable && strcmp(model[2].state_text, "Closed") == 0);
+    assert(strcmp(model[2].action_entity_id, "switch.hall_light") == 0);
+    assert(model[5].active && strcmp(model[5].state_text, "00:12:34") == 0);
 
     auto *root = lv_screen_active(); OverviewModule overview; overview.create(root); lv_obj_update_layout(root);
     assert(find(root, "At a glance") && find(root, "Garage Door") && find(root, "Open") && find(root, "Closed"));
+    assert(find(root, "Office energy saver") && find(root, "00:12:34"));
     auto *garage_card = lv_obj_get_parent(find(root, "Garage Door")); assert(lv_obj_get_height(garage_card) == 120);
     lv_obj_send_event(garage_card, LV_EVENT_CLICKED, nullptr);
     assert(find(root, "Garage Door?") && toggle_count == 0);
@@ -89,6 +98,13 @@ int main() {
     assert(find(root, "Command queued - waiting for Home Assistant"));
     lv_obj_send_event(lv_obj_get_parent(find(root, "Side Door")), LV_EVENT_CLICKED, nullptr);
     assert(toggle_count == 1);
+    assert(find(root, "Current status: Closed\nAction target: switch.hall_light\n\nContinue?"));
+    confirm = find(root, "Confirm"); assert(confirm); lv_obj_send_event(lv_obj_get_parent(confirm), LV_EVENT_CLICKED, nullptr);
+    assert(toggle_count == 2 && action_target == "switch.hall_light");
+    entities[4].timer_remaining_seconds = 733; overview.update();
+    assert(find(root, "00:12:13"));
+    snprintf(entities[4].state, sizeof(entities[4].state), "idle"); overview.update();
+    assert(find(root, "Idle"));
     shot(".test-build/overview-cards.ppm");
     return 0;
 }

@@ -89,6 +89,7 @@ int main() {
     shot(".test-build/room-favorites.ppm");
     click(root,"Desk - warm");assert(target=="light.desk");
     click(fan_card,"High");assert(fan_speed_calls==1&&fan_speed==100&&target=="fan.ceiling");
+    click(fan_card,"Off");assert(fan_speed_calls==2&&fan_speed==0&&target=="fan.ceiling");
     click(root,"Lights");shot(".test-build/room-lights.ppm");
     auto *overlay=lv_obj_get_child(root,-1);
     auto *sheet=lv_obj_get_child(overlay,0);

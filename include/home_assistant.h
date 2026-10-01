@@ -44,6 +44,8 @@ struct HomeAssistantEntitySnapshot {
     bool supports_position;
     bool supports_fan_speed;
     uint8_t fan_speed_pct;
+    bool timer_has_remaining;
+    uint32_t timer_remaining_seconds;
 };
 
 struct HomeAssistantLightStats {

@@ -48,7 +48,8 @@ struct PanelOverviewQuickAction {
 // actionable without coupling their presentation to HA transport details.
 struct PanelOverviewItem {
     char type[16];             // entity or a supported built-in summary
-    char entity_id[96];
+    char entity_id[96];        // status source shown by the card
+    char action_entity_id[96]; // optional tap target; empty uses entity_id
     char label[PANEL_OVERVIEW_LABEL_LEN];
     char icon[20];             // auto, garage, door, lock, motion, light, ...
     char action[16];           // none, toggle, scene, or all_lights

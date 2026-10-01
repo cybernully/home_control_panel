@@ -10,6 +10,10 @@ reusable card component and state-model separation as the Room screen.
 - Entity cards can be status-only or run a toggle, cover, lock, or scene action.
 - Labels, width, icon family, active-state list, active and inactive text, active
   color, action, and confirmation behavior are configurable per card.
+- An entity card can use one Home Assistant entity as its live status source and
+  a different light, switch, fan, cover, lock, or scene as its tap-action target.
+  This allows a sensor card, such as a garage-door or motion sensor, to control
+  its related relay or light without changing the state shown on the card.
 - Inactive status icons are deliberately muted; matching active states use the
   selected color and active glyph.
 - Existing Overview widgets and quick actions migrate into the new model when a

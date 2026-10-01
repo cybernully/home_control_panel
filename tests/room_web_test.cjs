@@ -19,20 +19,23 @@ assert(!source.includes('renderWidgets=function(){readOverviewItems();'),
 for(const feature of ["function addOverviewEntity", "overviewEntityDefault", "active_states",
                      "Confirm before running tap action", "overviewDragStart", "overviewDrop",
                      "Garage door", "binary_sensor", "Status only", "addOverviewManual",
-                     "Manual cards subscribe to any valid Home Assistant entity"])
+                     "Manual cards subscribe to any valid Home Assistant entity",
+                     "Action target", "overview_action_entity_id", "overviewActionOptions",
+                     "Timers", "e.domain==='timer'", "timer:'Timer'"])
   assert(source.includes(feature),`missing configurable Overview-card feature: ${feature}`);
 
 const reorderSource=source.match(/function reorderOverviewItems\(from,to\)\{[\s\S]*?return true\}/)?.[0];
 assert(reorderSource,'Overview reordering must use one complete-object move helper');
 const network={label:'Network',type:'network',span:1};
 const allLights={label:'All Lights',type:'all_lights',span:2};
-const garage={label:'Garage Door',type:'entity',entity_id:'cover.garage_door',span:2,
+const garage={label:'Garage Door',type:'entity',entity_id:'binary_sensor.garage_door',action_entity_id:'switch.garage_relay',span:2,
   active_states:'open,opening',active_label:'Open',inactive_label:'Closed',confirm:true};
 const reorderTest=Function('overviewItems',`${reorderSource};return {move:reorderOverviewItems,items:overviewItems}`)([network,allLights,garage]);
 assert.equal(reorderTest.move(2,1),true,'a valid Overview card move should succeed');
 assert.strictEqual(reorderTest.items[1],garage,'reordering must move the complete Garage Door card object');
 assert.strictEqual(reorderTest.items[2],allLights,'reordering must preserve the displaced card object');
 assert.equal(reorderTest.items[1].active_states,'open,opening','specialized card state settings must stay attached');
+assert.equal(reorderTest.items[1].action_entity_id,'switch.garage_relay','separate action targets must stay attached');
 assert.equal(reorderTest.items[1].confirm,true,'specialized card confirmation settings must stay attached');
 for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add Weather widget",
                      "Edit room controls", "function renderLinkedPages()"])

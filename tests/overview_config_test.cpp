@@ -26,16 +26,20 @@ int main() {
     assert(config.overview_quick_action_count == 2);
     assert(!config_service_parse_overview_quick_actions(R"([{"label":"Bad","type":"scene","entity_id":"light.desk"}])", config, error));
     assert(config_service_parse_overview_items(
-        R"([{"type":"home_status","entity_id":"","label":"Home","icon":"shield","action":"none","active_states":"","active_label":"All good","inactive_label":"Attention","color":"green","span":2,"confirm":false},{"type":"entity","entity_id":"cover.garage","label":"Garage","icon":"garage","action":"toggle","active_states":"open,opening","active_label":"Open","inactive_label":"Closed","color":"yellow","span":2,"confirm":true}])",
+        R"([{"type":"home_status","entity_id":"","label":"Home","icon":"shield","action":"none","active_states":"","active_label":"All good","inactive_label":"Attention","color":"green","span":2,"confirm":false},{"type":"entity","entity_id":"cover.garage","label":"Garage","icon":"garage","action":"toggle","active_states":"open,opening","active_label":"Open","inactive_label":"Closed","color":"yellow","span":2,"confirm":true},{"type":"entity","entity_id":"binary_sensor.hall_motion","action_entity_id":"switch.hall_light","label":"Hall motion","icon":"motion","action":"toggle","active_states":"on","active_label":"Motion","inactive_label":"Clear","color":"yellow","span":1,"confirm":false},{"type":"entity","entity_id":"timer.office_energy_saver_countdown","label":"Office energy saver","icon":"timer","action":"none","active_states":"active,paused","active_label":"","inactive_label":"","color":"cyan","span":1,"confirm":false}])",
         config, error));
-    assert(config.overview_item_count == 2);
+    assert(config.overview_item_count == 4);
     assert(config.overview_items[1].confirm);
     assert(strcmp(config.overview_items[1].active_states, "open,opening") == 0);
+    assert(strcmp(config.overview_items[2].entity_id, "binary_sensor.hall_motion") == 0);
+    assert(strcmp(config.overview_items[2].action_entity_id, "switch.hall_light") == 0);
+    assert(strcmp(config.overview_items[3].icon, "timer") == 0);
     const PanelConfig items_before = config;
     for (const char *bad : {
              "[]",
              R"([{"type":"entity","entity_id":"cover.garage","label":"Garage","icon":"garage","action":"toggle","active_states":"open","active_label":"Open","inactive_label":"Closed","color":"orange","span":2}])",
              R"([{"type":"entity","entity_id":"binary_sensor.door","label":"Door","icon":"door","action":"toggle","active_states":"on","active_label":"Open","inactive_label":"Closed","color":"yellow","span":1}])",
+             R"([{"type":"entity","entity_id":"binary_sensor.door","action_entity_id":"sensor.temperature","label":"Door","icon":"door","action":"toggle","active_states":"on","active_label":"Open","inactive_label":"Closed","color":"yellow","span":1}])",
              R"([{"type":"entity","entity_id":"cover.garage","label":"Garage","icon":"garage","action":"toggle","active_states":"open","active_label":"Open","inactive_label":"Closed","color":"yellow","span":4},{"type":"home_status","label":"Home","icon":"shield","action":"none","color":"green","span":4},{"type":"network","label":"Network","icon":"power","action":"none","color":"cyan","span":4},{"type":"lights","label":"Lights","icon":"light","action":"none","color":"yellow","span":4},{"type":"panel_tip","label":"Tip","icon":"auto","action":"none","color":"cyan","span":1}])"}) {
         assert(!config_service_parse_overview_items(bad, config, error));
         assert(memcmp(&config, &items_before, sizeof(config)) == 0);

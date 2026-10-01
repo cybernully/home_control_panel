@@ -9,7 +9,7 @@ const char *VALID_ITEMS[] = {"entity", "home_status", "lights", "network",
                              "all_lights", "weather", "calendar", "panel_tip"};
 const char *VALID_ICONS[] = {"auto", "garage", "door", "lock", "motion", "light",
                              "fan", "cover", "window", "camera", "shield",
-                             "temperature", "humidity", "power", "alert", "weather"};
+                             "temperature", "humidity", "power", "alert", "weather", "timer"};
 const char *VALID_COLORS[] = {"cyan", "green", "yellow", "red", "purple", "blue"};
 bool valid_type(const char *type) {
     for (const char *candidate : VALID_WIDGETS) if (strcmp(candidate, type) == 0) return true;
@@ -31,11 +31,13 @@ void add_item(PanelConfig &config, const char *type, const char *label, uint8_t 
               const char *entity_id = "", const char *icon = "auto",
               const char *action = "none", const char *active_states = "",
               const char *active_label = "", const char *inactive_label = "",
-              const char *color = "cyan", bool confirm = false) {
+              const char *color = "cyan", bool confirm = false,
+              const char *action_entity_id = "") {
     if (config.overview_item_count >= PANEL_MAX_OVERVIEW_ITEMS) return;
     auto &item = config.overview_items[config.overview_item_count++];
     snprintf(item.type, sizeof(item.type), "%s", type);
     snprintf(item.entity_id, sizeof(item.entity_id), "%s", entity_id);
+    snprintf(item.action_entity_id, sizeof(item.action_entity_id), "%s", action_entity_id);
     snprintf(item.label, sizeof(item.label), "%s", label);
     snprintf(item.icon, sizeof(item.icon), "%s", icon);
     snprintf(item.action, sizeof(item.action), "%s", action);
@@ -182,6 +184,7 @@ bool config_service_parse_overview_items(const String &json, PanelConfig &config
     for (JsonObject item : doc.as<JsonArray>()) {
         const char *type = item["type"] | "";
         const char *entity_id = item["entity_id"] | "";
+        const char *action_entity_id = item["action_entity_id"] | "";
         const char *label = item["label"] | "";
         const char *icon = item["icon"] | "auto";
         const char *action = item["action"] | "none";
@@ -212,13 +215,18 @@ bool config_service_parse_overview_items(const String &json, PanelConfig &config
         if (!entity && entity_id[0] && strlen(entity_id) >= sizeof(parsed[0].entity_id)) {
             error = "Overview entity ID is too long."; return false;
         }
-        if (strcmp(action, "scene") == 0 && strncmp(entity_id, "scene.", 6) != 0) {
-            error = "Scene cards must target a scene entity."; return false;
+        if (action_entity_id[0] && (!strchr(action_entity_id, '.') ||
+            strlen(action_entity_id) >= sizeof(parsed[0].action_entity_id))) {
+            error = "Overview action target must be a valid Home Assistant entity ID."; return false;
         }
-        if (strcmp(action, "toggle") == 0 && !(strncmp(entity_id, "light.", 6) == 0 ||
-            strncmp(entity_id, "switch.", 7) == 0 || strncmp(entity_id, "fan.", 4) == 0 ||
-            strncmp(entity_id, "cover.", 6) == 0 || strncmp(entity_id, "lock.", 5) == 0)) {
-            error = "Toggle cards must target a light, switch, fan, cover, or lock."; return false;
+        const char *action_target = action_entity_id[0] ? action_entity_id : entity_id;
+        if (strcmp(action, "scene") == 0 && strncmp(action_target, "scene.", 6) != 0) {
+            error = "Scene cards must use a scene entity as the action target."; return false;
+        }
+        if (strcmp(action, "toggle") == 0 && !(strncmp(action_target, "light.", 6) == 0 ||
+            strncmp(action_target, "switch.", 7) == 0 || strncmp(action_target, "fan.", 4) == 0 ||
+            strncmp(action_target, "cover.", 6) == 0 || strncmp(action_target, "lock.", 5) == 0)) {
+            error = "Toggle cards must use a light, switch, fan, cover, or lock as the action target."; return false;
         }
         grid_cells += span;
         if (grid_cells > 16) { error = "Overview cards exceed the four-by-four display grid."; return false; }
@@ -233,6 +241,7 @@ bool config_service_parse_overview_items(const String &json, PanelConfig &config
         PanelOverviewItem &out = parsed[count++];
         snprintf(out.type, sizeof(out.type), "%s", type);
         snprintf(out.entity_id, sizeof(out.entity_id), "%s", entity_id);
+        snprintf(out.action_entity_id, sizeof(out.action_entity_id), "%s", action_entity_id);
         snprintf(out.label, sizeof(out.label), "%s", label);
         snprintf(out.icon, sizeof(out.icon), "%s", icon);
         snprintf(out.action, sizeof(out.action), "%s", action);

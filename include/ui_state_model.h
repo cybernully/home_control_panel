@@ -61,6 +61,7 @@ bool ui_state_model_set_level(const RoomControlViewModel &control, uint8_t level
 struct OverviewCardViewModel {
     char type[16];
     char entity_id[96];
+    char action_entity_id[96];
     char title[PANEL_OVERVIEW_LABEL_LEN];
     char state_text[64];
     char icon[20];

@@ -235,6 +235,7 @@ void handle_get_config() {
         JsonObject item = overview_items.add<JsonObject>();
         item["type"] = source.type;
         item["entity_id"] = source.entity_id;
+        item["action_entity_id"] = source.action_entity_id;
         item["label"] = source.label;
         item["icon"] = source.icon;
         item["action"] = source.action;
