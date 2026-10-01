@@ -63,22 +63,35 @@ static void pref(const char *id,const char *label,int placement) {
     auto &p=config.room_controls[config.room_control_count++];snprintf(p.entity_id,sizeof(p.entity_id),"%s",id);
     snprintf(p.label,sizeof(p.label),"%s",label);p.placement=placement;
 }
+static void status_slot(int i,const char *type,const char *id,const char *label,const char *icon,
+                        const char *states="",const char *active="",const char *inactive="",const char *color="cyan") {
+    auto &s=config.rooms[0].status_slots[i];snprintf(s.type,sizeof(s.type),"%s",type);snprintf(s.entity_id,sizeof(s.entity_id),"%s",id);
+    snprintf(s.label,sizeof(s.label),"%s",label);snprintf(s.icon,sizeof(s.icon),"%s",icon);snprintf(s.active_states,sizeof(s.active_states),"%s",states);
+    snprintf(s.active_label,sizeof(s.active_label),"%s",active);snprintf(s.inactive_label,sizeof(s.inactive_label),"%s",inactive);snprintf(s.color,sizeof(s.color),"%s",color);
+}
 int main() {
     lv_init();auto *display=lv_display_create(1280,658);lv_display_set_color_format(display,LV_COLOR_FORMAT_XRGB8888);
     lv_display_set_buffers(display,buffer,nullptr,sizeof(buffer),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(display,flush);
     auto *root=lv_screen_active();config.room_count=2;snprintf(config.rooms[0].tab_label,sizeof(config.rooms[0].tab_label),"Office — upstairs");snprintf(config.rooms[0].header,sizeof(config.rooms[0].header),"Office");snprintf(config.rooms[0].temperature_entity_id,sizeof(config.rooms[0].temperature_entity_id),"sensor.office_temperature");snprintf(config.rooms[0].humidity_entity_id,sizeof(config.rooms[0].humidity_entity_id),"sensor.office_humidity");snprintf(config.rooms[1].tab_label,sizeof(config.rooms[1].tab_label),"Hall");snprintf(config.rooms[1].header,sizeof(config.rooms[1].header),"Hall");
+    status_slot(0,"entity","sensor.office_temperature","Temperature","temperature","","","","red");
+    status_slot(1,"entity","binary_sensor.office_window","Window","window","on","Open","Closed","yellow");
+    status_slot(2,"entity","timer.office_energy_saver_countdown","Energy Timer","timer","active,paused","","","cyan");
+    status_slot(3,"controls","","Room Controls","shield","","","","green");
     entity("light.desk","Desk — warm","light","on");entity("light.ceiling","Ceiling","light","off");
     entity("fan.ceiling","Ceiling fan with an intentionally long upstairs office name","fan","on");entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entity("cover.window","Window shades","cover","open");
     entity("scene.focus","Focus","scene","scening");entity("light.offline","Reading lamp","light","unavailable",false);
     entity("switch.hidden","Hidden control","switch","on");
-    entity("sensor.office_temperature","Office temperature","sensor","72");entity("sensor.office_humidity","Office humidity","sensor","45");
+    entity("sensor.office_temperature","Office temperature","sensor","72");snprintf(entities[count-1].unit_of_measurement,sizeof(entities[count-1].unit_of_measurement),"°F");
+    entity("sensor.office_humidity","Office humidity","sensor","45");
+    entity("binary_sensor.office_window","Office window","binary_sensor","off");
+    entity("timer.office_energy_saver_countdown","Office energy saver","timer","active");entities[count-1].timer_has_remaining=true;entities[count-1].timer_remaining_seconds=754;
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);std::string name="Accent light "+std::to_string(i+1);entity(id.c_str(),name.c_str(),"light","off");}
     pref("light.desk","Desk — warm",1);pref("light.ceiling","Ceiling",0);pref("fan.ceiling","Ceiling fan with an intentionally long upstairs office name",1);pref("scene.focus","Focus",1);
     pref("cover.window","Window shades",1);pref("switch.fan","Desk fan",1);pref("switch.lamp","Desk lamp",1);pref("light.missing","Reading lamp",1);pref("switch.hidden","",2);
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);pref(id.c_str(),"",0);}
     RoomViewModel model={};RoomControlViewModel model_controls[48]={};size_t model_count=0;assert(ui_state_model_snapshot_room(model,model_controls,48,model_count));assert(model.favorite_count==4);assert(strcmp(model.favorites[0].title,"Desk — warm")==0);
     RoomModule room;room.create(root);room.update();
-    lv_obj_update_layout(root);assert(find(root,"Desk - warm"));assert(find(root,"Favorite Controls"));assert(!find(root,"Room Status"));assert(find(root,"72°"));assert(find(root,"45%"));assert(find(root,"1 offline"));auto *room_dropdown=find_dropdown(root);assert(room_dropdown&&lv_dropdown_get_option_count(room_dropdown)==2);
+    lv_obj_update_layout(root);assert(find(root,"Desk - warm"));assert(find(root,"Favorite Controls"));assert(!find(root,"Room Status"));assert(find(root,"72°F"));assert(find(root,"Closed"));assert(find(root,"00:12:34"));assert(find(root,"1 offline"));auto *room_dropdown=find_dropdown(root);assert(room_dropdown&&lv_dropdown_get_option_count(room_dropdown)==2);
     auto *favorite=lv_obj_get_parent(find(root,"Desk - warm"));assert(lv_obj_get_height(favorite)==132);
     auto *favorite_high=find(root,"High");assert(favorite_high);
     auto *fan_card=lv_obj_get_parent(lv_obj_get_parent(favorite_high));

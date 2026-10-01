@@ -212,6 +212,19 @@ void handle_get_config() {
         item["header"] = cfg.rooms[i].header;
         item["temperature_entity_id"] = cfg.rooms[i].temperature_entity_id;
         item["humidity_entity_id"] = cfg.rooms[i].humidity_entity_id;
+        JsonArray status_slots = item["status_slots"].to<JsonArray>();
+        for (uint8_t slot = 0; slot < PANEL_ROOM_STATUS_SLOTS; ++slot) {
+            const PanelRoomStatusSlot &source = cfg.rooms[i].status_slots[slot];
+            JsonObject status = status_slots.add<JsonObject>();
+            status["type"] = source.type;
+            status["entity_id"] = source.entity_id;
+            status["label"] = source.label;
+            status["icon"] = source.icon;
+            status["active_states"] = source.active_states;
+            status["active_label"] = source.active_label;
+            status["inactive_label"] = source.inactive_label;
+            status["color"] = source.color;
+        }
     }
     JsonArray players = doc["media_players"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);

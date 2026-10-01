@@ -21,11 +21,28 @@ struct PanelRoomControl {
     char device_type[12];
 };
 
+// Four compact, configurable status positions are shown beside the room picker.
+// type is entity, devices, or controls. Entity slots are presentation-only and
+// never send a Home Assistant command.
+struct PanelRoomStatusSlot {
+    char type[12];
+    char entity_id[96];
+    char label[24];
+    char icon[20];
+    char active_states[PANEL_OVERVIEW_STATE_LEN];
+    char active_label[24];
+    char inactive_label[24];
+    char color[12];
+};
+
 struct PanelRoom {
     char tab_label[PANEL_ROOM_NAME_LEN];
     char header[PANEL_ROOM_NAME_LEN];
+    // Retained so pre-1.6.6 configurations can be migrated without losing
+    // their sensor selections. New UI code uses status_slots exclusively.
     char temperature_entity_id[96];
     char humidity_entity_id[96];
+    PanelRoomStatusSlot status_slots[PANEL_ROOM_STATUS_SLOTS];
 };
 
 // span is the number of columns in Overview's four-column widget grid: 1, 2,
@@ -107,6 +124,9 @@ String config_service_modules_csv();
 // Shared strict parser for persisted and web room preferences.
 bool config_service_parse_room_controls(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_rooms(const String &json, PanelConfig &config, String &error);
+void config_service_set_room_status_defaults(PanelRoom &room,
+                                             const char *temperature_entity_id = "",
+                                             const char *humidity_entity_id = "");
 bool config_service_parse_overview_widgets(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_quick_actions(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_items(const String &json, PanelConfig &config, String &error);

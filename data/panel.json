@@ -17,7 +17,16 @@
   "dark_mode": true,
   "screen_timeout_seconds": 120,
   "room_controls": [],
-  "rooms": [{"tab_label": "Room", "header": "Your room"}],
+  "rooms": [{
+    "tab_label": "Room",
+    "header": "Your room",
+    "status_slots": [
+      {"type": "entity", "entity_id": "", "label": "Temperature", "icon": "temperature", "active_states": "", "active_label": "", "inactive_label": "", "color": "red"},
+      {"type": "entity", "entity_id": "", "label": "Humidity", "icon": "humidity", "active_states": "", "active_label": "", "inactive_label": "", "color": "blue"},
+      {"type": "devices", "entity_id": "", "label": "Devices Online", "icon": "devices", "active_states": "", "active_label": "", "inactive_label": "", "color": "cyan"},
+      {"type": "controls", "entity_id": "", "label": "Room Controls", "icon": "shield", "active_states": "", "active_label": "", "inactive_label": "", "color": "green"}
+    ]
+  }],
   "weather_entity_id": "",
   "calendar_entity_id": "",
   "explicit_layout": false,

@@ -33,6 +33,43 @@ bool contains_ci(const char *text, const char *needle) {
     return false;
 }
 
+bool csv_contains_state(const char *csv, const char *state) {
+    if (!csv || !csv[0] || !state) return false;
+    const char *cursor = csv;
+    while (*cursor) {
+        while (*cursor == ' ' || *cursor == ',') ++cursor;
+        const char *end = cursor;
+        while (*end && *end != ',') ++end;
+        const char *trimmed_end = end;
+        while (trimmed_end > cursor && trimmed_end[-1] == ' ') --trimmed_end;
+        const size_t len = static_cast<size_t>(trimmed_end - cursor);
+        if (len == strlen(state)) {
+            bool equal = true;
+            for (size_t i = 0; i < len; ++i) {
+                char left = cursor[i], right = state[i];
+                if (left >= 'A' && left <= 'Z') left = static_cast<char>(left - 'A' + 'a');
+                if (right >= 'A' && right <= 'Z') right = static_cast<char>(right - 'A' + 'a');
+                if (left != right) { equal = false; break; }
+            }
+            if (equal) return true;
+        }
+        cursor = end;
+    }
+    return false;
+}
+
+void format_timer(char *out, size_t out_len, uint32_t total_seconds, bool paused) {
+    const uint32_t hours = total_seconds / 3600U;
+    const uint32_t minutes = (total_seconds / 60U) % 60U;
+    const uint32_t seconds = total_seconds % 60U;
+    if (paused) snprintf(out, out_len, "Paused %02lu:%02lu:%02lu",
+                         static_cast<unsigned long>(hours), static_cast<unsigned long>(minutes),
+                         static_cast<unsigned long>(seconds));
+    else snprintf(out, out_len, "%02lu:%02lu:%02lu",
+                  static_cast<unsigned long>(hours), static_cast<unsigned long>(minutes),
+                  static_cast<unsigned long>(seconds));
+}
+
 UiControlKind kind_from(const PanelRoomControl &pref, const HomeAssistantEntitySnapshot *entity) {
     const char *type = pref.device_type[0] && strcmp(pref.device_type, "auto") != 0
                            ? pref.device_type
@@ -106,6 +143,51 @@ void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
     else copy_text(out.state_text, sizeof(out.state_text), out.active ? "On" : "Off");
 }
 
+void build_status_slot(RoomStatusViewModel &out, const PanelRoomStatusSlot &slot,
+                       const RoomViewModel &room, const HomeAssistantEntitySnapshot *entity) {
+    memset(&out, 0, sizeof(out));
+    copy_text(out.label, sizeof(out.label), slot.label);
+    copy_text(out.icon, sizeof(out.icon), slot.icon[0] ? slot.icon : "auto");
+    copy_text(out.entity_id, sizeof(out.entity_id), slot.entity_id);
+    copy_text(out.color, sizeof(out.color), slot.color[0] ? slot.color : "cyan");
+    if (strcmp(slot.type, "devices") == 0) {
+        out.available = room.device_count > 0;
+        out.active = out.available && room.devices_online == room.device_count;
+        snprintf(out.value, sizeof(out.value), "%u / %u", static_cast<unsigned>(room.devices_online),
+                 static_cast<unsigned>(room.device_count));
+        return;
+    }
+    if (strcmp(slot.type, "controls") == 0) {
+        out.available = room.device_count > 0;
+        out.active = room.healthy;
+        copy_text(out.value, sizeof(out.value), room.system_status);
+        return;
+    }
+    out.available = entity && entity->available && entity->state[0] &&
+                    strcmp(entity->state, "unknown") != 0 && strcmp(entity->state, "unavailable") != 0;
+    if (!out.available) { copy_text(out.value, sizeof(out.value), "--"); return; }
+    out.active = slot.active_states[0] ? csv_contains_state(slot.active_states, entity->state) : true;
+    if (strcmp(entity->domain, "timer") == 0 && strcmp(entity->state, "idle") == 0) {
+        copy_text(out.value, sizeof(out.value), "Idle");
+    } else if (strcmp(entity->domain, "timer") == 0 && entity->timer_has_remaining) {
+        format_timer(out.value, sizeof(out.value), entity->timer_remaining_seconds,
+                     strcmp(entity->state, "paused") == 0);
+    } else if (out.active && slot.active_label[0]) {
+        copy_text(out.value, sizeof(out.value), slot.active_label);
+    } else if (!out.active && slot.inactive_label[0]) {
+        copy_text(out.value, sizeof(out.value), slot.inactive_label);
+    } else if (strcmp(entity->domain, "sensor") == 0) {
+        const char *unit = entity->unit_of_measurement;
+        if (!unit[0] && strcmp(slot.icon, "temperature") == 0) unit = "°";
+        if (!unit[0] && strcmp(slot.icon, "humidity") == 0) unit = "%";
+        const bool compact_unit = unit[0] == '%' || static_cast<unsigned char>(unit[0]) == 0xC2;
+        snprintf(out.value, sizeof(out.value), "%s%s%s", entity->state,
+                 unit[0] && !compact_unit ? " " : "", unit);
+    } else {
+        copy_text(out.value, sizeof(out.value), entity->state);
+    }
+}
+
 }  // namespace
 
 uint8_t ui_state_model_active_room() { return g_active_room; }
@@ -170,6 +252,12 @@ bool ui_state_model_snapshot_room(RoomViewModel &room,
                  static_cast<unsigned>(unavailable));
         snprintf(room.system_detail, sizeof(room.system_detail), "%u of %u room controls are unavailable.",
                  static_cast<unsigned>(unavailable), static_cast<unsigned>(room.device_count));
+    }
+    if (configured_room) {
+        for (uint8_t i = 0; i < PANEL_ROOM_STATUS_SLOTS; ++i) {
+            const PanelRoomStatusSlot &slot = configured_room->status_slots[i];
+            build_status_slot(room.status_slots[i], slot, room, find_entity(slot.entity_id, entity_count));
+        }
     }
     return configured_room != nullptr;
 }

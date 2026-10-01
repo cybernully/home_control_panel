@@ -41,7 +41,16 @@ int main() {
     auto parse_rooms = [&](const String &s) { return config_service_parse_rooms(s, config, error); };
     assert(parse_rooms(R"([{"tab_label":"Office","header":"Office controls","temperature_entity_id":"sensor.office_temperature","humidity_entity_id":"sensor.office_humidity"}])"));
     assert(config.room_count == 1 && strcmp(config.rooms[0].temperature_entity_id,"sensor.office_temperature") == 0);
+    assert(strcmp(config.rooms[0].status_slots[0].entity_id,"sensor.office_temperature") == 0);
+    assert(strcmp(config.rooms[0].status_slots[2].type,"devices") == 0);
     assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","temperature_entity_id":"light.not_a_sensor"}])"));
     assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","humidity_entity_id":"binary_sensor.office"}])"));
+    assert(parse_rooms(R"([{"tab_label":"Office","header":"Office","status_slots":[{"type":"entity","entity_id":"sensor.office_temperature","label":"Temperature","icon":"temperature","active_states":"","active_label":"","inactive_label":"","color":"red"},{"type":"entity","entity_id":"binary_sensor.office_window","label":"Window","icon":"window","active_states":"on","active_label":"Open","inactive_label":"Closed","color":"yellow"},{"type":"entity","entity_id":"timer.office_energy_saver_countdown","label":"Energy timer","icon":"timer","active_states":"active,paused","active_label":"","inactive_label":"","color":"cyan"},{"type":"controls","entity_id":"","label":"Room Controls","icon":"shield","active_states":"","active_label":"","inactive_label":"","color":"green"}]}])"));
+    assert(strcmp(config.rooms[0].status_slots[1].active_label,"Open") == 0);
+    assert(strcmp(config.rooms[0].status_slots[2].entity_id,"timer.office_energy_saver_countdown") == 0);
+    assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","status_slots":[]}])"));
+    assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","status_slots":[{"type":"entity","entity_id":"timer.office","label":"abcdefghijklmnopqrstuvwx","icon":"timer","color":"cyan"},{"type":"devices","label":"Devices","icon":"devices","color":"cyan"},{"type":"controls","label":"Controls","icon":"shield","color":"green"},{"type":"entity","entity_id":"sensor.ok","label":"OK","icon":"auto","color":"cyan"}]}])"));
+    assert(error.find("slot 1 caption must be at most 23 UTF-8 bytes") != String::npos);
+    assert(!parse_rooms(R"([{"tab_label":"Office","header":"Office","status_slots":[{"type":"entity","entity_id":"bad id","label":"Bad","icon":"auto","color":"cyan"},{"type":"devices","label":"Devices","icon":"devices","color":"cyan"},{"type":"controls","label":"Controls","icon":"shield","color":"green"},{"type":"entity","entity_id":"sensor.ok","label":"OK","icon":"auto","color":"cyan"}]}])"));
     std::cout << "Room parser and UTF-8 regression tests passed.\n";
 }

@@ -24,4 +24,6 @@ void interactive(lv_obj_t *obj, bool active, bool enabled = true);
 void text(lv_obj_t *obj, uint32_t color = TEXT);
 void slider(lv_obj_t *obj);
 void set_glyph(lv_obj_t *label, uint32_t codepoint);
+uint32_t status_glyph(const char *icon, const char *entity_id, const char *title, bool active);
+uint32_t status_color(const char *color);
 }

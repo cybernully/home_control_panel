@@ -48,6 +48,7 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.room_count = 1;
     copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
     copy_text(cfg.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room");
+    config_service_set_room_status_defaults(cfg.rooms[0]);
     config_service_set_overview_defaults(cfg);
     config_service_set_overview_quick_action_defaults(cfg);
     config_service_set_overview_item_defaults(cfg);
@@ -102,6 +103,19 @@ bool save_internal(const PanelConfig &cfg) {
         item["header"] = cfg.rooms[i].header;
         item["temperature_entity_id"] = cfg.rooms[i].temperature_entity_id;
         item["humidity_entity_id"] = cfg.rooms[i].humidity_entity_id;
+        JsonArray status_slots = item["status_slots"].to<JsonArray>();
+        for (uint8_t slot = 0; slot < PANEL_ROOM_STATUS_SLOTS; ++slot) {
+            const PanelRoomStatusSlot &source = cfg.rooms[i].status_slots[slot];
+            JsonObject status = status_slots.add<JsonObject>();
+            status["type"] = source.type;
+            status["entity_id"] = source.entity_id;
+            status["label"] = source.label;
+            status["icon"] = source.icon;
+            status["active_states"] = source.active_states;
+            status["active_label"] = source.active_label;
+            status["inactive_label"] = source.inactive_label;
+            status["color"] = source.color;
+        }
     }
     JsonArray players = doc["media_players"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) players.add(cfg.media_players[i]);
@@ -237,7 +251,7 @@ bool config_service_begin() {
         }
     }
     if (!doc["rooms"].isNull()) { String json, error; serializeJson(doc["rooms"], json); if (!config_service_parse_rooms(json, loaded, error)) Serial0.printf("[Config] Invalid rooms: %s\n", error.c_str()); }
-    if (loaded.room_count == 0) { loaded.room_count = 1; copy_text(loaded.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room"); copy_text(loaded.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room"); }
+    if (loaded.room_count == 0) { loaded.room_count = 1; copy_text(loaded.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room"); copy_text(loaded.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room"); config_service_set_room_status_defaults(loaded.rooms[0]); }
     if (!doc["overview_widgets"].isNull()) {
         String json, error;
         serializeJson(doc["overview_widgets"], json);

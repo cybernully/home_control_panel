@@ -16,9 +16,6 @@ using namespace module_ui;
 namespace {
 constexpr const char *GROUP_NAMES[] = {"Lights", "Devices", "Shades", "Scenes"};
 constexpr uint32_t GROUP_ICONS[] = {0xF0335, 0xF07E9, 0xF00AC, 0xF03D8};
-// Keep the glyph set within the small embedded MDI subset compiled into
-// ha_icons_font; this avoids missing-glyph boxes on the panel.
-constexpr uint32_t STATUS_ICONS[] = {0xF050F, 0xF058E, 0xF07E9, 0xF05E0};
 
 void display(lv_obj_t *label, const char *value) {
     if (!label) return;
@@ -94,22 +91,20 @@ void RoomModule::create(lv_obj_t *parent) {
         box(divider, BORDER, 0, 0);
         lv_obj_set_pos(divider, metric_x[i] - 12, 14);
         lv_obj_set_size(divider, 1, 50);
-        status_icons_[i] = label(room_status, "", &ha_icons_font,
-                                 i == 0 ? 0xFF715F : i == 1 ? 0x4AA5FF : i == 3 ? ui_theme::SUCCESS : TEXT);
-        ui_theme::set_glyph(status_icons_[i], STATUS_ICONS[i]);
+        status_icons_[i] = label(room_status, "", &ha_icons_font, MUTED);
+        ui_theme::set_glyph(status_icons_[i], 0xF0028);
         lv_obj_set_pos(status_icons_[i], metric_x[i], 22);
         lv_obj_set_size(status_icons_[i], 42, 40);
         lv_obj_set_style_text_align(status_icons_[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         status_values_[i] = label(room_status, "--", &lv_font_montserrat_18, TEXT);
         lv_obj_set_pos(status_values_[i], metric_x[i] + 50, 13);
         lv_obj_set_width(status_values_[i], i == 3 ? 170 : 140);
+        lv_label_set_long_mode(status_values_[i], LV_LABEL_LONG_DOT);
         status_captions_[i] = label(room_status, "", &lv_font_montserrat_12, MUTED);
         lv_obj_set_pos(status_captions_[i], metric_x[i] + 50, 43);
+        lv_obj_set_width(status_captions_[i], i == 3 ? 170 : 140);
+        lv_label_set_long_mode(status_captions_[i], LV_LABEL_LONG_DOT);
     }
-    display(status_captions_[0], "Temperature");
-    display(status_captions_[1], "Humidity");
-    display(status_captions_[2], "Devices Online");
-    display(status_captions_[3], "Room Controls");
 
     section_heading(parent, "Favorite Controls", 102);
     for (int i = 0; i < 4; ++i) {
@@ -238,16 +233,17 @@ void RoomModule::update() {
     ui_card_set_content(groups_[3].card, GROUP_ICONS[3], 0xD8FF26, "Scenes", summary);
     for (int i = 0; i < 4; ++i) ui_theme::interactive(groups_[i].card.root, false, room_.group_total[i] > 0);
 
-    display(status_values_[0], room_.temperature);
-    display(status_values_[1], room_.humidity);
-    snprintf(summary, sizeof(summary), "%u", room_.devices_online);
-    display(status_values_[2], summary);
-    display(status_values_[3], room_.system_status);
-    const uint32_t room_status_color = room_.healthy ? ui_theme::SUCCESS :
-                                       room_.busy ? ui_theme::WARN : ui_theme::MUTED;
-    ui_theme::set_glyph(status_icons_[3], room_.healthy ? 0xF05E0 : room_.busy ? 0xF0028 : 0xF0425);
-    lv_obj_set_style_text_color(status_icons_[3], lv_color_hex(room_status_color), LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_values_[3], lv_color_hex(room_status_color), LV_PART_MAIN);
+    for (uint8_t i = 0; i < PANEL_ROOM_STATUS_SLOTS; ++i) {
+        const RoomStatusViewModel &status = room_.status_slots[i];
+        display(status_values_[i], status.value);
+        display(status_captions_[i], status.label);
+        const uint32_t color = status.available && status.active
+                                   ? ui_theme::status_color(status.color) : ui_theme::MUTED;
+        ui_theme::set_glyph(status_icons_[i],
+                            ui_theme::status_glyph(status.icon, status.entity_id, status.label, status.active));
+        lv_obj_set_style_text_color(status_icons_[i], lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_values_[i], lv_color_hex(status.available ? TEXT : MUTED), LV_PART_MAIN);
+    }
     if (group_ >= 0) render_popup();
 }
 

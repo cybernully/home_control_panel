@@ -23,6 +23,12 @@ for(const feature of ["function addOverviewEntity", "overviewEntityDefault", "ac
                      "Action target", "overview_action_entity_id", "overviewActionOptions",
                      "Timers", "e.domain==='timer'", "timer:'Timer'"])
   assert(source.includes(feature),`missing configurable Overview-card feature: ${feature}`);
+for(const feature of ["Room status bar", "roomStatusDefaults", "ensureRoomStatus",
+                     "readRoomStatusFields", "setRoomStatusType", "applyRoomStatusEntity",
+                     "Home Assistant entity", "Devices online", "Room controls health",
+                     "sensor, binary_sensor, timer...", "function utf8Trim",
+                     "label:utf8Trim(entity.name||entity.entity_id,23)"])
+  assert(source.includes(feature),`missing configurable Room-status feature: ${feature}`);
 
 const reorderSource=source.match(/function reorderOverviewItems\(from,to\)\{[\s\S]*?return true\}/)?.[0];
 assert(reorderSource,'Overview reordering must use one complete-object move helper');
@@ -46,4 +52,4 @@ assert(source.match(/<section id="media"[\s\S]*?Search all Home Assistant device
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');
-console.log('Web layout manager tests passed: unified Overview cards, typed HA scan, explicit layout payload, and safe rendering hooks.');
+console.log('Web layout manager tests passed: unified Overview cards, configurable Room status slots, typed HA scan, explicit layout payload, and safe rendering hooks.');

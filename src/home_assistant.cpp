@@ -27,6 +27,7 @@ struct HaEntityModel {
     char name[64];
     char domain[16];
     char state[32];
+    char unit_of_measurement[16];
     uint8_t brightness_pct;
     int16_t position_pct;
     bool available;
@@ -412,6 +413,8 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
 
     const char *friendly = attrs["friendly_name"].as<const char *>();
     if (friendly && friendly[0]) copy_text(model.name, sizeof(model.name), friendly);
+    const char *unit = attrs["unit_of_measurement"].as<const char *>();
+    if (unit) copy_text(model.unit_of_measurement, sizeof(model.unit_of_measurement), unit);
 
     if (!attrs["brightness"].isNull()) {
         int brightness = attrs["brightness"].as<int>();
@@ -543,6 +546,8 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
                     model->timer_finishes_at_epoch = 0;
                 } else if (strcmp(key, "friendly_name") == 0) {
                     fallback_name_from_id(model->entity_id, model->name, sizeof(model->name));
+                } else if (strcmp(key, "unit_of_measurement") == 0) {
+                    model->unit_of_measurement[0] = '\0';
                 } else if (strcmp(key, "volume_level") == 0) {
                     model->volume_pct = 0;
                     model->supports_volume = false;
@@ -727,8 +732,9 @@ bool is_layout_entity(const char *entity_id) {
     for (uint8_t i = 0; i < cfg.room_control_count; ++i)
         if (strcmp(cfg.room_controls[i].entity_id, entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.room_count; ++i)
-        if ((cfg.rooms[i].temperature_entity_id[0] && strcmp(cfg.rooms[i].temperature_entity_id, entity_id) == 0) ||
-            (cfg.rooms[i].humidity_entity_id[0] && strcmp(cfg.rooms[i].humidity_entity_id, entity_id) == 0)) return true;
+        for (uint8_t slot = 0; slot < PANEL_ROOM_STATUS_SLOTS; ++slot)
+            if (cfg.rooms[i].status_slots[slot].entity_id[0] &&
+                strcmp(cfg.rooms[i].status_slots[slot].entity_id, entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.media_player_count; ++i)
         if (strcmp(cfg.media_players[i], entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i)
@@ -788,10 +794,9 @@ void populate_configured_layout_entities_worker() {
     };
 
     for (uint8_t i = 0; i < cfg.room_control_count; ++i) add_entity(cfg.room_controls[i].entity_id);
-    for (uint8_t i = 0; i < cfg.room_count; ++i) {
-        add_entity(cfg.rooms[i].temperature_entity_id);
-        add_entity(cfg.rooms[i].humidity_entity_id);
-    }
+    for (uint8_t i = 0; i < cfg.room_count; ++i)
+        for (uint8_t slot = 0; slot < PANEL_ROOM_STATUS_SLOTS; ++slot)
+            add_entity(cfg.rooms[i].status_slots[slot].entity_id, true);
     for (uint8_t i = 0; i < cfg.media_player_count; ++i) add_entity(cfg.media_players[i]);
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) add_entity(cfg.media_shortcuts[i].entity_id);
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) add_entity(cfg.media_favorites[i].entity_id);
@@ -1396,8 +1401,10 @@ void run_rest_discovery_worker() {
     // which is why large installations reported the opaque -103 failure.
     static const char entity_picker_template[] =
         "{% set ns = namespace(items=[]) %}"
-        "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','scene','media_player','weather','calendar','timer','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
+        "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','sensor','scene','media_player','weather','calendar','timer','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] %}"
+        "{% if ns.items | length < 161 %}"
         "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
+        "{% endif %}"
         "{% endfor %}{{ ns.items | to_json }}";
 
     set_discovery_message("Searching Home Assistant directly...");
@@ -2257,6 +2264,7 @@ void snapshot_entity(const HaEntityModel &source, HomeAssistantEntitySnapshot &o
     copy_text(out.name, sizeof(out.name), source.name);
     copy_text(out.domain, sizeof(out.domain), source.domain);
     copy_text(out.state, sizeof(out.state), source.state);
+    copy_text(out.unit_of_measurement, sizeof(out.unit_of_measurement), source.unit_of_measurement);
     out.brightness_pct = source.brightness_pct;
     out.position_pct = source.position_pct;
     out.available = source.available;

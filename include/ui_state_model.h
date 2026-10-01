@@ -25,6 +25,16 @@ struct RoomControlViewModel {
     bool favorite;
 };
 
+struct RoomStatusViewModel {
+    char label[24];
+    char value[64];
+    char icon[20];
+    char entity_id[96];
+    char color[12];
+    bool available;
+    bool active;
+};
+
 struct RoomViewModel {
     uint8_t active_room;
     uint8_t room_count;
@@ -40,6 +50,7 @@ struct RoomViewModel {
     uint16_t device_count;
     uint8_t favorite_count;
     RoomControlViewModel favorites[4];
+    RoomStatusViewModel status_slots[PANEL_ROOM_STATUS_SLOTS];
     bool healthy;
     bool busy;
 };

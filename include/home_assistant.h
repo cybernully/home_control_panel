@@ -37,6 +37,7 @@ struct HomeAssistantEntitySnapshot {
     char name[64];
     char domain[16];
     char state[32];
+    char unit_of_measurement[16];
     uint8_t brightness_pct;
     int16_t position_pct;
     bool available;
