@@ -14,7 +14,7 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
@@ -24,20 +24,20 @@ cfg=json.loads((root/"data/panel.json").read_text())
 assert cfg["schema"]==3
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
-assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=3
+assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=6
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.6.6"' in app
+assert '#define APP_VERSION "1.7.0"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
-assert '#define PANEL_MAX_MEDIA_SHORTCUTS 3' in app
+assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
 assert '#define PANEL_MAX_MEDIA_FAVORITES 6' in app
-assert '#define PANEL_MAX_MEDIA_PLAYERS 4' in app
+assert '#define PANEL_MAX_MEDIA_PLAYERS 6' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_COMMAND_MAX_ATTEMPTS 2U' in app
 assert '#define HA_COMMAND_RESULT_TIMEOUT_MS 6000UL' in app
-assert '#define HA_MAX_MEDIA_PLAYERS 4' in app
+assert '#define HA_MAX_MEDIA_PLAYERS 6' in app
 assert '#define HA_MEDIA_ARTWORK_MAX_BYTES (1024U * 1024U)' in app
 main=(root/"src/main.cpp").read_text()
 assert main.index("ui_shell_begin();")<main.index("network_service_begin();")
@@ -70,7 +70,7 @@ for feature in ["decode_jpeg_artwork", "decode_progressive_jpeg_artwork",
                 "progressive full", "if (scale > 256U) scale = 256U;",
                 "home_assistant_queue_media_volume_step", "lv_obj_has_flag(popup_, LV_OBJ_FLAG_HIDDEN)"]:
     assert feature in media
-for feature in ["PANEL_MAX_MEDIA_SHORTCUTS", "PANEL_MAX_MEDIA_FAVORITES", "Media shortcuts", "Browse favorites",
+for feature in ["PANEL_MAX_MEDIA_SHORTCUTS", "PANEL_MAX_MEDIA_FAVORITES", "QUICK PLAY", "Browse favorites",
                 "panel_config.media_shortcut_count", "panel_config.media_favorite_count"]:
     assert feature in media
 config=(root/"src/config_service.cpp").read_text()
@@ -84,7 +84,7 @@ for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
 for feature in ["handle_ha_entities", "handle_ha_discover", "parse_media_players", "home_assistant_request_full_discovery"]:
     assert feature in web
 web_ui=(root/"include/web_ui.h").read_text()
-for feature in ["Panel display manager", "Rooms and controls", "Media players", "Administration", "Search Home Assistant"]:
+for feature in ["Panel display manager", "Rooms and controls", "Media experience", "Administration", "Search Home Assistant"]:
     assert feature in web_ui
 for feature in ["Overview layout", "Home Assistant entity", "active_states", "overview_items", "overviewDrop"]:
     assert feature in web_ui
@@ -101,5 +101,5 @@ for feature in ["STBI_ONLY_JPEG", "STB_IMAGE_IMPLEMENTATION", "MALLOC_CAP_SPIRAM
     assert feature in stb_impl
 ignore=(root/".gitignore").read_text()
 assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
-print("Home Control Panel v1.6.6 structure validation passed.")
+print("Home Control Panel v1.7.0 structure validation passed.")
 

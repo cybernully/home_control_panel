@@ -32,12 +32,17 @@ changing hidden lights. En/em dashes are normalized for the bundled font.
 The header has also been refined with aligned battery geometry, matching status
 capsules, Wi-Fi signal bars, and a cleaner title/subtitle hierarchy.
 
-Media follows the same visual language: one spacious now-playing card, dedicated
-playback and volume controls, three optional shortcut tiles, and rounded Players,
-Sources, and Browse popups. Unused slots are hidden, long metadata is bounded,
-and canceled volume drags do not send a command.
+Media follows the same visual language: one spacious now-playing card, icon-led
+playback and volume controls, up to six optional quick-play cards, and rounded
+Players, Sources, and Favorites bubbles. Web Admin orders up to six players and
+configures shortcut/favorite labels, icons, targets, content IDs, and types.
+Unused slots are hidden, long metadata is bounded, canceled volume drags do not
+send a command, and title/artist changes refresh artwork even when an integration
+reuses the same proxy URL.
 
-See [1.4.4 release notes](docs/RELEASE_1.4.4.md) for seamless media artwork reconnects, [1.4.3 release notes](docs/RELEASE_1.4.3.md) for the TLS artwork fix, and [1.4.0 release notes](docs/RELEASE_1.4.0.md) for room configuration.
+See [1.7.0 release notes](docs/RELEASE_1.7.0.md) for the complete Media rebuild,
+[1.4.4 release notes](docs/RELEASE_1.4.4.md) for seamless media artwork reconnects,
+and [1.4.0 release notes](docs/RELEASE_1.4.0.md) for room configuration.
 
 ## Maintenance update 1.3.10
 

@@ -190,6 +190,35 @@ void build_status_slot(RoomStatusViewModel &out, const PanelRoomStatusSlot &slot
 
 }  // namespace
 
+void ui_state_model_media_player(const HomeAssistantMediaSnapshot &source,
+                                 MediaPlayerViewModel &out) {
+    memset(&out, 0, sizeof(out));
+    copy_text(out.entity_id, sizeof(out.entity_id), source.entity_id);
+    copy_text(out.player_name, sizeof(out.player_name),
+              source.name[0] ? source.name : source.entity_id);
+    if (source.title[0]) copy_text(out.title, sizeof(out.title), source.title);
+    else if (strcmp(source.state, "off") == 0) copy_text(out.title, sizeof(out.title), "Player is off");
+    else if (strcmp(source.state, "idle") == 0) copy_text(out.title, sizeof(out.title), "Nothing playing");
+    else if (strcmp(source.state, "unavailable") == 0) copy_text(out.title, sizeof(out.title), "Player unavailable");
+    else copy_text(out.title, sizeof(out.title), "No media title");
+    if (source.artist[0]) copy_text(out.artist, sizeof(out.artist), source.artist);
+    else if (source.playlist[0]) snprintf(out.artist, sizeof(out.artist), "Playlist: %s", source.playlist);
+    copy_text(out.album, sizeof(out.album), source.album);
+    const char *playback = !source.available ? "Unavailable" :
+                           strcmp(source.state, "playing") == 0 ? "Playing" :
+                           strcmp(source.state, "paused") == 0 ? "Paused" :
+                           strcmp(source.state, "off") == 0 ? "Player off" : "Ready";
+    snprintf(out.state_text, sizeof(out.state_text), "%s%s%s", playback,
+             source.source[0] ? "  /  " : "", source.source);
+    copy_text(out.artwork_url, sizeof(out.artwork_url), source.entity_picture);
+    out.volume_pct = source.volume_pct;
+    out.available = source.available;
+    out.playing = strcmp(source.state, "playing") == 0;
+    out.muted = source.volume_muted;
+    out.supports_volume = source.supports_volume;
+    out.supports_mute = source.supports_mute;
+}
+
 uint8_t ui_state_model_active_room() { return g_active_room; }
 
 void ui_state_model_set_active_room(uint8_t room_index) {

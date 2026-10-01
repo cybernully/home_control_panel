@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+struct HomeAssistantMediaSnapshot;
+
 enum class UiControlKind : uint8_t {
     Unknown = 0,
     Light,
@@ -88,4 +90,24 @@ struct OverviewCardViewModel {
 // Builds the complete Overview presentation state without creating widgets.
 size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t capacity);
 bool ui_state_model_activate_overview(const OverviewCardViewModel &card);
+
+struct MediaPlayerViewModel {
+    char entity_id[96];
+    char player_name[64];
+    char title[128];
+    char artist[128];
+    char album[128];
+    char state_text[160];
+    char artwork_url[256];
+    uint8_t volume_pct;
+    bool available;
+    bool playing;
+    bool muted;
+    bool supports_volume;
+    bool supports_mute;
+};
+
+// Presentation-only media state. Transport, JSON and LVGL stay outside this model.
+void ui_state_model_media_player(const HomeAssistantMediaSnapshot &source,
+                                 MediaPlayerViewModel &out);
 

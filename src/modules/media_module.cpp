@@ -3,6 +3,7 @@
 #include "config_service.h"
 #include "module_ui.h"
 #include "display_text.h"
+#include "ui_state_model.h"
 
 #include <Arduino.h>
 #include <JPEGDEC.h>
@@ -35,16 +36,50 @@ void configure_button_label(lv_obj_t *label_obj, int width) {
     lv_obj_center(label_obj);
 }
 
-bool is_playing_state(const char *state) {
-    return state && strcmp(state, "playing") == 0;
+lv_obj_t *configure_icon_button(lv_obj_t *button_obj, const char *icon,
+                                const char *caption, int caption_width,
+                                int icon_y = 8, int caption_y = 38) {
+    if (!button_obj) return nullptr;
+    lv_obj_t *icon_label = lv_obj_get_child(button_obj, 0);
+    lv_label_set_text(icon_label, icon);
+    lv_obj_set_style_text_font(icon_label, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_align(icon_label, LV_ALIGN_TOP_MID, 0, icon_y);
+    lv_obj_t *caption_label = lv_label_create(button_obj);
+    lv_label_set_text(caption_label, caption ? caption : "");
+    lv_obj_set_style_text_font(caption_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(caption_label, lv_color_hex(TEXT), LV_PART_MAIN);
+    lv_obj_set_width(caption_label, caption_width);
+    lv_obj_set_height(caption_label, lv_font_montserrat_12.line_height);
+    lv_label_set_long_mode(caption_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(caption_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(caption_label, LV_ALIGN_TOP_MID, 0, caption_y);
+    return caption_label;
 }
 
-const char *media_title_or_state(const HomeAssistantMediaSnapshot &media) {
-    if (media.title[0]) return media.title;
-    if (strcmp(media.state, "off") == 0) return "Player is off";
-    if (strcmp(media.state, "idle") == 0) return "Nothing playing";
-    if (strcmp(media.state, "unavailable") == 0) return "Player unavailable";
-    return "No media title";
+const char *shortcut_icon(const char *name) {
+    if (same_text(name, "radio")) return LV_SYMBOL_WIFI;
+    if (same_text(name, "podcast")) return LV_SYMBOL_AUDIO;
+    if (same_text(name, "playlist")) return LV_SYMBOL_LIST;
+    if (same_text(name, "favorite") || same_text(name, "star")) return LV_SYMBOL_OK;
+    if (same_text(name, "speaker")) return LV_SYMBOL_VOLUME_MAX;
+    return LV_SYMBOL_AUDIO;
+}
+
+uint32_t media_fingerprint(const HomeAssistantMediaSnapshot &media) {
+    uint32_t hash = 2166136261U;
+    const char *parts[] = {media.entity_id, media.entity_picture, media.title,
+                           media.artist, media.album};
+    for (const char *part : parts) {
+        for (const unsigned char *cursor =
+                 reinterpret_cast<const unsigned char *>(part);
+             cursor && *cursor; ++cursor) {
+            hash ^= *cursor;
+            hash *= 16777619U;
+        }
+        hash ^= 0xFFU;
+        hash *= 16777619U;
+    }
+    return hash ? hash : 1U;
 }
 
 void set_media_label_text(lv_obj_t *label_obj, const char *text) {
@@ -144,20 +179,23 @@ bool MediaModule::allocate_work_buffers() {
 void MediaModule::create(lv_obj_t *parent) {
     const bool buffers_ready = allocate_work_buffers();
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Media", "Your music, within reach.");
+    module_ui::title(parent, "Media", "Now playing, shortcuts, and favorites.");
 
-    const char *menus[] = {"Players", "Sources", "Browse"};
+    const char *menus[] = {"Players", "Sources", "Favorites"};
+    const char *menu_icons[] = {LV_SYMBOL_AUDIO, LV_SYMBOL_LIST, LV_SYMBOL_OK};
     for (int i = 0; i < 3; ++i) {
         auto &trigger = popup_triggers_[i];
         trigger.owner = this; trigger.index = i;
-        trigger.button = button(parent, menus[i], 704 + i * 184, 18, 168, 48);
-        lv_obj_set_style_radius(trigger.button, 24, LV_PART_MAIN);
+        trigger.button = button(parent, menu_icons[i], 856 + i * 132, 8, 120, 72);
+        lv_obj_set_style_radius(trigger.button, 28, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(trigger.button, 0, LV_PART_MAIN);
+        configure_icon_button(trigger.button, menu_icons[i], menus[i], 104, 5, 40);
         lv_obj_add_event_cb(trigger.button, popup_cb, LV_EVENT_CLICKED, &trigger);
     }
 
-    lv_obj_t *now = card(parent, 24, 92, 1232, 380);
+    lv_obj_t *now = card(parent, 24, 92, 1232, 356);
     lv_obj_set_style_radius(now, 24, LV_PART_MAIN);
-    artwork_box_ = card(now, 24, 29, 320, 320);
+    artwork_box_ = card(now, 22, 22, 312, 312);
     lv_obj_set_style_bg_color(artwork_box_, lv_color_hex(0x101A2B), LV_PART_MAIN);
     lv_obj_set_style_radius(artwork_box_, 20, LV_PART_MAIN);
     lv_obj_set_style_border_width(artwork_box_, 0, LV_PART_MAIN);
@@ -177,18 +215,21 @@ void MediaModule::create(lv_obj_t *parent) {
         lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
         return obj;
     };
-    player_name_ = text("Discovering players...", &lv_font_montserrat_14, MUTED, 24, 828);
-    track_label_ = text("Nothing playing", &lv_font_montserrat_28, TEXT, 59, 828);
-    artist_label_ = text("", &lv_font_montserrat_18, TEXT, 103, 828);
-    album_label_ = text("", &lv_font_montserrat_14, MUTED, 137, 828);
-    state_label_ = text("Waiting for Home Assistant", &lv_font_montserrat_14, MUTED, 173, 420);
+    player_name_ = text("Discovering players...", &lv_font_montserrat_14, MUTED, 22, 828);
+    track_label_ = text("Nothing playing", &lv_font_montserrat_28, TEXT, 54, 828);
+    artist_label_ = text("", &lv_font_montserrat_18, TEXT, 96, 828);
+    album_label_ = text("", &lv_font_montserrat_14, MUTED, 128, 828);
+    state_label_ = text("Waiting for Home Assistant", &lv_font_montserrat_14, MUTED, 162, 420);
 
-    prev_button_ = button(now, "Previous", 376, 222, 112, 72);
-    play_button_ = button(now, "Play", 500, 222, 164, 72, ACCENT);
-    play_label_ = lv_obj_get_child(play_button_, 0);
-    next_button_ = button(now, "Next", 676, 222, 112, 72);
+    prev_button_ = button(now, LV_SYMBOL_PREV, 376, 210, 76, 76);
+    play_button_ = button(now, LV_SYMBOL_PLAY, 466, 198, 100, 100, ACCENT);
+    next_button_ = button(now, LV_SYMBOL_NEXT, 580, 210, 76, 76);
+    configure_icon_button(prev_button_, LV_SYMBOL_PREV, "Previous", 68, 7, 47);
+    play_icon_ = lv_obj_get_child(play_button_, 0);
+    play_label_ = configure_icon_button(play_button_, LV_SYMBOL_PLAY, "Play", 88, 14, 65);
+    configure_icon_button(next_button_, LV_SYMBOL_NEXT, "Next", 68, 7, 47);
     for (auto *control : {prev_button_, play_button_, next_button_}) {
-        lv_obj_set_style_radius(control, 36, LV_PART_MAIN);
+        lv_obj_set_style_radius(control, 50, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(control, 0, LV_PART_MAIN);
         set_enabled(control, false);
     }
@@ -197,13 +238,13 @@ void MediaModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(next_button_, next_cb, LV_EVENT_CLICKED, this);
 
     auto *volume_title = label(now, "VOLUME", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(volume_title, 828, 176);
+    lv_obj_set_pos(volume_title, 714, 174);
     volume_label_ = label(now, "--", &lv_font_montserrat_16, TEXT);
     lv_obj_set_width(volume_label_, 64);
     lv_obj_set_style_text_align(volume_label_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_obj_set_pos(volume_label_, 1144, 171);
-    volume_down_button_ = button(now, "-", 828, 230, 52, 56);
-    volume_up_button_ = button(now, "+", 1156, 230, 52, 56);
+    lv_obj_set_pos(volume_label_, 1140, 169);
+    volume_down_button_ = button(now, LV_SYMBOL_MINUS, 714, 224, 58, 58);
+    volume_up_button_ = button(now, LV_SYMBOL_PLUS, 1094, 224, 58, 58);
     for (auto *control : {volume_down_button_, volume_up_button_}) {
         lv_obj_set_style_radius(control, 28, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(control, 0, LV_PART_MAIN);
@@ -213,8 +254,8 @@ void MediaModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(volume_down_button_, volume_down_cb, LV_EVENT_CLICKED, this);
     lv_obj_add_event_cb(volume_up_button_, volume_up_cb, LV_EVENT_CLICKED, this);
     volume_slider_ = lv_slider_create(now);
-    lv_obj_set_pos(volume_slider_, 908, 246);
-    lv_obj_set_size(volume_slider_, 220, 24);
+    lv_obj_set_pos(volume_slider_, 794, 241);
+    lv_obj_set_size(volume_slider_, 286, 24);
     lv_obj_set_ext_click_area(volume_slider_, 12);
     lv_slider_set_range(volume_slider_, 0, 100);
     style_slider(volume_slider_);
@@ -224,31 +265,31 @@ void MediaModule::create(lv_obj_t *parent) {
     lv_obj_add_event_cb(volume_slider_, volume_changed_cb, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_add_event_cb(volume_slider_, volume_released_cb, LV_EVENT_RELEASED, this);
     lv_obj_add_event_cb(volume_slider_, volume_cancel_cb, LV_EVENT_PRESS_LOST, this);
-    mute_button_ = button(now, "Mute", 1056, 306, 152, 48);
-    lv_obj_set_style_radius(mute_button_, 24, LV_PART_MAIN);
+    mute_button_ = button(now, LV_SYMBOL_MUTE, 1162, 216, 64, 76);
+    lv_obj_set_style_radius(mute_button_, 32, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(mute_button_, 0, LV_PART_MAIN);
-    mute_label_ = lv_obj_get_child(mute_button_, 0);
+    mute_icon_ = lv_obj_get_child(mute_button_, 0);
+    mute_label_ = configure_icon_button(mute_button_, LV_SYMBOL_MUTE, "Mute", 56, 7, 48);
     lv_obj_add_event_cb(mute_button_, mute_cb, LV_EVENT_CLICKED, this);
     set_enabled(mute_button_, false);
 
-    auto *caption = label(parent, "Media shortcuts", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 495);
+    auto *caption = label(parent, "QUICK PLAY", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(caption, 24, 470);
     for (int i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
         auto &control = shortcuts_[i]; control.owner = this;
-        control.button = button(parent, "", 24 + i * 416, 520, 400, 72);
-        lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
+        control.button = button(parent, LV_SYMBOL_AUDIO, 24 + i * 204, 494, 194, 98);
+        lv_obj_set_style_radius(control.button, 20, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(control.button, 0, LV_PART_MAIN);
-        control.label = lv_obj_get_child(control.button, 0);
-        lv_obj_set_style_text_font(control.label, &lv_font_montserrat_18, LV_PART_MAIN);
-        configure_button_label(control.label, 352);
+        control.icon_label = lv_obj_get_child(control.button, 0);
+        control.label = configure_icon_button(control.button, LV_SYMBOL_AUDIO, "Shortcut", 166, 10, 58);
         set_enabled(control.button, false);
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
     }
     shortcuts_empty_ = label(parent, "Add your favorite playlists or stations in the web manager.", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(shortcuts_empty_, 24, 544);
+    lv_obj_set_pos(shortcuts_empty_, 24, 532);
     status_label_ = label(parent, "Waiting for media discovery...", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(status_label_, 24, 617);
+    lv_obj_set_pos(status_label_, 24, 602);
     lv_obj_set_width(status_label_, 1232);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
 
@@ -263,8 +304,9 @@ void MediaModule::create(lv_obj_t *parent) {
     lv_obj_set_pos(popup_title_, 24, 24);
     popup_hint_ = label(sheet, "", &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(popup_hint_, 24, 61);
-    auto *close = button(sheet, "Close", 864, 18, 144, 56);
+    auto *close = button(sheet, LV_SYMBOL_CLOSE, 940, 18, 68, 56);
     lv_obj_set_style_radius(close, 28, LV_PART_MAIN);
+    configure_icon_button(close, LV_SYMBOL_CLOSE, "Close", 60, 1, 34);
     lv_obj_add_event_cb(close, close_popup_cb, LV_EVENT_CLICKED, this);
     for (int group = 0; group < 3; ++group) {
         auto *section = card(sheet, 24, 104, 984, 324);
@@ -278,10 +320,10 @@ void MediaModule::create(lv_obj_t *parent) {
     }
     for (int i = 0; i < HA_MAX_MEDIA_PLAYERS; ++i) {
         auto &control = players_[i]; control.owner = this;
-        control.button = button(popup_sections_[0], "", (i % 2) * 500, (i / 2) * 132, 484, 116);
+        control.button = button(popup_sections_[0], "", (i % 3) * 328, (i / 3) * 154, 312, 138);
         lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
         control.label = lv_obj_get_child(control.button, 0);
-        configure_button_label(control.label, 436);
+        configure_button_label(control.label, 272);
         set_enabled(control.button, false);
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_event_cb(control.button, player_cb, LV_EVENT_CLICKED, &control);
@@ -298,10 +340,10 @@ void MediaModule::create(lv_obj_t *parent) {
     }
     for (int i = 0; i < PANEL_MAX_MEDIA_FAVORITES; ++i) {
         auto &control = favorites_[i]; control.owner = this;
-        control.button = button(popup_sections_[2], "", (i % 2) * 500, (i / 2) * 108, 484, 92);
+        control.button = button(popup_sections_[2], LV_SYMBOL_OK, (i % 3) * 328, (i / 3) * 154, 312, 138);
         lv_obj_set_style_radius(control.button, 22, LV_PART_MAIN);
-        control.label = lv_obj_get_child(control.button, 0);
-        configure_button_label(control.label, 436);
+        control.icon_label = lv_obj_get_child(control.button, 0);
+        control.label = configure_icon_button(control.button, LV_SYMBOL_OK, "Favorite", 272, 18, 82);
         set_enabled(control.button, false);
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
@@ -351,7 +393,9 @@ void MediaModule::select_player(const char *entity_id) {
     volume_dragging_ = false;
     volume_entity_id_[0] = 0;
     requested_picture_[0] = '\0';
+    requested_media_fingerprint_ = 0;
     artwork_request_ms_ = 0;
+    artwork_refresh_pending_ = false;
     clear_artwork();
     home_assistant_request_media_browse(selected_entity_id_);
     set_status("Media player selected; loading state, artwork, and favorites...");
@@ -631,6 +675,7 @@ void MediaModule::refresh_artwork() {
     if (artwork_placeholder_) lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(artwork_image_);
     artwork_generation_ = copied.generation;
+    artwork_refresh_pending_ = false;
     Serial0.printf("[Media] Artwork shown: %s%s, %u bytes, %ux%u, scale=%u/256\n",
                    copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
                    progressive_jpeg ? " progressive full" : "",
@@ -675,6 +720,8 @@ void MediaModule::update() {
                      sizeof(control.favorite.media_content_type),
                      "%s", configured.media_content_type);
             set_media_label_text(control.label, configured.label);
+            lv_label_set_text(control.icon_label,
+                              shortcut_icon(configured.icon[0] ? configured.icon : "music"));
 
             bool target_available = false;
             for (size_t player = 0; player < count; ++player) {
@@ -702,6 +749,8 @@ void MediaModule::update() {
     if (count == 0) {
         selected_entity_id_[0] = '\0';
         requested_picture_[0] = '\0';
+        requested_media_fingerprint_ = 0;
+        artwork_refresh_pending_ = false;
         clear_artwork();
         lv_label_set_text(player_name_, "No players in this room");
         lv_label_set_text(track_label_, "Nothing playing");
@@ -720,6 +769,7 @@ void MediaModule::update() {
         lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
         lv_label_set_text(volume_label_, "--");
         lv_label_set_text(play_label_, "Play");
+        lv_label_set_text(play_icon_, LV_SYMBOL_PLAY);
         lv_label_set_text(mute_label_, "Mute");
         lv_obj_set_style_bg_color(mute_button_, lv_color_hex(CARD_ALT), LV_PART_MAIN);
         for (auto &p : players_) { p.bound = false; set_enabled(p.button, false); lv_obj_add_flag(p.button, LV_OBJ_FLAG_HIDDEN); }
@@ -771,47 +821,37 @@ void MediaModule::update() {
     }
 
     const HomeAssistantMediaSnapshot &active = media_cache_[selected];
-    set_media_label_text(player_name_, active.name[0] ? active.name : active.entity_id);
-    set_media_label_text(track_label_, media_title_or_state(active));
+    MediaPlayerViewModel view = {};
+    ui_state_model_media_player(active, view);
+    set_media_label_text(player_name_, view.player_name);
+    set_media_label_text(track_label_, view.title);
+    set_media_label_text(artist_label_, view.artist);
+    set_media_label_text(album_label_, view.album);
+    set_media_label_text(state_label_, view.state_text);
 
-    char artist[128] = {};
-    if (active.artist[0]) snprintf(artist, sizeof(artist), "%s", active.artist);
-    else if (active.playlist[0]) snprintf(artist, sizeof(artist), "Playlist: %s", active.playlist);
-    else artist[0] = 0;
-    set_media_label_text(artist_label_, artist);
-
-    char album[128] = {};
-    if (active.album[0]) snprintf(album, sizeof(album), "%s", active.album);
-    set_media_label_text(album_label_, album);
-
-    char state[160];
-    const char *playback = !active.available ? "Unavailable" : is_playing_state(active.state) ? "Playing" :
-                           same_text(active.state, "paused") ? "Paused" : same_text(active.state, "off") ? "Player off" : "Ready";
-    snprintf(state, sizeof(state), "%s%s%s", playback,
-             active.source[0] ? "  /  " : "", active.source);
-    set_media_label_text(state_label_, state);
-
-    set_enabled(play_button_, active.available);
-    set_enabled(prev_button_, active.available);
-    set_enabled(next_button_, active.available);
-    lv_label_set_text(play_label_, is_playing_state(active.state) ? "Pause" : "Play");
+    set_enabled(play_button_, view.available);
+    set_enabled(prev_button_, view.available);
+    set_enabled(next_button_, view.available);
+    lv_label_set_text(play_label_, view.playing ? "Pause" : "Play");
+    lv_label_set_text(play_icon_, view.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     lv_obj_set_style_bg_color(play_button_, lv_color_hex(ACCENT), LV_PART_MAIN);
 
-    set_enabled(volume_slider_, active.available && active.supports_volume);
-    set_enabled(volume_down_button_, active.available && active.supports_volume);
-    set_enabled(volume_up_button_, active.available && active.supports_volume);
-    if (!active.available || !active.supports_volume) volume_dragging_ = false;
+    set_enabled(volume_slider_, view.available && view.supports_volume);
+    set_enabled(volume_down_button_, view.available && view.supports_volume);
+    set_enabled(volume_up_button_, view.available && view.supports_volume);
+    if (!view.available || !view.supports_volume) volume_dragging_ = false;
     if (!volume_dragging_) {
-        lv_slider_set_value(volume_slider_, active.available && active.supports_volume ? active.volume_pct : 0, LV_ANIM_OFF);
+        lv_slider_set_value(volume_slider_, view.available && view.supports_volume ? view.volume_pct : 0, LV_ANIM_OFF);
         char volume[20];
-        if (active.available && active.supports_volume) snprintf(volume, sizeof(volume), "%u%%", static_cast<unsigned>(active.volume_pct));
+        if (view.available && view.supports_volume) snprintf(volume, sizeof(volume), "%u%%", static_cast<unsigned>(view.volume_pct));
         else snprintf(volume, sizeof(volume), "--");
         lv_label_set_text(volume_label_, volume);
     }
 
-    set_enabled(mute_button_, active.available && active.supports_mute);
-    lv_label_set_text(mute_label_, active.volume_muted ? "Unmute" : "Mute");
-    lv_obj_set_style_bg_color(mute_button_, lv_color_hex(active.volume_muted ? ACCENT : CARD_ALT), LV_PART_MAIN);
+    set_enabled(mute_button_, view.available && view.supports_mute);
+    lv_label_set_text(mute_label_, view.muted ? "Unmute" : "Mute");
+    lv_label_set_text(mute_icon_, view.muted ? LV_SYMBOL_VOLUME_MAX : LV_SYMBOL_MUTE);
+    lv_obj_set_style_bg_color(mute_button_, lv_color_hex(view.muted ? ACCENT : CARD_ALT), LV_PART_MAIN);
 
     for (size_t i = 0; i < HA_MAX_MEDIA_SOURCES; ++i) {
         SourceControl &control = sources_[i];
@@ -862,6 +902,8 @@ void MediaModule::update() {
                     target_available = media_cache_[player].available; break;
                 }
             set_media_label_text(control.label, configured.label);
+            lv_label_set_text(control.icon_label,
+                              shortcut_icon(configured.icon[0] ? configured.icon : "star"));
             set_enabled(control.button, target_available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
     }
@@ -873,6 +915,7 @@ void MediaModule::update() {
             control.bound = true;
             control.favorite = favorite_cache_[discovered_index];
             set_media_label_text(control.label, control.favorite.title);
+            lv_label_set_text(control.icon_label, LV_SYMBOL_OK);
             set_enabled(control.button, active.available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
     }
@@ -893,6 +936,13 @@ void MediaModule::update() {
 
     if (active.entity_picture[0]) {
         const bool picture_changed = !same_text(requested_picture_, active.entity_picture);
+        const uint32_t fingerprint = media_fingerprint(active);
+        const bool media_changed = requested_media_fingerprint_ != fingerprint;
+        if (media_changed) {
+            requested_media_fingerprint_ = fingerprint;
+            artwork_request_ms_ = 0;
+            artwork_refresh_pending_ = true;
+        }
         if (picture_changed) {
             snprintf(requested_picture_, sizeof(requested_picture_), "%s", active.entity_picture);
             artwork_request_ms_ = 0;
@@ -911,7 +961,8 @@ void MediaModule::update() {
         // URL, transient Wi-Fi, or artwork decode response). Retrying every few
         // seconds creates a continuous cycle of TLS handshakes on ESP-Hosted.
         // A changed cover remains immediate; an unchanged failed cover waits.
-        if (!cache_matches && (!artwork_request_ms_ || now - artwork_request_ms_ >= HA_MEDIA_ARTWORK_RETRY_MS)) {
+        if ((!cache_matches || artwork_refresh_pending_) &&
+            (!artwork_request_ms_ || now - artwork_request_ms_ >= HA_MEDIA_ARTWORK_RETRY_MS)) {
             if (home_assistant_request_media_artwork(active.entity_id)) {
                 artwork_request_ms_ = now;
             } else {
@@ -921,7 +972,9 @@ void MediaModule::update() {
         }
     } else {
         requested_picture_[0] = '\0';
+        requested_media_fingerprint_ = 0;
         artwork_request_ms_ = 0;
+        artwork_refresh_pending_ = false;
         clear_artwork();
     }
     refresh_artwork();

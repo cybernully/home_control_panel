@@ -37,13 +37,16 @@ private:
         MediaModule *owner = nullptr;
         lv_obj_t *button = nullptr;
         lv_obj_t *label = nullptr;
+        lv_obj_t *icon_label = nullptr;
         HomeAssistantMediaFavorite favorite = {};
         bool bound = false;
     };
 
     char selected_entity_id_[96] = {};
     char requested_picture_[HA_MEDIA_ARTWORK_URL_LEN] = {};
+    uint32_t requested_media_fingerprint_ = 0;
     uint32_t artwork_request_ms_ = 0;
+    bool artwork_refresh_pending_ = false;
     bool volume_dragging_ = false;
 
     PlayerControl players_[HA_MAX_MEDIA_PLAYERS];
@@ -82,6 +85,7 @@ private:
     lv_obj_t *status_label_ = nullptr;
     lv_obj_t *play_button_ = nullptr;
     lv_obj_t *play_label_ = nullptr;
+    lv_obj_t *play_icon_ = nullptr;
     lv_obj_t *prev_button_ = nullptr;
     lv_obj_t *next_button_ = nullptr;
     lv_obj_t *volume_slider_ = nullptr;
@@ -90,6 +94,7 @@ private:
     lv_obj_t *volume_up_button_ = nullptr;
     lv_obj_t *mute_button_ = nullptr;
     lv_obj_t *mute_label_ = nullptr;
+    lv_obj_t *mute_icon_ = nullptr;
 
     lv_obj_t *artwork_box_ = nullptr;
     lv_obj_t *artwork_image_ = nullptr;

@@ -184,6 +184,7 @@ void handle_get_config() {
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) {
         JsonObject item = shortcuts.add<JsonObject>();
         item["label"] = cfg.media_shortcuts[i].label;
+        item["icon"] = cfg.media_shortcuts[i].icon;
         item["entity_id"] = cfg.media_shortcuts[i].entity_id;
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
@@ -192,6 +193,7 @@ void handle_get_config() {
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) {
         JsonObject item = favorites.add<JsonObject>();
         item["label"] = cfg.media_favorites[i].label;
+        item["icon"] = cfg.media_favorites[i].icon;
         item["entity_id"] = cfg.media_favorites[i].entity_id;
         item["media_content_id"] = cfg.media_favorites[i].media_content_id;
         item["media_content_type"] = cfg.media_favorites[i].media_content_type;
@@ -267,7 +269,7 @@ bool parse_media_players(PanelConfig &config, String &error) {
     JsonDocument doc;
     if (deserializeJson(doc, g_server.arg("media_players")) || !doc.is<JsonArray>() ||
         doc.size() > PANEL_MAX_MEDIA_PLAYERS) {
-        error = "Media players must be an array of at most four media_player entity IDs.";
+        error = "Media players must be an array of at most six media_player entity IDs.";
         return false;
     }
     config.media_player_count = 0;
@@ -287,6 +289,41 @@ bool parse_media_players(PanelConfig &config, String &error) {
 bool parse_media_shortcuts(PanelConfig &config, String &error) {
     config.media_shortcut_count = 0;
     memset(config.media_shortcuts, 0, sizeof(config.media_shortcuts));
+
+    if (g_server.hasArg("media_shortcuts")) {
+        JsonDocument doc;
+        if (deserializeJson(doc, g_server.arg("media_shortcuts")) ||
+            !doc.is<JsonArray>() || doc.size() > PANEL_MAX_MEDIA_SHORTCUTS) {
+            error = "Media shortcuts must be an array of at most six actions.";
+            return false;
+        }
+        for (JsonObject item : doc.as<JsonArray>()) {
+            String label = item["label"] | "";
+            String icon = item["icon"] | "music";
+            String entity = item["entity_id"] | "";
+            String content_id = item["media_content_id"] | "";
+            String content_type = item["media_content_type"] | "";
+            label.trim(); icon.trim(); entity.trim(); entity.toLowerCase();
+            content_id.trim(); content_type.trim();
+            if (label.isEmpty() || entity.isEmpty() || content_id.isEmpty() ||
+                content_type.isEmpty()) {
+                error = "Every media shortcut requires a label, player, content ID, and content type.";
+                return false;
+            }
+            if (!entity.startsWith("media_player.")) {
+                error = "Media shortcut entities must begin with media_player.";
+                return false;
+            }
+            PanelMediaShortcut &shortcut =
+                config.media_shortcuts[config.media_shortcut_count++];
+            snprintf(shortcut.label, sizeof(shortcut.label), "%s", label.substring(0, PANEL_MEDIA_SHORTCUT_LABEL_LEN - 1).c_str());
+            snprintf(shortcut.icon, sizeof(shortcut.icon), "%s", (icon.isEmpty() ? String("music") : icon).substring(0, sizeof(shortcut.icon) - 1).c_str());
+            snprintf(shortcut.entity_id, sizeof(shortcut.entity_id), "%s", entity.substring(0, PANEL_MEDIA_ENTITY_ID_LEN - 1).c_str());
+            snprintf(shortcut.media_content_id, sizeof(shortcut.media_content_id), "%s", content_id.substring(0, HA_MEDIA_CONTENT_ID_LEN - 1).c_str());
+            snprintf(shortcut.media_content_type, sizeof(shortcut.media_content_type), "%s", content_type.substring(0, HA_MEDIA_CONTENT_TYPE_LEN - 1).c_str());
+        }
+        return true;
+    }
 
     for (uint8_t i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
         char field_name[32] = {};
@@ -326,6 +363,7 @@ bool parse_media_shortcuts(PanelConfig &config, String &error) {
             config.media_shortcuts[config.media_shortcut_count++];
         snprintf(shortcut.label, sizeof(shortcut.label), "%s",
                  label.substring(0, PANEL_MEDIA_SHORTCUT_LABEL_LEN - 1).c_str());
+        snprintf(shortcut.icon, sizeof(shortcut.icon), "music");
         snprintf(shortcut.entity_id, sizeof(shortcut.entity_id), "%s",
                  entity.substring(0, PANEL_MEDIA_ENTITY_ID_LEN - 1).c_str());
         snprintf(shortcut.media_content_id, sizeof(shortcut.media_content_id), "%s",
@@ -339,6 +377,41 @@ bool parse_media_shortcuts(PanelConfig &config, String &error) {
 bool parse_media_favorites(PanelConfig &config, String &error) {
     config.media_favorite_count = 0;
     memset(config.media_favorites, 0, sizeof(config.media_favorites));
+
+    if (g_server.hasArg("media_favorites")) {
+        JsonDocument doc;
+        if (deserializeJson(doc, g_server.arg("media_favorites")) ||
+            !doc.is<JsonArray>() || doc.size() > PANEL_MAX_MEDIA_FAVORITES) {
+            error = "Media favorites must be an array of at most six actions.";
+            return false;
+        }
+        for (JsonObject item : doc.as<JsonArray>()) {
+            String label = item["label"] | "";
+            String icon = item["icon"] | "star";
+            String entity = item["entity_id"] | "";
+            String content_id = item["media_content_id"] | "";
+            String content_type = item["media_content_type"] | "";
+            label.trim(); icon.trim(); entity.trim(); entity.toLowerCase();
+            content_id.trim(); content_type.trim();
+            if (label.isEmpty() || entity.isEmpty() || content_id.isEmpty() ||
+                content_type.isEmpty()) {
+                error = "Every media favorite requires a label, player, content ID, and content type.";
+                return false;
+            }
+            if (!entity.startsWith("media_player.")) {
+                error = "Browse favorite entities must begin with media_player.";
+                return false;
+            }
+            PanelMediaShortcut &favorite =
+                config.media_favorites[config.media_favorite_count++];
+            snprintf(favorite.label, sizeof(favorite.label), "%s", label.substring(0, PANEL_MEDIA_SHORTCUT_LABEL_LEN - 1).c_str());
+            snprintf(favorite.icon, sizeof(favorite.icon), "%s", (icon.isEmpty() ? String("star") : icon).substring(0, sizeof(favorite.icon) - 1).c_str());
+            snprintf(favorite.entity_id, sizeof(favorite.entity_id), "%s", entity.substring(0, PANEL_MEDIA_ENTITY_ID_LEN - 1).c_str());
+            snprintf(favorite.media_content_id, sizeof(favorite.media_content_id), "%s", content_id.substring(0, HA_MEDIA_CONTENT_ID_LEN - 1).c_str());
+            snprintf(favorite.media_content_type, sizeof(favorite.media_content_type), "%s", content_type.substring(0, HA_MEDIA_CONTENT_TYPE_LEN - 1).c_str());
+        }
+        return true;
+    }
 
     for (uint8_t i = 0; i < PANEL_MAX_MEDIA_FAVORITES; ++i) {
         char field_name[32] = {};
@@ -361,6 +434,7 @@ bool parse_media_favorites(PanelConfig &config, String &error) {
         }
         PanelMediaShortcut &favorite = config.media_favorites[config.media_favorite_count++];
         snprintf(favorite.label, sizeof(favorite.label), "%s", label.substring(0, PANEL_MEDIA_SHORTCUT_LABEL_LEN - 1).c_str());
+        snprintf(favorite.icon, sizeof(favorite.icon), "star");
         snprintf(favorite.entity_id, sizeof(favorite.entity_id), "%s", entity.substring(0, PANEL_MEDIA_ENTITY_ID_LEN - 1).c_str());
         snprintf(favorite.media_content_id, sizeof(favorite.media_content_id), "%s", content_id.substring(0, HA_MEDIA_CONTENT_ID_LEN - 1).c_str());
         snprintf(favorite.media_content_type, sizeof(favorite.media_content_type), "%s", content_type.substring(0, HA_MEDIA_CONTENT_TYPE_LEN - 1).c_str());

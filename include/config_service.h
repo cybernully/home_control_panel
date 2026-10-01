@@ -5,6 +5,7 @@
 
 struct PanelMediaShortcut {
     char label[PANEL_MEDIA_SHORTCUT_LABEL_LEN];
+    char icon[20];
     char entity_id[PANEL_MEDIA_ENTITY_ID_LEN];
     char media_content_id[HA_MEDIA_CONTENT_ID_LEN];
     char media_content_type[HA_MEDIA_CONTENT_TYPE_LEN];
@@ -87,8 +88,8 @@ struct PanelConfig {
     uint8_t module_count;
     PanelMediaShortcut media_shortcuts[PANEL_MAX_MEDIA_SHORTCUTS];
     uint8_t media_shortcut_count;
-    // Browse-sheet favorites are separate from the three main-page shortcuts.
-    // They are shown first in the Media > Browse sheet.
+    // Popup favorites are separate from the six main-page quick-play cards.
+    // They are shown first in the Media > Favorites bubble.
     PanelMediaShortcut media_favorites[PANEL_MAX_MEDIA_FAVORITES];
     uint8_t media_favorite_count;
     PanelRoomControl room_controls[PANEL_MAX_ROOM_CONTROLS];

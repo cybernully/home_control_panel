@@ -75,6 +75,7 @@ bool save_internal(const PanelConfig &cfg) {
     for (uint8_t i = 0; i < cfg.media_shortcut_count; ++i) {
         JsonObject item = shortcuts.add<JsonObject>();
         item["label"] = cfg.media_shortcuts[i].label;
+        item["icon"] = cfg.media_shortcuts[i].icon;
         item["entity_id"] = cfg.media_shortcuts[i].entity_id;
         item["media_content_id"] = cfg.media_shortcuts[i].media_content_id;
         item["media_content_type"] = cfg.media_shortcuts[i].media_content_type;
@@ -83,6 +84,7 @@ bool save_internal(const PanelConfig &cfg) {
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) {
         JsonObject item = favorites.add<JsonObject>();
         item["label"] = cfg.media_favorites[i].label;
+        item["icon"] = cfg.media_favorites[i].icon;
         item["entity_id"] = cfg.media_favorites[i].entity_id;
         item["media_content_id"] = cfg.media_favorites[i].media_content_id;
         item["media_content_type"] = cfg.media_favorites[i].media_content_type;
@@ -214,6 +216,7 @@ bool config_service_begin() {
         for (JsonObject item : shortcuts) {
             if (loaded.media_shortcut_count >= PANEL_MAX_MEDIA_SHORTCUTS) break;
             const char *label = item["label"] | "";
+            const char *icon = item["icon"] | "music";
             const char *entity_id = item["entity_id"] | "";
             const char *content_id = item["media_content_id"] | "";
             const char *content_type = item["media_content_type"] | "";
@@ -221,6 +224,7 @@ bool config_service_begin() {
             PanelMediaShortcut &shortcut =
                 loaded.media_shortcuts[loaded.media_shortcut_count++];
             copy_text(shortcut.label, sizeof(shortcut.label), label);
+            copy_text(shortcut.icon, sizeof(shortcut.icon), icon);
             copy_text(shortcut.entity_id, sizeof(shortcut.entity_id), entity_id);
             copy_text(shortcut.media_content_id, sizeof(shortcut.media_content_id), content_id);
             copy_text(shortcut.media_content_type, sizeof(shortcut.media_content_type), content_type);
@@ -231,6 +235,7 @@ bool config_service_begin() {
         for (JsonObject item : favorites) {
             if (loaded.media_favorite_count >= PANEL_MAX_MEDIA_FAVORITES) break;
             const char *label = item["label"] | "";
+            const char *icon = item["icon"] | "star";
             const char *entity_id = item["entity_id"] | "";
             const char *content_id = item["media_content_id"] | "";
             const char *content_type = item["media_content_type"] | "";
@@ -238,6 +243,7 @@ bool config_service_begin() {
             PanelMediaShortcut &favorite =
                 loaded.media_favorites[loaded.media_favorite_count++];
             copy_text(favorite.label, sizeof(favorite.label), label);
+            copy_text(favorite.icon, sizeof(favorite.icon), icon);
             copy_text(favorite.entity_id, sizeof(favorite.entity_id), entity_id);
             copy_text(favorite.media_content_id, sizeof(favorite.media_content_id), content_id);
             copy_text(favorite.media_content_type, sizeof(favorite.media_content_type), content_type);

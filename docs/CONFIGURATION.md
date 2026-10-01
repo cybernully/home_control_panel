@@ -13,6 +13,7 @@ Room panel example:
   "media_shortcuts": [
     {
       "label": "Skiing",
+      "icon": "playlist",
       "entity_id": "media_player.office_echo_studio",
       "media_content_id": "play my skiing playlist",
       "media_content_type": "AMAZON_MUSIC"
@@ -50,11 +51,12 @@ security remain preview modules until their roadmap releases.
 
 ## Media shortcuts
 
-Version 1.3.9 supports up to three persistent one-touch media actions.  They
+Version 1.7.0 supports up to six persistent one-touch media actions. They
 can be entered in the local web manager or added to `media_shortcuts` in
 `panel.json`.  All four values are required for each shortcut:
 
-- `label`: text displayed on the panel button;
+- `label`: text displayed on the panel card;
+- `icon`: `music`, `radio`, `podcast`, `playlist`, `favorite`, or `speaker`;
 - `entity_id`: target Home Assistant `media_player` entity;
 - `media_content_id`: integration-specific media identifier or command;
 - `media_content_type`: integration-specific content type.
@@ -77,13 +79,14 @@ data:
 Configured shortcuts and automatically discovered Browse favorites have
 separate rows on the Media page. Version 1.5.2 also adds a separate
 `media_favorites` list: up to six configured actions displayed first in the
-Media > Browse sheet, followed by any favorites the selected integration
-returns dynamically. Each item uses the same four fields as a media shortcut.
+Media > Favorites bubble, followed by any favorites the selected integration
+returns dynamically. Each item uses the same fields as a media shortcut.
 
 ```json
 "media_favorites": [
   {
     "label": "Focus playlist",
+    "icon": "favorite",
     "entity_id": "media_player.office_echo_studio",
     "media_content_id": "play my focus playlist",
     "media_content_type": "AMAZON_MUSIC"

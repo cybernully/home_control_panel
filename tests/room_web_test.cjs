@@ -6,9 +6,9 @@ const source=fs.readFileSync('include/web_ui.h','utf8');
 // without needing a browser or a Home Assistant server in host CI.
 for(const feature of [
   "const $=id=>document.getElementById(id)", "function esc(s)",
-  "Rooms and controls", "Media players", "Administration", "Search Home Assistant",
+  "Rooms and controls", "Media experience", "Administration", "Search Home Assistant",
   "/api/ha/discover", "/api/ha/entities", "room_controls",
-  "media_players", "mediaAction('shortcut'", "browseFavorite", "Browse favorites", "media_favorites", "Save layout and configuration",
+  "media_players", "mediaActionCard", "Favorites bubble menu", "media_favorites", "Save layout and configuration",
   "explicit layout", "modules.join(',')", "Overview layout",
   "widget_catalog", "overview_widgets", "overview_items",
   "overviewBuiltinLabels", "weather:'Weather'", "calendar:'Calendar'"
@@ -48,7 +48,11 @@ for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add
   assert(source.includes(feature),`missing working panel-tab configuration: ${feature}`);
 assert(source.includes('function showModule(id)'),'show-tab buttons must update the web navigation immediately');
 assert(source.includes('onclick="showModule(\'${m}\')"'),'show-tab buttons must use the explicit handler');
-assert(source.match(/<section id="media"[\s\S]*?Search all Home Assistant devices/),'Media must expose its own HA search trigger');
+assert(source.match(/<section id="media"[\s\S]*?Refresh Home Assistant media/),'Media must expose its own HA search trigger');
+for(const feature of ["Up to six icon-led shortcuts", "moveMediaPlayer", "moveMediaAction",
+                     "mediaShortcuts", "mediaFavorites", "media_shortcuts",
+                     "media_favorites", "DEFAULT PLAYER", "POPUP FAVORITES"])
+  assert(source.includes(feature),`missing v1.7 Media editor feature: ${feature}`);
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');
