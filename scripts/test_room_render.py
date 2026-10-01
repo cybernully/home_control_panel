@@ -9,14 +9,17 @@ flags=['-DLV_CONF_SKIP','-DLV_USE_OS=0','-DLV_MEM_SIZE=2097152','-DLV_COLOR_DEPT
 flags += [f'-DLV_FONT_MONTSERRAT_{size}=1' for size in [12,14,16,18,20,24,28]]
 media = '--media' in sys.argv
 header = '--header' in sys.argv
-fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/room_render_test.cpp'
-executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/room_render_test.exe'
+overview = '--overview' in sys.argv
+fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/overview_render_test.cpp' if overview else 'tests/room_render_test.cpp'
+executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/overview_render_test.exe' if overview else '.test-build/room_render_test.exe'
 args=['-O0','-Itests/host','-Iinclude','-Isrc/modules',f'-I{lvgl}',*flags,
       fixture]
 if media:
     jpeg=root/'.pio/libdeps/jc8012p4a1c_2635/JPEGDEC/src'
     # Third-party embedded codecs use integer operations outside UBSan's host assumptions.
     args += ['-fno-sanitize=undefined','-D__LINUX__',f'-I{jpeg}','-Ilib/stb','src/modules/media_module.cpp','src/ui_state_model.cpp','src/ui_theme.cpp','src/ha_icons_font.c','src/stb_image_impl.cpp',str(jpeg/'JPEGDEC.cpp')]
+elif overview:
+    args += ['src/modules/overview_module.cpp','src/overview_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 else:
     args += ['src/modules/room_module.cpp','src/ui_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 args += ['-x','c']

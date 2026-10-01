@@ -1,87 +1,189 @@
 #include "overview_module.h"
-#include "config_service.h"
-#include "home_assistant.h"
+
+#include "display_text.h"
+#include "ha_icons_font.h"
 #include "module_ui.h"
-#include "network_service.h"
-#include <Arduino.h>
+#include "ui_theme.h"
+
+#include <stdio.h>
 #include <string.h>
 
 using namespace module_ui;
+
 namespace {
-const char *widget_title(const char *type) {
-    if (strcmp(type,"home_status")==0) return "HOME STATUS"; if (strcmp(type,"lights")==0) return "LIGHTS";
-    if (strcmp(type,"area")==0) return "AREA"; if (strcmp(type,"network")==0) return "NETWORK";
-    if (strcmp(type,"quick_actions")==0) return "QUICK ACTIONS"; if (strcmp(type,"weather")==0) return "WEATHER";
-    if (strcmp(type,"calendar")==0) return "CALENDAR"; return "PANEL TIP";
+bool contains_ci(const char *text, const char *needle) {
+    if (!text || !needle || !needle[0]) return false;
+    for (const char *start = text; *start; ++start) {
+        const char *a = start, *b = needle;
+        while (*a && *b) {
+            char left = *a, right = *b;
+            if (left >= 'A' && left <= 'Z') left = static_cast<char>(left - 'A' + 'a');
+            if (right >= 'A' && right <= 'Z') right = static_cast<char>(right - 'A' + 'a');
+            if (left != right) break;
+            ++a; ++b;
+        }
+        if (!*b) return true;
+    }
+    return false;
 }
-const HomeAssistantEntitySnapshot *first_domain(const HomeAssistantEntitySnapshot *items,size_t count,const char *domain) {
-    for(size_t i=0;i<count;++i) if(strcmp(items[i].domain,domain)==0) return &items[i]; return nullptr;
+
+const char *effective_icon(const OverviewCardViewModel &model) {
+    if (model.icon[0] && strcmp(model.icon, "auto") != 0) return model.icon;
+    if (strncmp(model.entity_id, "light.", 6) == 0) return "light";
+    if (strncmp(model.entity_id, "fan.", 4) == 0) return "fan";
+    if (strncmp(model.entity_id, "cover.", 6) == 0)
+        return contains_ci(model.entity_id, "garage") || contains_ci(model.title, "garage") ? "garage" : "cover";
+    if (strncmp(model.entity_id, "lock.", 5) == 0) return "lock";
+    if (strncmp(model.entity_id, "binary_sensor.", 14) == 0)
+        return contains_ci(model.title, "motion") ? "motion" : "door";
+    if (strncmp(model.entity_id, "weather.", 8) == 0) return "weather";
+    if (strncmp(model.entity_id, "sensor.", 7) == 0 && contains_ci(model.title, "humidity")) return "humidity";
+    if (strncmp(model.entity_id, "sensor.", 7) == 0 && contains_ci(model.title, "temp")) return "temperature";
+    if (strcmp(model.type, "home_status") == 0) return "shield";
+    if (strcmp(model.type, "lights") == 0 || strcmp(model.type, "all_lights") == 0) return "light";
+    if (strcmp(model.type, "network") == 0) return "power";
+    return "alert";
 }
-void set_text(lv_obj_t *object,const char *text){if(object)lv_label_set_text(object,text?text:"");}
-bool find_slot(bool occupied[4][4],int span,int height,int &column,int &row) {
-    for(row=0;row+height<=4;++row) for(column=0;column+span<=4;++column) {
-        bool free=true; for(int y=row;y<row+height;++y) for(int x=column;x<column+span;++x) if(occupied[y][x]) free=false;
-        if(!free) continue;
-        for(int y=row;y<row+height;++y) for(int x=column;x<column+span;++x) occupied[y][x]=true;
-        return true;
-    } return false;
+
+uint32_t glyph_for(const OverviewCardViewModel &model) {
+    const char *icon = effective_icon(model);
+    if (strcmp(icon, "garage") == 0) return model.active ? 0xF06DA : 0xF06D9;
+    if (strcmp(icon, "door") == 0) return model.active ? 0xF081C : 0xF081B;
+    if (strcmp(icon, "lock") == 0) return model.active ? 0xF033F : 0xF033E;
+    if (strcmp(icon, "motion") == 0) return 0xF0D91;
+    if (strcmp(icon, "light") == 0) return model.active ? 0xF0335 : 0xF0336;
+    if (strcmp(icon, "fan") == 0) return model.active ? 0xF0210 : 0xF081D;
+    if (strcmp(icon, "cover") == 0) return model.active ? 0xF1011 : 0xF00AC;
+    if (strcmp(icon, "window") == 0) return model.active ? 0xF05B1 : 0xF05AE;
+    if (strcmp(icon, "camera") == 0) return 0xF0100;
+    if (strcmp(icon, "shield") == 0) return 0xF068A;
+    if (strcmp(icon, "temperature") == 0) return 0xF050F;
+    if (strcmp(icon, "humidity") == 0) return 0xF058E;
+    if (strcmp(icon, "power") == 0) return model.active ? 0xF0425 : 0xF0902;
+    if (strcmp(icon, "weather") == 0) return 0xF0595;
+    return model.active ? 0xF05E0 : 0xF0028;
+}
+
+uint32_t active_color(const char *color) {
+    if (strcmp(color, "green") == 0) return ui_theme::SUCCESS;
+    if (strcmp(color, "yellow") == 0) return ui_theme::YELLOW;
+    if (strcmp(color, "red") == 0) return ui_theme::DANGER;
+    if (strcmp(color, "purple") == 0) return 0xA78BFA;
+    if (strcmp(color, "blue") == 0) return 0x70A5FF;
+    return ui_theme::CYAN;
+}
+
+void safe_text(lv_obj_t *target, const char *value) {
+    if (!target) return;
+    char safe[192];
+    panel_display_text(safe, sizeof(safe), value ? value : "");
+    lv_label_set_text(target, safe);
 }
 }
 
 void OverviewModule::create(lv_obj_t *parent) {
-    box(parent,BG,0,0); const PanelConfig &cfg=config_service_get(); char sub[120];
-    snprintf(sub,sizeof(sub),"Your home at a glance - %s",cfg.display_name); module_ui::title(parent,"Home",sub); add_live_badge(parent);
-    bool occupied[4][4]={}; widget_count_=0; action_count_=0; action_status_=nullptr;
-    for(uint8_t source=0;source<cfg.overview_widget_count;++source) {
-        const PanelOverviewWidget &configured=cfg.overview_widgets[source]; int column=0,row=0;
-        if(!find_slot(occupied,configured.span,configured.height,column,row)) continue;
-        const int width=configured.span*307-12, height=configured.height*132-12;
-        lv_obj_t *tile=card(parent,24+column*307,92+row*132,width,height);
-        Widget &widget=widgets_[widget_count_++]; snprintf(widget.type,sizeof(widget.type),"%s",configured.type);
-        lv_obj_t *name=label(tile,widget_title(widget.type),&lv_font_montserrat_12,MUTED); lv_obj_set_pos(name,16,13);
-        widget.value=label(tile,"Loading...",&lv_font_montserrat_20,TEXT); lv_obj_set_pos(widget.value,16,38); lv_obj_set_width(widget.value,width-32); lv_label_set_long_mode(widget.value,LV_LABEL_LONG_DOT);
-        widget.detail=label(tile,"",&lv_font_montserrat_14,MUTED); lv_obj_set_pos(widget.detail,16,height-28); lv_obj_set_width(widget.detail,width-32); lv_label_set_long_mode(widget.detail,LV_LABEL_LONG_DOT);
-        if(strcmp(widget.type,"quick_actions")!=0) continue;
-        action_status_=widget.detail; action_count_=cfg.overview_quick_action_count;
-        const int columns=width>=900?3:width>=590?2:1, button_width=(width-32-(columns-1)*6)/columns;
-        for(uint8_t i=0;i<action_count_;++i) {
-            QuickAction &action=actions_[i]; const PanelOverviewQuickAction &saved=cfg.overview_quick_actions[i];
-            action.owner=this; snprintf(action.entity_id,sizeof(action.entity_id),"%s",saved.entity_id); snprintf(action.type,sizeof(action.type),"%s",saved.type);
-            const int action_row=i/columns, action_column=i%columns;
-            action.button=button(tile,saved.label,16+action_column*(button_width+6),68+action_row*54,button_width,46,CARD_ALT);
-            action.label=lv_obj_get_child(action.button,0); lv_obj_set_style_text_font(action.label,&lv_font_montserrat_14,LV_PART_MAIN);
-            lv_obj_add_event_cb(action.button,action_cb,LV_EVENT_CLICKED,&action);
-        }
+    box(parent, BG, 0, 0);
+    lv_obj_t *heading = label(parent, "At a glance", &lv_font_montserrat_28, TEXT);
+    lv_obj_set_pos(heading, 24, 13);
+    feedback_ = label(parent, "Status and controls update live from Home Assistant", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(feedback_, 24, 48);
+    lv_obj_set_width(feedback_, 1000);
+    lv_label_set_long_mode(feedback_, LV_LABEL_LONG_DOT);
+
+    card_count_ = ui_state_model_snapshot_overview(view_, PANEL_MAX_OVERVIEW_ITEMS);
+    uint8_t row = 0, column = 0;
+    for (size_t i = 0; i < card_count_; ++i) {
+        const uint8_t span = view_[i].span == 1 || view_[i].span == 2 || view_[i].span == 4 ? view_[i].span : 1;
+        if (column + span > 4) { ++row; column = 0; }
+        if (row >= 4) { card_count_ = i; break; }
+        BoundCard &slot = cards_[i];
+        slot.owner = this;
+        ui_card_create(slot.card, parent, UiCardVariant::STATUS,
+                       24 + column * 307, 76 + row * 132, span * 307 - 12, 120);
+        lv_obj_add_event_cb(slot.card.root, card_cb, LV_EVENT_CLICKED, &slot);
+        bind(slot, view_[i]);
+        column = static_cast<uint8_t>(column + span);
+        if (column == 4) { ++row; column = 0; }
     }
+
+    overlay_ = lv_obj_create(parent);
+    lv_obj_set_pos(overlay_, 0, 0);
+    lv_obj_set_size(overlay_, 1280, lv_pct(100));
+    box(overlay_, 0x020A14, 0, 0);
+    lv_obj_set_style_bg_opa(overlay_, LV_OPA_80, LV_PART_MAIN);
+    lv_obj_add_event_cb(overlay_, cancel_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t *dialog = card(overlay_, 330, 146, 620, 300);
+    lv_obj_set_style_radius(dialog, 22, LV_PART_MAIN);
+    lv_obj_remove_flag(dialog, LV_OBJ_FLAG_EVENT_BUBBLE);
+    confirm_title_ = label(dialog, "Confirm action", &lv_font_montserrat_28, TEXT);
+    lv_obj_set_pos(confirm_title_, 28, 28);
+    lv_obj_set_width(confirm_title_, 564);
+    lv_label_set_long_mode(confirm_title_, LV_LABEL_LONG_DOT);
+    confirm_detail_ = label(dialog, "", &lv_font_montserrat_16, MUTED);
+    lv_obj_set_pos(confirm_detail_, 28, 88);
+    lv_obj_set_width(confirm_detail_, 564);
+    lv_label_set_long_mode(confirm_detail_, LV_LABEL_LONG_WRAP);
+    lv_obj_t *cancel = button(dialog, "Cancel", 28, 220, 260, 56, CARD_ALT);
+    lv_obj_t *confirm = button(dialog, "Confirm", 332, 220, 260, 56, ACCENT);
+    lv_obj_add_event_cb(cancel, cancel_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(confirm, confirm_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void OverviewModule::bind(BoundCard &slot, const OverviewCardViewModel &model) {
+    slot.model = model;
+    const uint32_t color = model.available && model.active ? active_color(model.color) : MUTED;
+    ui_card_set_content(slot.card, glyph_for(model), color, model.title, model.state_text);
+    ui_card_set_state(slot.card, model.active, model.available);
+    if (!model.actionable) lv_obj_remove_state(slot.card.root, LV_STATE_DISABLED);
 }
 
 void OverviewModule::update() {
-    HomeAssistantLightStats lights={}; home_assistant_get_light_stats(lights); HomeAssistantStatus health={}; home_assistant_get_status(health); HomeAssistantDiscoveryStatus discovery={}; home_assistant_get_discovery_status(discovery);
-    static HomeAssistantEntitySnapshot entities[HA_MAX_AREA_ENTITIES]={}; const size_t count=home_assistant_get_layout_entities(entities,HA_MAX_AREA_ENTITIES);
-    const PanelConfig &cfg=config_service_get();
-    const HomeAssistantEntitySnapshot *weather=cfg.weather_entity_id[0]?nullptr:first_domain(entities,count,"weather"),*calendar=cfg.calendar_entity_id[0]?nullptr:first_domain(entities,count,"calendar");
-    for(size_t i=0;i<count;++i) { if(cfg.weather_entity_id[0]&&strcmp(entities[i].entity_id,cfg.weather_entity_id)==0)weather=&entities[i]; if(cfg.calendar_entity_id[0]&&strcmp(entities[i].entity_id,cfg.calendar_entity_id)==0)calendar=&entities[i]; }
-    for(uint8_t i=0;i<widget_count_;++i) { Widget &widget=widgets_[i]; char value[112]={},detail[160]={};
-        if(strcmp(widget.type,"home_status")==0){snprintf(value,sizeof(value),"%s",discovery.discovery_complete?"Home Assistant live":health.configured?"Connecting...":"Not configured");snprintf(detail,sizeof(detail),"%u selected entities ready",static_cast<unsigned>(discovery.entity_count));}
-        else if(strcmp(widget.type,"lights")==0){snprintf(value,sizeof(value),lights.total?"%u on / %u":"No lights",static_cast<unsigned>(lights.on),static_cast<unsigned>(lights.total));snprintf(detail,sizeof(detail),lights.total?"Selected panel lights":"Add lights in Room configuration");}
-        else if(strcmp(widget.type,"area")==0){snprintf(value,sizeof(value),"Selected devices");snprintf(detail,sizeof(detail),"%s",cfg.display_name);}
-        else if(strcmp(widget.type,"network")==0){snprintf(value,sizeof(value),network_service_connected()?"%d dBm  online":"Offline",network_service_rssi());snprintf(detail,sizeof(detail),network_service_connected()?"Panel network connected":"Check Wi-Fi connection");}
-        else if(strcmp(widget.type,"weather")==0){snprintf(value,sizeof(value),"%s",weather?weather->name:"No weather entity");snprintf(detail,sizeof(detail),"%s",weather?weather->state:"Scan and save this layout");}
-        else if(strcmp(widget.type,"calendar")==0){snprintf(value,sizeof(value),"%s",calendar?calendar->name:"No calendar entity");snprintf(detail,sizeof(detail),"%s",calendar?calendar->state:"Scan and save this layout");}
-        else if(strcmp(widget.type,"quick_actions")==0){snprintf(value,sizeof(value),action_count_?"%u configured actions":"No configured actions",static_cast<unsigned>(action_count_));snprintf(detail,sizeof(detail),"%s",discovery.last_action[0]?discovery.last_action:"Configure actions in the web manager.");}
-        else {snprintf(value,sizeof(value),"Make this panel yours");snprintf(detail,sizeof(detail),"Add, remove, reorder, resize, and set widget height in the web manager.");}
-        set_text(widget.value,value); if(widget.detail!=action_status_)set_text(widget.detail,detail);
-    }
-    for(uint8_t i=0;i<action_count_;++i) { QuickAction &action=actions_[i];
-        if(strcmp(action.type,"all_lights")==0) { action.bound=lights.total>0; set_enabled(action.button,action.bound); lv_obj_set_style_bg_color(action.button,lv_color_hex(lights.on?ACCENT:CARD_ALT),LV_PART_MAIN); }
-        else { HomeAssistantEntitySnapshot current={}; action.bound=home_assistant_get_room_entity(action.entity_id,current)&&current.available; set_enabled(action.button,action.bound); }
-    }
+    OverviewCardViewModel latest[PANEL_MAX_OVERVIEW_ITEMS] = {};
+    const size_t count = ui_state_model_snapshot_overview(latest, PANEL_MAX_OVERVIEW_ITEMS);
+    const size_t visible = count < card_count_ ? count : card_count_;
+    for (size_t i = 0; i < visible; ++i) bind(cards_[i], latest[i]);
 }
 
-void OverviewModule::action_cb(lv_event_t *event) {
-    auto *action=static_cast<QuickAction *>(lv_event_get_user_data(event)); if(!action||!action->owner||!action->bound)return; bool queued=false;
-    if(strcmp(action->type,"all_lights")==0){HomeAssistantLightStats lights={};home_assistant_get_light_stats(lights);queued=lights.total&&home_assistant_queue_all_lights(lights.on==0);}
-    else if(strcmp(action->type,"scene")==0) queued=home_assistant_queue_scene(action->entity_id);
-    else if(strcmp(action->type,"toggle")==0) queued=home_assistant_queue_toggle(action->entity_id);
-    if(action->owner->action_status_)set_text(action->owner->action_status_,queued?"Command queued; waiting for Home Assistant.":"Could not queue Home Assistant command.");
+void OverviewModule::request_action(BoundCard &card) {
+    if (!card.model.actionable || !card.model.available) return;
+    if (!card.model.confirm) { execute_action(card); return; }
+    pending_ = &card;
+    char title[96];
+    snprintf(title, sizeof(title), "%s?", card.model.title);
+    safe_text(confirm_title_, title);
+    char detail[160];
+    snprintf(detail, sizeof(detail), "Current status: %s\n\nDo you want to continue with this Home Assistant action?", card.model.state_text);
+    safe_text(confirm_detail_, detail);
+    lv_obj_remove_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(overlay_);
+}
+
+void OverviewModule::execute_action(BoundCard &card) {
+    const bool queued = ui_state_model_activate_overview(card.model);
+    safe_text(feedback_, queued ? "Command queued - waiting for Home Assistant" :
+                                "Could not queue command - check Home Assistant connection");
+    close_confirmation();
+}
+
+void OverviewModule::close_confirmation() {
+    pending_ = nullptr;
+    if (overlay_) lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void OverviewModule::on_deactivate() { close_confirmation(); }
+
+void OverviewModule::card_cb(lv_event_t *event) {
+    auto *card = static_cast<BoundCard *>(lv_event_get_user_data(event));
+    if (card && card->owner) card->owner->request_action(*card);
+}
+
+void OverviewModule::confirm_cb(lv_event_t *event) {
+    auto *owner = static_cast<OverviewModule *>(lv_event_get_user_data(event));
+    if (owner && owner->pending_) owner->execute_action(*owner->pending_);
+}
+
+void OverviewModule::cancel_cb(lv_event_t *event) {
+    auto *owner = static_cast<OverviewModule *>(lv_event_get_user_data(event));
+    if (owner) owner->close_confirmation();
 }

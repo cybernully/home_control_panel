@@ -316,7 +316,15 @@ bool is_supported_domain(const char *domain) {
            strcmp(domain, "media_player") == 0 ||
            strcmp(domain, "weather") == 0 ||
            strcmp(domain, "calendar") == 0 ||
-           strcmp(domain, "sensor") == 0;
+           strcmp(domain, "sensor") == 0 ||
+           strcmp(domain, "binary_sensor") == 0 ||
+           strcmp(domain, "lock") == 0 ||
+           strcmp(domain, "climate") == 0 ||
+           strcmp(domain, "alarm_control_panel") == 0 ||
+           strcmp(domain, "vacuum") == 0 ||
+           strcmp(domain, "device_tracker") == 0 ||
+           strcmp(domain, "person") == 0 ||
+           strcmp(domain, "input_boolean") == 0;
 }
 
 void fallback_name_from_id(const char *entity_id, char *out, size_t out_len) {
@@ -664,6 +672,9 @@ bool is_layout_entity(const char *entity_id) {
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         if (cfg.overview_quick_actions[i].entity_id[0] &&
             strcmp(cfg.overview_quick_actions[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i)
+        if (cfg.overview_items[i].entity_id[0] &&
+            strcmp(cfg.overview_items[i].entity_id, entity_id) == 0) return true;
     if ((cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) ||
         (cfg.calendar_entity_id[0] && strcmp(cfg.calendar_entity_id, entity_id) == 0)) return true;
     const char *dot = strchr(entity_id, '.');
@@ -682,11 +693,11 @@ void populate_configured_layout_entities_worker() {
     g_entity_count = 0;
     portEXIT_CRITICAL(&g_mux);
 
-    auto add_entity = [](const char *entity_id) {
+    auto add_entity = [](const char *entity_id, bool allow_generic_status = false) {
         if (!entity_id || !entity_id[0]) return;
         char domain[16] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
-        if (!is_supported_domain(domain)) return;
+        if (!is_supported_domain(domain) && !allow_generic_status) return;
 
         portENTER_CRITICAL(&g_mux);
         for (size_t i = 0; i < g_entity_count; ++i) {
@@ -717,6 +728,8 @@ void populate_configured_layout_entities_worker() {
     for (uint8_t i = 0; i < cfg.media_favorite_count; ++i) add_entity(cfg.media_favorites[i].entity_id);
     for (uint8_t i = 0; i < cfg.overview_quick_action_count; ++i)
         add_entity(cfg.overview_quick_actions[i].entity_id);
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i)
+        add_entity(cfg.overview_items[i].entity_id, strcmp(cfg.overview_items[i].action, "none") == 0);
     add_entity(cfg.weather_entity_id);
     add_entity(cfg.calendar_entity_id);
 
@@ -1312,7 +1325,7 @@ void run_rest_discovery_worker() {
     // which is why large installations reported the opaque -103 failure.
     static const char entity_picker_template[] =
         "{% set ns = namespace(items=[]) %}"
-        "{% for s in states if s.domain in ['light','switch','fan','cover','scene','media_player','weather','calendar'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
+        "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','scene','media_player','weather','calendar','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] or (s.domain == 'sensor' and s.attributes.device_class in ['temperature','humidity']) %}"
         "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
         "{% endfor %}{{ ns.items | to_json }}";
 
@@ -1752,7 +1765,7 @@ void process_action_worker(const HaAction &action) {
 
     if (action.type == HaActionType::Toggle) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
-        if (!model || !is_control_domain(model->domain)) {
+        if (!model || (!is_control_domain(model->domain) && strcmp(model->domain, "lock") != 0)) {
             record_action_result("Entity no longer available", -103);
             return;
         }
@@ -1761,6 +1774,8 @@ void process_action_worker(const HaAction &action) {
         if (strcmp(model->domain, "cover") == 0) {
             const bool open = strcmp(model->state, "open") == 0 || strcmp(model->state, "opening") == 0;
             service = open ? "close_cover" : "open_cover";
+        } else if (strcmp(model->domain, "lock") == 0) {
+            service = strcmp(model->state, "locked") == 0 ? "unlock" : "lock";
         } else {
             service = strcmp(model->state, "on") == 0 ? "turn_off" : "turn_on";
         }
@@ -2726,6 +2741,19 @@ bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySn
     for (size_t i = 0; i < g_entity_count; ++i) {
         if (strcmp(entity_id, g_entities[i].entity_id) == 0 &&
             (is_control_domain(g_entities[i].domain) || strcmp(g_entities[i].domain, "scene") == 0)) {
+            snapshot_entity(g_entities[i], out); found = true; break;
+        }
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return found;
+}
+
+bool home_assistant_get_entity(const char *entity_id, HomeAssistantEntitySnapshot &out) {
+    if (!entity_id || !g_entities) return false;
+    bool found = false;
+    portENTER_CRITICAL(&g_mux);
+    for (size_t i = 0; i < g_entity_count; ++i) {
+        if (strcmp(entity_id, g_entities[i].entity_id) == 0) {
             snapshot_entity(g_entities[i], out); found = true; break;
         }
     }

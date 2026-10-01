@@ -1,7 +1,9 @@
 #pragma once
+
 #include "app_config.h"
-#include "home_assistant.h"
 #include "module.h"
+#include "ui_card.h"
+#include "ui_state_model.h"
 
 class OverviewModule final : public PanelModule {
 public:
@@ -9,28 +11,29 @@ public:
     const char *title() const override { return "Overview"; }
     void create(lv_obj_t *parent) override;
     void update() override;
+    void on_deactivate() override;
 
 private:
-    struct QuickAction {
+    struct BoundCard {
         OverviewModule *owner = nullptr;
-        lv_obj_t *button = nullptr;
-        lv_obj_t *label = nullptr;
-        char entity_id[96] = {};
-        char type[16] = {};
-        bool bound = false;
+        UiCard card = {};
+        OverviewCardViewModel model = {};
     };
 
-    struct Widget {
-        char type[PANEL_OVERVIEW_WIDGET_ID_LEN] = {};
-        lv_obj_t *value = nullptr;
-        lv_obj_t *detail = nullptr;
-    };
+    BoundCard cards_[PANEL_MAX_OVERVIEW_ITEMS] = {};
+    OverviewCardViewModel view_[PANEL_MAX_OVERVIEW_ITEMS] = {};
+    size_t card_count_ = 0;
+    lv_obj_t *feedback_ = nullptr;
+    lv_obj_t *overlay_ = nullptr;
+    lv_obj_t *confirm_title_ = nullptr;
+    lv_obj_t *confirm_detail_ = nullptr;
+    BoundCard *pending_ = nullptr;
 
-    lv_obj_t *action_status_ = nullptr;
-    Widget widgets_[PANEL_MAX_OVERVIEW_WIDGETS];
-    uint8_t widget_count_ = 0;
-    QuickAction actions_[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];
-    uint8_t action_count_ = 0;
-
-    static void action_cb(lv_event_t *e);
+    void bind(BoundCard &card, const OverviewCardViewModel &model);
+    void request_action(BoundCard &card);
+    void execute_action(BoundCard &card);
+    void close_confirmation();
+    static void card_cb(lv_event_t *event);
+    static void confirm_cb(lv_event_t *event);
+    static void cancel_cb(lv_event_t *event);
 };

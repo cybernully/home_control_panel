@@ -229,6 +229,22 @@ void handle_get_config() {
         item["type"] = cfg.overview_quick_actions[i].type;
         item["entity_id"] = cfg.overview_quick_actions[i].entity_id;
     }
+    JsonArray overview_items = doc["overview_items"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i) {
+        const PanelOverviewItem &source = cfg.overview_items[i];
+        JsonObject item = overview_items.add<JsonObject>();
+        item["type"] = source.type;
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["action"] = source.action;
+        item["active_states"] = source.active_states;
+        item["active_label"] = source.active_label;
+        item["inactive_label"] = source.inactive_label;
+        item["color"] = source.color;
+        item["span"] = source.span;
+        item["confirm"] = source.confirm;
+    }
     send_json(doc);
 }
 
@@ -400,6 +416,11 @@ void handle_save_config() {
         !config_service_parse_overview_quick_actions(g_server.arg("overview_quick_actions"), next, quick_actions_error)) {
         send_error(400, quick_actions_error.c_str()); return;
     }
+    String overview_items_error;
+    if (g_server.hasArg("overview_items") &&
+        !config_service_parse_overview_items(g_server.arg("overview_items"), next, overview_items_error)) {
+        send_error(400, overview_items_error.c_str()); return;
+    }
     String shortcut_error;
     if (!parse_media_shortcuts(next, shortcut_error)) {
         send_error(400, shortcut_error.c_str());
@@ -437,7 +458,7 @@ void handle_save_config() {
     doc["ok"] = true;
     doc["reboot_required"] = true;
     doc["message"] = discovery_queued ?
-        "Saved. Home Assistant is refreshing its explicit layout; reboot to apply Overview widgets, quick actions, or tab-order changes." :
+        "Saved. Home Assistant is refreshing the configured layout; reboot to apply Overview cards or tab-order changes." :
         "Saved. Reboot the panel to reconnect and apply the Overview and explicit layouts.";
     send_json(doc);
 }

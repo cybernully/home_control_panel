@@ -50,6 +50,7 @@ void set_base_defaults(PanelConfig &cfg) {
     copy_text(cfg.rooms[0].header, PANEL_ROOM_NAME_LEN, "Your room");
     config_service_set_overview_defaults(cfg);
     config_service_set_overview_quick_action_defaults(cfg);
+    config_service_set_overview_item_defaults(cfg);
 }
 
 bool save_internal(const PanelConfig &cfg) {
@@ -117,6 +118,22 @@ bool save_internal(const PanelConfig &cfg) {
         item["label"] = cfg.overview_quick_actions[i].label;
         item["type"] = cfg.overview_quick_actions[i].type;
         item["entity_id"] = cfg.overview_quick_actions[i].entity_id;
+    }
+    JsonArray overview_items = doc["overview_items"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i) {
+        const PanelOverviewItem &source = cfg.overview_items[i];
+        JsonObject item = overview_items.add<JsonObject>();
+        item["type"] = source.type;
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["action"] = source.action;
+        item["active_states"] = source.active_states;
+        item["active_label"] = source.active_label;
+        item["inactive_label"] = source.inactive_label;
+        item["color"] = source.color;
+        item["span"] = source.span;
+        item["confirm"] = source.confirm;
     }
     const size_t written = serializeJsonPretty(doc, f);
     f.close();
@@ -233,6 +250,16 @@ bool config_service_begin() {
         if (!config_service_parse_overview_quick_actions(json, loaded, error))
             Serial0.printf("[Config] Invalid overview quick actions: %s\n", error.c_str());
     } else config_service_set_overview_quick_action_defaults(loaded);
+    if (!doc["overview_items"].isNull()) {
+        String json, error;
+        serializeJson(doc["overview_items"], json);
+        if (!config_service_parse_overview_items(json, loaded, error)) {
+            Serial0.printf("[Config] Invalid Overview cards: %s\n", error.c_str());
+            config_service_migrate_overview_items(loaded);
+        }
+    } else {
+        config_service_migrate_overview_items(loaded);
+    }
     JsonArray players = doc["media_players"].as<JsonArray>();
     if (!players.isNull()) for (JsonVariant item : players) {
         const char *id = item.as<const char *>();
@@ -271,6 +298,8 @@ bool config_service_save(const PanelConfig &config) {
         config_service_set_overview_defaults(clean);
     if (clean.overview_quick_action_count > PANEL_MAX_OVERVIEW_QUICK_ACTIONS)
         config_service_set_overview_quick_action_defaults(clean);
+    if (clean.overview_item_count == 0 || clean.overview_item_count > PANEL_MAX_OVERVIEW_ITEMS)
+        config_service_set_overview_item_defaults(clean);
     if (clean.module_count == 0) config_service_set_profile_defaults(clean);
     if (!save_internal(clean)) return false;
     g_config = clean;

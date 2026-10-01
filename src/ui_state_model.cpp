@@ -105,6 +105,7 @@ void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
         snprintf(out.state_text, sizeof(out.state_text), "On  |  %u%%", static_cast<unsigned>(out.level_pct));
     else copy_text(out.state_text, sizeof(out.state_text), out.active ? "On" : "Off");
 }
+
 }  // namespace
 
 uint8_t ui_state_model_active_room() { return g_active_room; }
@@ -190,4 +191,5 @@ bool ui_state_model_set_level(const RoomControlViewModel &control, uint8_t level
                ? home_assistant_queue_fan_speed(control.entity_id, level_pct)
                : home_assistant_queue_light_brightness(control.entity_id, level_pct);
 }
+
 

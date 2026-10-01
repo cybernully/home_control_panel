@@ -16,6 +16,11 @@ Zig compiler, deterministic HA fixtures, and a headless LVGL display. Screenshot
 are PPM files in `.test-build`; the interactions never contact Home Assistant.
 The first Zig build compiles its native runtime and can take several minutes.
 
+Run with `--overview` to render the unified Overview card grid and exercise the
+UI-neutral state adapter, active/inactive garage and status presentation, and
+confirmation-gated actions. The fixture changes live cover state while the
+confirmation sheet is visible to catch accidental modal rebinding.
+
 Full firmware validation remains `pio run -e jc8012p4a1c_2624 -e
 jc8012p4a1c_2635`. Do not flash the SPIFFS image on an existing panel just to
 upgrade firmware: that would replace its saved panel settings.

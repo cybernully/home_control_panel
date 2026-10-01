@@ -1,0 +1,94 @@
+#include "overview_module.h"
+#include "config_service.h"
+#include "home_assistant.h"
+#include <lvgl.h>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+static PanelConfig config = {};
+static HomeAssistantEntitySnapshot entities[8] = {};
+static size_t entity_count = 0;
+static std::string action_target;
+static int toggle_count = 0;
+static int all_lights_count = 0;
+
+const PanelConfig &config_service_get() { return config; }
+bool network_service_connected() { return true; }
+int network_service_rssi() { return -52; }
+void home_assistant_get_status(HomeAssistantStatus &out) { out = {}; out.configured = true; out.authenticated = true; }
+void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) { out = {}; out.websocket_authenticated = true; out.discovery_complete = true; }
+void home_assistant_get_light_stats(HomeAssistantLightStats &out) { out = {}; out.total = 4; out.on = 1; }
+bool home_assistant_get_entity(const char *id, HomeAssistantEntitySnapshot &out) {
+    for (size_t i = 0; i < entity_count; ++i) if (strcmp(id, entities[i].entity_id) == 0) { out = entities[i]; return true; }
+    return false;
+}
+bool home_assistant_queue_toggle(const char *id) { action_target = id; ++toggle_count; return true; }
+bool home_assistant_queue_scene(const char *) { return true; }
+bool home_assistant_queue_all_lights(bool) { ++all_lights_count; return true; }
+
+static unsigned char buffer[1280 * 658 * 4];
+static void flush(lv_display_t *display, const lv_area_t *, uint8_t *) { lv_display_flush_ready(display); }
+static lv_obj_t *find(lv_obj_t *root, const char *text) {
+    if (lv_obj_check_type(root, &lv_label_class) && strcmp(lv_label_get_text(root), text) == 0) return root;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(root); ++i) if (auto *result = find(lv_obj_get_child(root, i), text)) return result;
+    return nullptr;
+}
+static void shot(const char *name) {
+    lv_refr_now(nullptr); FILE *file = fopen(name, "wb"); assert(file);
+    fprintf(file, "P6\n1280 658\n255\n");
+    for (int i = 0; i < 1280 * 658; ++i) { fputc(buffer[4*i+2], file); fputc(buffer[4*i+1], file); fputc(buffer[4*i], file); }
+    fclose(file);
+}
+static void add_entity(const char *id, const char *name, const char *domain, const char *state) {
+    auto &entity = entities[entity_count++];
+    snprintf(entity.entity_id, sizeof(entity.entity_id), "%s", id);
+    snprintf(entity.name, sizeof(entity.name), "%s", name);
+    snprintf(entity.domain, sizeof(entity.domain), "%s", domain);
+    snprintf(entity.state, sizeof(entity.state), "%s", state);
+    entity.available = true;
+}
+static void add_card(const char *type, const char *id, const char *label, const char *icon,
+                     const char *action, const char *states, const char *active, const char *inactive,
+                     const char *color, int span, bool confirm) {
+    auto &item = config.overview_items[config.overview_item_count++];
+    snprintf(item.type, sizeof(item.type), "%s", type); snprintf(item.entity_id, sizeof(item.entity_id), "%s", id);
+    snprintf(item.label, sizeof(item.label), "%s", label); snprintf(item.icon, sizeof(item.icon), "%s", icon);
+    snprintf(item.action, sizeof(item.action), "%s", action); snprintf(item.active_states, sizeof(item.active_states), "%s", states);
+    snprintf(item.active_label, sizeof(item.active_label), "%s", active); snprintf(item.inactive_label, sizeof(item.inactive_label), "%s", inactive);
+    snprintf(item.color, sizeof(item.color), "%s", color); item.span = span; item.confirm = confirm;
+}
+
+int main() {
+    lv_init(); auto *display = lv_display_create(1280, 658); lv_display_set_color_format(display, LV_COLOR_FORMAT_XRGB8888);
+    lv_display_set_buffers(display, buffer, nullptr, sizeof(buffer), LV_DISPLAY_RENDER_MODE_FULL); lv_display_set_flush_cb(display, flush);
+    add_entity("cover.garage", "Garage door", "cover", "open");
+    add_entity("binary_sensor.side_door", "Side door", "binary_sensor", "off");
+    add_entity("lock.front", "Front lock", "lock", "locked");
+    add_card("home_status", "", "Home", "shield", "none", "", "All good", "Attention", "green", 1, false);
+    add_card("entity", "cover.garage", "Garage Door", "garage", "toggle", "open,opening", "Open", "Closed", "yellow", 2, true);
+    add_card("entity", "binary_sensor.side_door", "Side Door", "door", "none", "on", "Open", "Closed", "yellow", 1, false);
+    add_card("entity", "lock.front", "Front Lock", "lock", "toggle", "unlocked,unlocking", "Unlocked", "Locked", "red", 1, true);
+    add_card("all_lights", "", "All Lights", "light", "all_lights", "", "Turn all off", "Turn all on", "yellow", 1, true);
+
+    OverviewCardViewModel model[12] = {};
+    assert(ui_state_model_snapshot_overview(model, 12) == 5);
+    assert(model[1].active && strcmp(model[1].state_text, "Open") == 0 && model[1].confirm);
+    assert(!model[2].active && !model[2].actionable && strcmp(model[2].state_text, "Closed") == 0);
+
+    auto *root = lv_screen_active(); OverviewModule overview; overview.create(root); lv_obj_update_layout(root);
+    assert(find(root, "At a glance") && find(root, "Garage Door") && find(root, "Open") && find(root, "Closed"));
+    auto *garage_card = lv_obj_get_parent(find(root, "Garage Door")); assert(lv_obj_get_height(garage_card) == 120);
+    lv_obj_send_event(garage_card, LV_EVENT_CLICKED, nullptr);
+    assert(find(root, "Garage Door?") && toggle_count == 0);
+    snprintf(entities[0].state, sizeof(entities[0].state), "closed"); overview.update();
+    assert(find(root, "Current status: Open\n\nDo you want to continue with this Home Assistant action?"));
+    auto *confirm = find(root, "Confirm"); assert(confirm); lv_obj_send_event(lv_obj_get_parent(confirm), LV_EVENT_CLICKED, nullptr);
+    assert(toggle_count == 1 && action_target == "cover.garage");
+    assert(find(root, "Command queued - waiting for Home Assistant"));
+    lv_obj_send_event(lv_obj_get_parent(find(root, "Side Door")), LV_EVENT_CLICKED, nullptr);
+    assert(toggle_count == 1);
+    shot(".test-build/overview-cards.ppm");
+    return 0;
+}

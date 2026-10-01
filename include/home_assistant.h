@@ -150,3 +150,5 @@ bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t bright
 bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage);
 
 bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySnapshot &out);
+// UI-neutral lookup for configurable Overview status and action cards.
+bool home_assistant_get_entity(const char *entity_id, HomeAssistantEntitySnapshot &out);

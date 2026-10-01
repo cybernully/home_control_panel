@@ -32,5 +32,11 @@
   ],
   "overview_quick_actions": [
     {"label": "All Lights", "type": "all_lights", "entity_id": ""}
+  ],
+  "overview_items": [
+    {"type": "home_status", "entity_id": "", "label": "Home", "icon": "shield", "action": "none", "active_states": "", "active_label": "All good", "inactive_label": "Check system", "color": "green", "span": 2, "confirm": false},
+    {"type": "lights", "entity_id": "", "label": "Lights", "icon": "light", "action": "none", "active_states": "", "active_label": "On", "inactive_label": "All off", "color": "yellow", "span": 1, "confirm": false},
+    {"type": "network", "entity_id": "", "label": "Network", "icon": "power", "action": "none", "active_states": "", "active_label": "Online", "inactive_label": "Offline", "color": "cyan", "span": 1, "confirm": false},
+    {"type": "all_lights", "entity_id": "", "label": "All Lights", "icon": "light", "action": "all_lights", "active_states": "", "active_label": "Turn all off", "inactive_label": "Turn all on", "color": "yellow", "span": 2, "confirm": true}
   ]
 }

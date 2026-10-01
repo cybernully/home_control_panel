@@ -43,6 +43,23 @@ struct PanelOverviewQuickAction {
     char entity_id[96];
 };
 
+// Overview 1.6.4 uses one ordered, four-column collection for built-in status
+// summaries and Home Assistant entities. Entity items can be status-only or
+// actionable without coupling their presentation to HA transport details.
+struct PanelOverviewItem {
+    char type[16];             // entity or a supported built-in summary
+    char entity_id[96];
+    char label[PANEL_OVERVIEW_LABEL_LEN];
+    char icon[20];             // auto, garage, door, lock, motion, light, ...
+    char action[16];           // none, toggle, scene, or all_lights
+    char active_states[PANEL_OVERVIEW_STATE_LEN]; // comma-separated HA states
+    char active_label[24];
+    char inactive_label[24];
+    char color[12];            // cyan, green, yellow, red, purple, or blue
+    uint8_t span;              // 1, 2, or 4 columns
+    bool confirm;
+};
+
 struct PanelConfig {
     char device_id[32];
     char display_name[48];
@@ -71,6 +88,8 @@ struct PanelConfig {
     uint8_t overview_widget_count;
     PanelOverviewQuickAction overview_quick_actions[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];
     uint8_t overview_quick_action_count;
+    PanelOverviewItem overview_items[PANEL_MAX_OVERVIEW_ITEMS];
+    uint8_t overview_item_count;
     uint8_t backlight;
     bool dark_mode;
     uint32_t screen_timeout_seconds;
@@ -89,5 +108,8 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
 bool config_service_parse_rooms(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_widgets(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_quick_actions(const String &json, PanelConfig &config, String &error);
+bool config_service_parse_overview_items(const String &json, PanelConfig &config, String &error);
 void config_service_set_overview_defaults(PanelConfig &config);
 void config_service_set_overview_quick_action_defaults(PanelConfig &config);
+void config_service_set_overview_item_defaults(PanelConfig &config);
+void config_service_migrate_overview_items(PanelConfig &config);

@@ -58,3 +58,22 @@ void ui_state_model_next_room();
 bool ui_state_model_activate(const RoomControlViewModel &control);
 bool ui_state_model_set_level(const RoomControlViewModel &control, uint8_t level_pct);
 
+struct OverviewCardViewModel {
+    char type[16];
+    char entity_id[96];
+    char title[PANEL_OVERVIEW_LABEL_LEN];
+    char state_text[64];
+    char icon[20];
+    char color[12];
+    char action[16];
+    uint8_t span;
+    bool available;
+    bool active;
+    bool actionable;
+    bool confirm;
+};
+
+// Builds the complete Overview presentation state without creating widgets.
+size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t capacity);
+bool ui_state_model_activate_overview(const OverviewCardViewModel &card);
+

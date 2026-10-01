@@ -1,11 +1,22 @@
 # Home Control Panel
 
-**Version 1.4.4**
+**Version 1.6.4**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Configurable Overview 1.6.4
+
+Overview now uses the same reusable card language as Room. Its ordered four-column
+layout is configured from Web Admin and can mix built-in summaries, status-only
+Home Assistant entities, and actionable controls. Per-card settings include label,
+width, icon family, active states and color, state labels, tap behavior, and optional
+confirmation. Covers support garage-door presentation and open/close confirmation;
+locks, binary sensors, lights, fans, switches, scenes, weather, and selected sensors
+use the same extensible state/UI contract. Existing Overview widgets and quick actions
+are migrated automatically. See [1.6.4 release notes](docs/RELEASE_1.6.4.md).
 
 ## Home Assistant stability 1.4.4
 
