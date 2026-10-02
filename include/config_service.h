@@ -102,6 +102,13 @@ struct PanelConfig {
     char media_players[PANEL_MAX_MEDIA_PLAYERS][PANEL_MEDIA_ENTITY_ID_LEN];
     uint8_t media_player_count;
     char weather_entity_id[96];
+    // Weather presentation remains configuration-only. The Home Assistant
+    // transport exposes a UI-neutral current/hourly/daily snapshot.
+    char weather_layout[20]; // balanced, current_focus, or forecast_focus
+    bool weather_show_current;
+    bool weather_show_hourly;
+    bool weather_show_daily;
+    bool weather_header_enabled;
     char calendar_entity_id[96];
     PanelOverviewWidget overview_widgets[PANEL_MAX_OVERVIEW_WIDGETS];
     uint8_t overview_widget_count;

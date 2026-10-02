@@ -44,6 +44,11 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.backlight = APP_DEFAULT_BACKLIGHT;
     cfg.dark_mode = true;
     cfg.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
+    copy_text(cfg.weather_layout, sizeof(cfg.weather_layout), "balanced");
+    cfg.weather_show_current = true;
+    cfg.weather_show_hourly = true;
+    cfg.weather_show_daily = true;
+    cfg.weather_header_enabled = false;
     config_service_set_profile_defaults(cfg);
     cfg.room_count = 1;
     copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
@@ -59,7 +64,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 3;
+    doc["schema"] = 4;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -68,6 +73,11 @@ bool save_internal(const PanelConfig &cfg) {
     doc["screen_timeout_seconds"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
     doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["weather_layout"] = cfg.weather_layout;
+    doc["weather_show_current"] = cfg.weather_show_current;
+    doc["weather_show_hourly"] = cfg.weather_show_hourly;
+    doc["weather_show_daily"] = cfg.weather_show_daily;
+    doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
@@ -204,6 +214,18 @@ bool config_service_begin() {
     // until the owner saves a layout from the 1.5 web manager.
     loaded.explicit_layout = doc["explicit_layout"] | false;
     copy_text(loaded.weather_entity_id, sizeof(loaded.weather_entity_id), doc["weather_entity_id"] | "");
+    copy_text(loaded.weather_layout, sizeof(loaded.weather_layout), doc["weather_layout"] | "balanced");
+    if (strcmp(loaded.weather_layout, "balanced") != 0 &&
+        strcmp(loaded.weather_layout, "current_focus") != 0 &&
+        strcmp(loaded.weather_layout, "forecast_focus") != 0) {
+        copy_text(loaded.weather_layout, sizeof(loaded.weather_layout), "balanced");
+    }
+    loaded.weather_show_current = doc["weather_show_current"] | true;
+    loaded.weather_show_hourly = doc["weather_show_hourly"] | true;
+    loaded.weather_show_daily = doc["weather_show_daily"] | true;
+    loaded.weather_header_enabled = doc["weather_header_enabled"] | false;
+    if (!loaded.weather_show_current && !loaded.weather_show_hourly && !loaded.weather_show_daily)
+        loaded.weather_show_current = true;
     copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), doc["calendar_entity_id"] | "");
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
@@ -306,6 +328,15 @@ bool config_service_save(const PanelConfig &config) {
     PanelConfig &clean = *clean_storage;
     if (clean.room_control_count > HA_MAX_AREA_ENTITIES) return false;
     clean.backlight = constrain(static_cast<int>(clean.backlight), 10, 100);
+    if (strcmp(clean.weather_layout, "balanced") != 0 &&
+        strcmp(clean.weather_layout, "current_focus") != 0 &&
+        strcmp(clean.weather_layout, "forecast_focus") != 0)
+        copy_text(clean.weather_layout, sizeof(clean.weather_layout), "balanced");
+    if (!clean.weather_show_current && !clean.weather_show_hourly && !clean.weather_show_daily) {
+        clean.weather_show_current = true;
+        clean.weather_show_hourly = true;
+        clean.weather_show_daily = true;
+    }
     if (clean.media_shortcut_count > PANEL_MAX_MEDIA_SHORTCUTS) {
         clean.media_shortcut_count = PANEL_MAX_MEDIA_SHORTCUTS;
     }

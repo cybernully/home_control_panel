@@ -11,6 +11,7 @@ static HomeAssistantEntitySnapshot entities[48] = {};
 static size_t count = 0;
 static std::string target;
 static int toggles=0, brightness_calls=0;
+static bool weather_available=false;
 const PanelConfig &config_service_get() { return config; }
 size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out,size_t capacity) {
     size_t n = count < capacity ? count : capacity;
@@ -29,6 +30,7 @@ void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) {
     out.websocket_authenticated=true;out.discovery_complete=true;
 }
 void home_assistant_get_status(HomeAssistantStatus &out) { out={};out.configured=true;out.connected=true;out.authenticated=true; }
+bool home_assistant_get_weather(const char *, HomeAssistantWeatherSnapshot &out) { out={};out.available=weather_available;out.has_temperature=weather_available;out.temperature=72;return weather_available; }
 bool home_assistant_commands_ready(){return true;}
 bool home_assistant_queue_toggle(const char *id){target=id;++toggles;return true;}
 bool home_assistant_queue_scene(const char *id){target=id;return true;}
@@ -110,6 +112,11 @@ int main(){
     assert(!lv_obj_check_type(lv_obj_get_parent(g_header_title),&lv_button_class));
     assert(g_nav_buttons[5]==nullptr);
     assert(strcmp(lv_label_get_text(g_comm_label),"Connected")==0);
+    assert(lv_obj_has_flag(g_weather_header,LV_OBJ_FLAG_HIDDEN));
+    snprintf(config.weather_entity_id,sizeof(config.weather_entity_id),"weather.home");
+    config.weather_header_enabled=true;weather_available=true;ui_shell_refresh_header();
+    assert(!lv_obj_has_flag(g_weather_header,LV_OBJ_FLAG_HIDDEN));
+    assert(strcmp(lv_label_get_text(g_weather_header_label),"72\xC2\xB0")==0);
     lv_obj_send_event(g_comm_button,LV_EVENT_CLICKED,nullptr);
     assert(!lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
     assert(lv_label_get_text(g_status_message)[0]);

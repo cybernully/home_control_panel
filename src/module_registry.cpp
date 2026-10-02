@@ -7,12 +7,13 @@
 #include "modules/room_module.h"
 #include "modules/security_module.h"
 #include "modules/settings_module.h"
+#include "modules/weather_module.h"
 #include <string.h>
 
 namespace {
 OverviewModule g_overview;
 InfoModule g_calendar("calendar", "Calendar", "Calendar module boundary. Family Calendar remains a separate project; this panel will later consume selected calendar data without replacing that application.");
-InfoModule g_weather("weather", "Weather", "Weather module boundary for current conditions and forecasts from Home Assistant.");
+WeatherModule g_weather;
 RoomModule g_room;
 MediaModule g_media;
 ClimateModule g_climate;

@@ -40,6 +40,21 @@ struct HaEntityModel {
     uint32_t timer_sample_ms;
     int64_t timer_finishes_at_epoch;
 
+    // Current weather attributes. Forecast collections are kept separately
+    // because only one configured weather provider is displayed at a time.
+    float weather_temperature;
+    float weather_apparent_temperature;
+    float weather_humidity;
+    float weather_wind_speed;
+    float weather_pressure;
+    bool weather_has_temperature;
+    bool weather_has_apparent_temperature;
+    bool weather_has_humidity;
+    bool weather_has_wind_speed;
+    bool weather_has_pressure;
+    char weather_temperature_unit[12];
+    char weather_wind_speed_unit[16];
+
     // media_player state retained in the same PSRAM model so there is still a
     // single Home Assistant subscription/cache.
     uint8_t volume_pct;
@@ -137,6 +152,14 @@ uint32_t g_action_request_id = 0;
 uint32_t g_action_started_ms = 0;
 char g_action_description[96] = {};
 
+HomeAssistantWeatherSnapshot g_weather_cache = {};
+bool g_weather_forecast_requested = false;
+uint32_t g_weather_hourly_request_id = 0;
+uint32_t g_weather_daily_request_id = 0;
+uint32_t g_weather_forecast_started_ms = 0;
+uint32_t g_weather_forecast_retry_not_before_ms = 0;
+char g_weather_forecast_entity_id[96] = {};
+
 char g_resolved_area_id[64] = {};
 char g_resolved_area_name[64] = {};
 
@@ -144,6 +167,7 @@ void record_action_result(const char *description, int code);
 void send_subscribe_entities_worker();
 void refresh_entity_subscription_worker();
 void populate_configured_layout_entities_worker();
+void send_weather_forecasts_worker();
 
 HomeAssistantMediaFavorite g_media_favorites[HA_MAX_MEDIA_FAVORITES] = {};
 size_t g_media_favorite_count = 0;
@@ -445,6 +469,35 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
             int64_t finish = 0;
             model.timer_finishes_at_epoch = parse_timer_finish(attrs["finishes_at"] | "", finish) ? finish : 0;
         }
+    }
+
+    if (strcmp(model.domain, "weather") == 0) {
+        if (!attrs["temperature"].isNull()) {
+            model.weather_temperature = attrs["temperature"].as<float>();
+            model.weather_has_temperature = true;
+        }
+        if (!attrs["apparent_temperature"].isNull()) {
+            model.weather_apparent_temperature = attrs["apparent_temperature"].as<float>();
+            model.weather_has_apparent_temperature = true;
+        }
+        if (!attrs["humidity"].isNull()) {
+            model.weather_humidity = attrs["humidity"].as<float>();
+            model.weather_has_humidity = true;
+        }
+        if (!attrs["wind_speed"].isNull()) {
+            model.weather_wind_speed = attrs["wind_speed"].as<float>();
+            model.weather_has_wind_speed = true;
+        }
+        if (!attrs["pressure"].isNull()) {
+            model.weather_pressure = attrs["pressure"].as<float>();
+            model.weather_has_pressure = true;
+        }
+        const char *temperature_unit = attrs["temperature_unit"] | "";
+        if (temperature_unit[0]) copy_text(model.weather_temperature_unit,
+                                           sizeof(model.weather_temperature_unit), temperature_unit);
+        const char *wind_unit = attrs["wind_speed_unit"] | "";
+        if (wind_unit[0]) copy_text(model.weather_wind_speed_unit,
+                                    sizeof(model.weather_wind_speed_unit), wind_unit);
     }
 
     if (strcmp(model.domain, "media_player") == 0) {
@@ -850,6 +903,8 @@ void send_subscribe_entities_worker() {
     if (send_json(doc)) {
         g_last_entity_subscription_refresh_ms = millis();
         set_discovery_message("Subscribing to live Home Assistant state...");
+        const char *weather_id = config_service_get().weather_entity_id;
+        if (weather_id[0]) home_assistant_request_weather_forecasts(weather_id);
     } else {
         set_discovery_message("Could not start live state subscription.");
     }
@@ -882,6 +937,95 @@ void send_media_browse_worker(const char *entity_id,
     if (!send_json(doc)) {
         set_discovery_message("Could not browse media for selected player.");
     }
+}
+
+void send_weather_forecast_worker(const char *forecast_type, uint32_t &request_id) {
+    if (!g_weather_forecast_entity_id[0] || !g_ws_authenticated) return;
+    JsonDocument doc;
+    request_id = next_ws_id();
+    doc["id"] = request_id;
+    doc["type"] = "call_service";
+    doc["domain"] = "weather";
+    doc["service"] = "get_forecasts";
+    doc["service_data"]["type"] = forecast_type;
+    doc["target"]["entity_id"] = g_weather_forecast_entity_id;
+    doc["return_response"] = true;
+    if (!send_json(doc)) request_id = 0;
+}
+
+void send_weather_forecasts_worker() {
+    const PanelConfig &cfg = config_service_get();
+    bool need_hourly = cfg.weather_show_hourly;
+    bool need_daily = cfg.weather_show_daily;
+    for (uint8_t i = 0; i < cfg.overview_item_count; ++i) {
+        if (strcmp(cfg.overview_items[i].type, "weather_hourly") == 0) need_hourly = true;
+        if (strcmp(cfg.overview_items[i].type, "weather_daily") == 0) need_daily = true;
+    }
+    if (need_hourly) send_weather_forecast_worker("hourly", g_weather_hourly_request_id);
+    if (need_daily) send_weather_forecast_worker("daily", g_weather_daily_request_id);
+    if (!g_weather_hourly_request_id && !g_weather_daily_request_id) {
+        portENTER_CRITICAL(&g_mux);
+        g_weather_cache.forecasts_loading = false;
+        g_weather_cache.last_forecast_ms = millis();
+        portEXIT_CRITICAL(&g_mux);
+    } else g_weather_forecast_started_ms = millis();
+}
+
+void handle_weather_forecast_result_worker(JsonDocument &doc, bool hourly) {
+    HomeAssistantWeatherForecast parsed[HA_MAX_WEATHER_HOURLY] = {};
+    const size_t capacity = hourly ? HA_MAX_WEATHER_HOURLY : HA_MAX_WEATHER_DAILY;
+    size_t count = 0;
+    if (doc["success"] | false) {
+        JsonObjectConst response = doc["result"]["response"].as<JsonObjectConst>();
+        JsonObjectConst provider = response[g_weather_forecast_entity_id].as<JsonObjectConst>();
+        JsonArrayConst forecasts = provider["forecast"].as<JsonArrayConst>();
+        // Keep compatibility with integrations that return the forecast body
+        // without the provider wrapper.
+        if (forecasts.isNull()) forecasts = response["forecast"].as<JsonArrayConst>();
+        if (!forecasts.isNull()) {
+            for (JsonObjectConst item : forecasts) {
+                if (count >= capacity) break;
+                HomeAssistantWeatherForecast &out = parsed[count++];
+                copy_text(out.datetime, sizeof(out.datetime), item["datetime"] | "");
+                copy_text(out.condition, sizeof(out.condition), item["condition"] | "unknown");
+                if (!item["temperature"].isNull()) {
+                    out.temperature = item["temperature"].as<float>();
+                    out.has_temperature = true;
+                }
+                if (!item["templow"].isNull()) {
+                    out.temperature_low = item["templow"].as<float>();
+                    out.has_temperature_low = true;
+                }
+                if (!item["precipitation_probability"].isNull()) {
+                    out.precipitation_probability = static_cast<uint8_t>(
+                        constrain(item["precipitation_probability"].as<int>(), 0, 100));
+                    out.has_precipitation_probability = true;
+                }
+            }
+        }
+    }
+
+    portENTER_CRITICAL(&g_mux);
+    if (hourly) {
+        memset(g_weather_cache.hourly, 0, sizeof(g_weather_cache.hourly));
+        memcpy(g_weather_cache.hourly, parsed,
+               count * sizeof(HomeAssistantWeatherForecast));
+        g_weather_cache.hourly_count = static_cast<uint8_t>(count);
+        g_weather_hourly_request_id = 0;
+    } else {
+        memset(g_weather_cache.daily, 0, sizeof(g_weather_cache.daily));
+        memcpy(g_weather_cache.daily, parsed,
+               count * sizeof(HomeAssistantWeatherForecast));
+        g_weather_cache.daily_count = static_cast<uint8_t>(count);
+        g_weather_daily_request_id = 0;
+    }
+    if (!g_weather_hourly_request_id && !g_weather_daily_request_id) {
+        g_weather_cache.forecasts_loading = false;
+        g_weather_cache.last_forecast_ms = millis();
+        g_weather_forecast_started_ms = 0;
+        g_weather_forecast_retry_not_before_ms = 0;
+    }
+    portEXIT_CRITICAL(&g_mux);
 }
 
 void handle_media_browse_result_worker(JsonDocument &doc) {
@@ -1210,6 +1354,10 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
             if (!success) set_discovery_message("Home Assistant rejected live entity subscription.");
         } else if (id == g_media_browse_request_id) {
             handle_media_browse_result_worker(doc);
+        } else if (id == g_weather_hourly_request_id) {
+            handle_weather_forecast_result_worker(doc, true);
+        } else if (id == g_weather_daily_request_id) {
+            handle_weather_forecast_result_worker(doc, false);
         } else if (id == g_action_request_id && g_action_in_flight) {
             handle_action_result_worker(doc);
         }
@@ -1232,6 +1380,13 @@ void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
             break;
         case WStype_DISCONNECTED:
             g_ws_authenticated = false;
+            g_weather_hourly_request_id = 0;
+            g_weather_daily_request_id = 0;
+            g_weather_forecast_started_ms = 0;
+            g_weather_forecast_retry_not_before_ms = millis() + HA_WEATHER_FORECAST_RETRY_MS;
+            portENTER_CRITICAL(&g_mux);
+            g_weather_cache.forecasts_loading = false;
+            portEXIT_CRITICAL(&g_mux);
             if (g_action_in_flight) {
                 record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -102);
                 g_action_in_flight = false;
@@ -2106,6 +2261,18 @@ void worker_task(void *) {
         }
         if (g_ws_started) g_ws.loop();
 
+        if (g_weather_forecast_started_ms &&
+            millis() - g_weather_forecast_started_ms >= HA_WEATHER_FORECAST_TIMEOUT_MS) {
+            g_weather_hourly_request_id = 0;
+            g_weather_daily_request_id = 0;
+            g_weather_forecast_started_ms = 0;
+            g_weather_forecast_retry_not_before_ms = millis() + HA_WEATHER_FORECAST_RETRY_MS;
+            portENTER_CRITICAL(&g_mux);
+            g_weather_cache.forecasts_loading = false;
+            portEXIT_CRITICAL(&g_mux);
+            set_discovery_message("Weather forecast refresh timed out; current conditions remain live.");
+        }
+
         if (g_action_in_flight &&
             millis() - g_action_started_ms >= HA_COMMAND_RESULT_TIMEOUT_MS) {
             record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -110);
@@ -2124,6 +2291,7 @@ void worker_task(void *) {
                                                  media_content_type, sizeof(media_content_type))) {
                 send_media_browse_worker(media_entity, media_content_id, media_content_type, 0);
             }
+            if (take_flag(g_weather_forecast_requested)) send_weather_forecasts_worker();
         }
 
         if (g_ws_authenticated && take_flag(g_resubscribe_requested)) {
@@ -2314,6 +2482,26 @@ void snapshot_media(const HaEntityModel &source, HomeAssistantMediaSnapshot &out
     for (uint8_t i = 0; i < source.media_source_count && i < HA_MAX_MEDIA_SOURCES; ++i) {
         copy_text(out.sources[i], HA_MEDIA_SOURCE_NAME_LEN, source.media_sources[i]);
     }
+}
+
+void snapshot_weather_current(const HaEntityModel &source, HomeAssistantWeatherSnapshot &out) {
+    copy_text(out.entity_id, sizeof(out.entity_id), source.entity_id);
+    copy_text(out.name, sizeof(out.name), source.name);
+    copy_text(out.condition, sizeof(out.condition), source.state);
+    copy_text(out.temperature_unit, sizeof(out.temperature_unit),
+              source.weather_temperature_unit[0] ? source.weather_temperature_unit : source.unit_of_measurement);
+    copy_text(out.wind_speed_unit, sizeof(out.wind_speed_unit), source.weather_wind_speed_unit);
+    out.temperature = source.weather_temperature;
+    out.apparent_temperature = source.weather_apparent_temperature;
+    out.humidity = source.weather_humidity;
+    out.wind_speed = source.weather_wind_speed;
+    out.pressure = source.weather_has_pressure ? static_cast<uint16_t>(source.weather_pressure + 0.5f) : 0;
+    out.available = source.available;
+    out.has_temperature = source.weather_has_temperature;
+    out.has_apparent_temperature = source.weather_has_apparent_temperature;
+    out.has_humidity = source.weather_has_humidity;
+    out.has_wind_speed = source.weather_has_wind_speed;
+    out.has_pressure = source.weather_has_pressure;
 }
 
 bool queue_action(const HaAction &action) {
@@ -2853,6 +3041,47 @@ bool home_assistant_get_entity(const char *entity_id, HomeAssistantEntitySnapsho
     for (size_t i = 0; i < g_entity_count; ++i) {
         if (strcmp(entity_id, g_entities[i].entity_id) == 0) {
             snapshot_entity(g_entities[i], out); found = true; break;
+        }
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return found;
+}
+
+bool home_assistant_request_weather_forecasts(const char *entity_id) {
+    if (!entity_id || strncmp(entity_id, "weather.", 8) != 0 || !g_worker) return false;
+    bool queued = false;
+    portENTER_CRITICAL(&g_mux);
+    const bool entity_changed = strcmp(g_weather_forecast_entity_id, entity_id) != 0;
+    const bool stale = !g_weather_cache.last_forecast_ms ||
+        millis() - g_weather_cache.last_forecast_ms >= HA_WEATHER_FORECAST_REFRESH_MS;
+    if (entity_changed) {
+        memset(&g_weather_cache, 0, sizeof(g_weather_cache));
+        copy_text(g_weather_forecast_entity_id, sizeof(g_weather_forecast_entity_id), entity_id);
+    }
+    const bool retry_ready = !g_weather_forecast_retry_not_before_ms ||
+        static_cast<int32_t>(millis() - g_weather_forecast_retry_not_before_ms) >= 0;
+    if ((entity_changed || stale) && retry_ready && !g_weather_forecast_requested &&
+        !g_weather_hourly_request_id && !g_weather_daily_request_id) {
+        g_weather_forecast_requested = true;
+        g_weather_cache.forecasts_loading = true;
+        queued = true;
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return queued;
+}
+
+bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnapshot &out) {
+    memset(&out, 0, sizeof(out));
+    if (!entity_id || !entity_id[0] || !g_entities) return false;
+    bool found = false;
+    portENTER_CRITICAL(&g_mux);
+    for (size_t i = 0; i < g_entity_count; ++i) {
+        if (strcmp(entity_id, g_entities[i].entity_id) == 0 &&
+            strcmp(g_entities[i].domain, "weather") == 0) {
+            if (strcmp(g_weather_forecast_entity_id, entity_id) == 0) out = g_weather_cache;
+            snapshot_weather_current(g_entities[i], out);
+            found = true;
+            break;
         }
     }
     portEXIT_CRITICAL(&g_mux);

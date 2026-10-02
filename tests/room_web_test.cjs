@@ -11,7 +11,7 @@ for(const feature of [
   "media_players", "mediaActionCard", "Favorites bubble menu", "media_favorites", "Save changes",
   "explicit layout", "modules.join(',')", "Overview layout",
   "widget_catalog", "overview_widgets", "overview_items",
-  "overviewBuiltinLabels", "weather:'Weather'", "calendar:'Calendar'"
+  "overviewBuiltinLabels", "weather_current:'Current weather'", "weather_hourly:'Hourly forecast'", "weather_daily:'Multi-day forecast'", "calendar:'Calendar'"
 ]) assert(source.includes(feature),`missing web manager feature: ${feature}`);
 assert(source.includes('renderWidgets=function()'),'Overview cards must have an editable renderer');
 assert(!source.includes('renderWidgets=function(){readOverviewItems();'),
@@ -43,9 +43,12 @@ assert.strictEqual(reorderTest.items[2],allLights,'reordering must preserve the 
 assert.equal(reorderTest.items[1].active_states,'open,opening','specialized card state settings must stay attached');
 assert.equal(reorderTest.items[1].action_entity_id,'switch.garage_relay','separate action targets must stay attached');
 assert.equal(reorderTest.items[1].confirm,true,'specialized card confirmation settings must stay attached');
-for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add Weather widget",
+for(const feature of ["function ensureWidget(type)", "Add Calendar widget", "Add current weather",
                      "Edit room controls", "function renderLinkedPages()"])
   assert(source.includes(feature),`missing working panel-tab configuration: ${feature}`);
+for(const feature of ["weather_layout", "weather_show_current", "weather_show_hourly",
+                     "weather_show_daily", "weather_header_enabled", "weather_entities"])
+  assert(source.includes(feature),`missing v1.7.2 Weather configuration: ${feature}`);
 assert(source.includes('function showModule(id)'),'show-tab buttons must update the web navigation immediately');
 assert(source.includes('onclick="showModule(\'${m}\')"'),'show-tab buttons must use the explicit handler');
 assert(source.match(/<section id="media"[\s\S]*?Refresh Home Assistant media/),'Media must expose its own HA search trigger');

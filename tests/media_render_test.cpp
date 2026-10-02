@@ -19,6 +19,7 @@ size_t home_assistant_get_media_players(HomeAssistantMediaSnapshot *out,size_t c
 size_t home_assistant_get_media_favorites(HomeAssistantMediaFavorite *out,size_t capacity){size_t n=favorite_count<capacity?favorite_count:capacity;memcpy(out,favorites,n*sizeof(*out));return n;}
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out){out={};snprintf(out.area_name,sizeof(out.area_name),"Office");snprintf(out.area_id,sizeof(out.area_id),"office");}
 void home_assistant_get_status(HomeAssistantStatus &out){out={};out.configured=true;out.connected=true;out.authenticated=true;}
+bool home_assistant_get_weather(const char *,HomeAssistantWeatherSnapshot &out){out={};return false;}
 size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *,size_t){return 0;}
 bool home_assistant_get_room_entity(const char *,HomeAssistantEntitySnapshot &){return false;}
 bool home_assistant_queue_toggle(const char *){return false;}

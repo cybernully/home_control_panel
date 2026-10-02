@@ -69,6 +69,30 @@ void build_entity(OverviewCardViewModel &out, const PanelOverviewItem &item) {
     else if (strcmp(entity.domain, "scene") == 0) copy_text(out.state_text, sizeof(out.state_text), "Ready");
     else copy_text(out.state_text, sizeof(out.state_text), entity.state);
 }
+
+void build_weather(OverviewCardViewModel &out, const char *type) {
+    WeatherViewModel weather = {};
+    const bool found = ui_state_model_snapshot_weather(weather);
+    out.available = found && weather.available;
+    out.active = out.available;
+    if (!found) {
+        copy_text(out.state_text, sizeof(out.state_text), weather.condition);
+    } else if (strcmp(type, "weather_hourly") == 0) {
+        if (!weather.hourly_count) copy_text(out.state_text, sizeof(out.state_text), weather.loading ? "Loading hourly forecast" : "Hourly forecast unavailable");
+        else if (weather.hourly_count == 1) snprintf(out.state_text, sizeof(out.state_text), "%s  %s", weather.hourly[0].period, weather.hourly[0].temperature);
+        else snprintf(out.state_text, sizeof(out.state_text), "%s %s  |  %s %s",
+                      weather.hourly[0].period, weather.hourly[0].temperature,
+                      weather.hourly[1].period, weather.hourly[1].temperature);
+    } else if (strcmp(type, "weather_daily") == 0) {
+        if (!weather.daily_count) copy_text(out.state_text, sizeof(out.state_text), weather.loading ? "Loading multi-day forecast" : "Daily forecast unavailable");
+        else if (weather.daily_count == 1) snprintf(out.state_text, sizeof(out.state_text), "%s  %s", weather.daily[0].period, weather.daily[0].temperature);
+        else snprintf(out.state_text, sizeof(out.state_text), "%s %s  |  %s %s",
+                      weather.daily[0].period, weather.daily[0].temperature,
+                      weather.daily[1].period, weather.daily[1].temperature);
+    } else {
+        snprintf(out.state_text, sizeof(out.state_text), "%s  |  %s", weather.temperature, weather.condition);
+    }
+}
 }
 
 size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t capacity) {
@@ -119,9 +143,12 @@ size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t cap
             copy_text(out.state_text, sizeof(out.state_text), out.active ?
                       (item.active_label[0] ? item.active_label : "Turn all off") :
                       (item.inactive_label[0] ? item.inactive_label : "Turn all on"));
-        } else if (strcmp(item.type, "weather") == 0 || strcmp(item.type, "calendar") == 0) {
+        } else if (strcmp(item.type, "weather") == 0 || strcmp(item.type, "weather_current") == 0 ||
+                   strcmp(item.type, "weather_hourly") == 0 || strcmp(item.type, "weather_daily") == 0) {
+            build_weather(out, item.type);
+        } else if (strcmp(item.type, "calendar") == 0) {
             PanelOverviewItem entity_item = item;
-            const char *fallback_id = strcmp(item.type, "weather") == 0 ? cfg.weather_entity_id : cfg.calendar_entity_id;
+            const char *fallback_id = cfg.calendar_entity_id;
             if (!entity_item.entity_id[0]) copy_text(entity_item.entity_id, sizeof(entity_item.entity_id), fallback_id);
             build_entity(out, entity_item);
         } else {

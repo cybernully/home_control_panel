@@ -34,6 +34,12 @@ int main() {
     assert(strcmp(config.overview_items[2].entity_id, "binary_sensor.hall_motion") == 0);
     assert(strcmp(config.overview_items[2].action_entity_id, "switch.hall_light") == 0);
     assert(strcmp(config.overview_items[3].icon, "timer") == 0);
+    assert(config_service_parse_overview_items(
+        R"([{"type":"weather_current","label":"Current","icon":"weather","action":"none","color":"cyan","span":2},{"type":"weather_hourly","label":"Hourly","icon":"weather","action":"none","color":"cyan","span":2},{"type":"weather_daily","label":"Daily","icon":"weather","action":"none","color":"cyan","span":2}])",
+        config, error));
+    assert(config.overview_item_count == 3);
+    assert(strcmp(config.overview_items[0].type, "weather_current") == 0);
+    assert(strcmp(config.overview_items[2].type, "weather_daily") == 0);
     const PanelConfig items_before = config;
     for (const char *bad : {
              "[]",

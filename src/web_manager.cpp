@@ -177,6 +177,11 @@ void handle_get_config() {
     doc["timeout"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
     doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["weather_layout"] = cfg.weather_layout;
+    doc["weather_show_current"] = cfg.weather_show_current;
+    doc["weather_show_hourly"] = cfg.weather_show_hourly;
+    doc["weather_show_daily"] = cfg.weather_show_daily;
+    doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["ha_url"] = home_assistant_base_url();
     doc["ha_token_configured"] = home_assistant_token_configured();
@@ -493,6 +498,18 @@ void handle_save_config() {
     String calendar_entity = g_server.arg("calendar_entity_id"); calendar_entity.trim(); calendar_entity.toLowerCase();
     if ((!weather_entity.isEmpty() && !weather_entity.startsWith("weather.")) || (!calendar_entity.isEmpty() && !calendar_entity.startsWith("calendar."))) { send_error(400, "Weather and Calendar selections must be matching Home Assistant entities."); return; }
     snprintf(next.weather_entity_id, sizeof(next.weather_entity_id), "%s", weather_entity.substring(0,95).c_str());
+    String weather_layout = g_server.arg("weather_layout"); weather_layout.trim(); weather_layout.toLowerCase();
+    if (weather_layout != "balanced" && weather_layout != "current_focus" && weather_layout != "forecast_focus") {
+        send_error(400, "Weather layout must be balanced, current focus, or forecast focus."); return;
+    }
+    snprintf(next.weather_layout, sizeof(next.weather_layout), "%s", weather_layout.c_str());
+    next.weather_show_current = g_server.arg("weather_show_current") == "1";
+    next.weather_show_hourly = g_server.arg("weather_show_hourly") == "1";
+    next.weather_show_daily = g_server.arg("weather_show_daily") == "1";
+    next.weather_header_enabled = g_server.arg("weather_header_enabled") == "1";
+    if (!next.weather_show_current && !next.weather_show_hourly && !next.weather_show_daily) {
+        send_error(400, "Show at least one Weather tab section."); return;
+    }
     snprintf(next.calendar_entity_id, sizeof(next.calendar_entity_id), "%s", calendar_entity.substring(0,95).c_str());
     String widgets_error;
     if (g_server.hasArg("overview_widgets") &&

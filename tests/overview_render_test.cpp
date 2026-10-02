@@ -13,6 +13,7 @@ static size_t entity_count = 0;
 static std::string action_target;
 static int toggle_count = 0;
 static int all_lights_count = 0;
+static HomeAssistantWeatherSnapshot weather_snapshot = {};
 
 const PanelConfig &config_service_get() { return config; }
 bool network_service_connected() { return true; }
@@ -24,6 +25,8 @@ bool home_assistant_get_entity(const char *id, HomeAssistantEntitySnapshot &out)
     for (size_t i = 0; i < entity_count; ++i) if (strcmp(id, entities[i].entity_id) == 0) { out = entities[i]; return true; }
     return false;
 }
+bool home_assistant_request_weather_forecasts(const char *) { return true; }
+bool home_assistant_get_weather(const char *, HomeAssistantWeatherSnapshot &out) { out = weather_snapshot; return out.available; }
 bool home_assistant_queue_toggle(const char *id) { action_target = id; ++toggle_count; return true; }
 bool home_assistant_queue_scene(const char *) { return true; }
 bool home_assistant_queue_all_lights(bool) { ++all_lights_count; return true; }
@@ -71,23 +74,47 @@ int main() {
     add_entity("timer.office_energy_saver_countdown", "Office energy saver", "timer", "active");
     entities[entity_count - 1].timer_has_remaining = true;
     entities[entity_count - 1].timer_remaining_seconds = 754;
+    snprintf(config.weather_entity_id, sizeof(config.weather_entity_id), "weather.home");
+    weather_snapshot.available = true; weather_snapshot.has_temperature = true; weather_snapshot.temperature = 72;
+    snprintf(weather_snapshot.name, sizeof(weather_snapshot.name), "Home Forecast");
+    snprintf(weather_snapshot.condition, sizeof(weather_snapshot.condition), "partlycloudy");
+    weather_snapshot.hourly_count = 2;
+    for (int i = 0; i < 2; ++i) {
+        snprintf(weather_snapshot.hourly[i].datetime, sizeof(weather_snapshot.hourly[i].datetime), "2026-10-01T%02d:00:00-05:00", 13 + i);
+        weather_snapshot.hourly[i].has_temperature = true; weather_snapshot.hourly[i].temperature = 72 + i;
+        snprintf(weather_snapshot.hourly[i].condition, sizeof(weather_snapshot.hourly[i].condition), "cloudy");
+    }
+    weather_snapshot.daily_count = 2;
+    for (int i = 0; i < 2; ++i) {
+        snprintf(weather_snapshot.daily[i].datetime, sizeof(weather_snapshot.daily[i].datetime), "2026-10-%02dT00:00:00-05:00", 1 + i);
+        weather_snapshot.daily[i].has_temperature = true; weather_snapshot.daily[i].temperature = 75 + i;
+        weather_snapshot.daily[i].has_temperature_low = true; weather_snapshot.daily[i].temperature_low = 55 + i;
+        snprintf(weather_snapshot.daily[i].condition, sizeof(weather_snapshot.daily[i].condition), "sunny");
+    }
     add_card("home_status", "", "Home", "shield", "none", "", "All good", "Attention", "green", 1, false);
     add_card("entity", "cover.garage", "Garage Door", "garage", "toggle", "open,opening", "Open", "Closed", "yellow", 2, true);
     add_card("entity", "binary_sensor.side_door", "Side Door", "door", "toggle", "on", "Open", "Closed", "yellow", 1, true, "switch.hall_light");
     add_card("entity", "lock.front", "Front Lock", "lock", "toggle", "unlocked,unlocking", "Unlocked", "Locked", "red", 1, true);
     add_card("all_lights", "", "All Lights", "light", "all_lights", "", "Turn all off", "Turn all on", "yellow", 1, true);
     add_card("entity", "timer.office_energy_saver_countdown", "Office energy saver", "timer", "none", "active,paused", "", "", "cyan", 1, false);
+    add_card("weather_current", "", "Current Weather", "weather", "none", "", "", "", "cyan", 2, false);
+    add_card("weather_hourly", "", "Next Hours", "weather", "none", "", "", "", "cyan", 2, false);
+    add_card("weather_daily", "", "Next Days", "weather", "none", "", "", "", "cyan", 2, false);
 
     OverviewCardViewModel model[12] = {};
-    assert(ui_state_model_snapshot_overview(model, 12) == 6);
+    assert(ui_state_model_snapshot_overview(model, 12) == 9);
     assert(model[1].active && strcmp(model[1].state_text, "Open") == 0 && model[1].confirm);
     assert(!model[2].active && model[2].actionable && strcmp(model[2].state_text, "Closed") == 0);
     assert(strcmp(model[2].action_entity_id, "switch.hall_light") == 0);
     assert(model[5].active && strcmp(model[5].state_text, "00:12:34") == 0);
+    assert(model[6].active && strstr(model[6].state_text, "72") && strstr(model[6].state_text, "Partly Cloudy"));
+    assert(model[7].active && strstr(model[7].state_text, "1 PM") && strstr(model[7].state_text, "2 PM"));
+    assert(model[8].active && strstr(model[8].state_text, "Today"));
 
     auto *root = lv_screen_active(); OverviewModule overview; overview.create(root); lv_obj_update_layout(root);
     assert(find(root, "At a glance") && find(root, "Garage Door") && find(root, "Open") && find(root, "Closed"));
     assert(find(root, "Office energy saver") && find(root, "00:12:34"));
+    assert(find(root, "Current Weather") && find(root, "Next Hours") && find(root, "Next Days"));
     auto *garage_card = lv_obj_get_parent(find(root, "Garage Door")); assert(lv_obj_get_height(garage_card) == 120);
     lv_obj_send_event(garage_card, LV_EVENT_CLICKED, nullptr);
     assert(find(root, "Garage Door?") && toggle_count == 0);

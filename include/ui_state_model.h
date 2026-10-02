@@ -91,6 +91,28 @@ struct OverviewCardViewModel {
 size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t capacity);
 bool ui_state_model_activate_overview(const OverviewCardViewModel &card);
 
+struct WeatherForecastViewModel {
+    char period[16];
+    char condition[32];
+    char temperature[24];
+    char detail[32];
+};
+
+struct WeatherViewModel {
+    char entity_name[64];
+    char condition[32];
+    char temperature[24];
+    char detail[96];
+    bool available;
+    bool loading;
+    uint8_t hourly_count;
+    uint8_t daily_count;
+    WeatherForecastViewModel hourly[HA_MAX_WEATHER_HOURLY];
+    WeatherForecastViewModel daily[HA_MAX_WEATHER_DAILY];
+};
+
+bool ui_state_model_snapshot_weather(WeatherViewModel &weather);
+
 struct MediaPlayerViewModel {
     char entity_id[96];
     char player_name[64];

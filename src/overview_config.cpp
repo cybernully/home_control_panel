@@ -6,7 +6,8 @@ namespace {
 const char *VALID_WIDGETS[] = {"home_status", "lights", "area", "network",
                                "quick_actions", "weather", "calendar", "panel_tip"};
 const char *VALID_ITEMS[] = {"entity", "home_status", "lights", "network",
-                             "all_lights", "weather", "calendar", "panel_tip"};
+                             "all_lights", "weather", "weather_current",
+                             "weather_hourly", "weather_daily", "calendar", "panel_tip"};
 const char *VALID_ICONS[] = {"auto", "garage", "door", "lock", "motion", "light",
                              "fan", "cover", "window", "camera", "shield",
                              "temperature", "humidity", "power", "alert", "weather", "timer"};

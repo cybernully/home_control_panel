@@ -1,11 +1,20 @@
 # Home Control Panel
 
-**Version 1.7.1**
+**Version 1.7.2**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Configurable Weather 1.7.2
+
+Weather now has a live current, hourly, and multi-day forecast experience backed
+by Home Assistant's response-producing `weather.get_forecasts` action. Web Admin
+selects the provider, chooses a balanced/current/forecast-focused tab layout,
+shows or hides each forecast section, and can add independent Weather summaries
+to Overview or a compact current temperature to the persistent header. See
+[1.7.2 release notes](docs/RELEASE_1.7.2.md).
 
 ## Web Admin header 1.7.1
 

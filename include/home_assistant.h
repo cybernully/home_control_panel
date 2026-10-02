@@ -55,6 +55,42 @@ struct HomeAssistantLightStats {
     uint8_t average_brightness_pct;
 };
 
+struct HomeAssistantWeatherForecast {
+    char datetime[40];
+    char condition[32];
+    float temperature;
+    float temperature_low;
+    uint8_t precipitation_probability;
+    bool has_temperature;
+    bool has_temperature_low;
+    bool has_precipitation_probability;
+};
+
+struct HomeAssistantWeatherSnapshot {
+    char entity_id[96];
+    char name[64];
+    char condition[32];
+    char temperature_unit[12];
+    char wind_speed_unit[16];
+    float temperature;
+    float apparent_temperature;
+    float humidity;
+    float wind_speed;
+    uint16_t pressure;
+    bool available;
+    bool has_temperature;
+    bool has_apparent_temperature;
+    bool has_humidity;
+    bool has_wind_speed;
+    bool has_pressure;
+    bool forecasts_loading;
+    uint32_t last_forecast_ms;
+    uint8_t hourly_count;
+    uint8_t daily_count;
+    HomeAssistantWeatherForecast hourly[HA_MAX_WEATHER_HOURLY];
+    HomeAssistantWeatherForecast daily[HA_MAX_WEATHER_DAILY];
+};
+
 
 enum class HomeAssistantArtworkFormat : uint8_t {
     None = 0,
@@ -113,6 +149,8 @@ void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out);
 size_t home_assistant_get_room_controls(HomeAssistantEntitySnapshot *out, size_t max_count);
 size_t home_assistant_get_area_scenes(HomeAssistantEntitySnapshot *out, size_t max_count);
 void home_assistant_get_light_stats(HomeAssistantLightStats &out);
+bool home_assistant_request_weather_forecasts(const char *entity_id);
+bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnapshot &out);
 
 size_t home_assistant_get_media_players(HomeAssistantMediaSnapshot *out, size_t max_count);
 size_t home_assistant_get_media_favorites(HomeAssistantMediaFavorite *out, size_t max_count);

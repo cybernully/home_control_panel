@@ -18,6 +18,7 @@ namespace {
 constexpr int SCREEN_W=1280,SCREEN_H=800,HEADER_H=96,FOOTER_H=78,PAGE_Y=HEADER_H,PAGE_H=SCREEN_H-HEADER_H-FOOTER_H;
 constexpr uint32_t BG=ui_theme::BG,PANEL=ui_theme::SURFACE,TEXT=ui_theme::TEXT,MUTED=ui_theme::MUTED,ACCENT=ui_theme::ACCENT,BORDER=ui_theme::BORDER,SUCCESS=ui_theme::SUCCESS,WARN=ui_theme::WARN,BAD=ui_theme::DANGER;
 lv_obj_t *g_screen=nullptr,*g_header_title=nullptr,*g_clock=nullptr,*g_wifi=nullptr,*g_battery_label=nullptr,*g_battery_body=nullptr,*g_battery_fill=nullptr,*g_battery_tip=nullptr,*g_settings_button=nullptr,*g_settings_icon=nullptr,*g_settings_label=nullptr;
+lv_obj_t *g_weather_header=nullptr,*g_weather_header_icon=nullptr,*g_weather_header_label=nullptr,*g_weather_header_divider=nullptr;
 lv_obj_t *g_status_button=nullptr,*g_status_dot=nullptr,*g_status_label=nullptr,*g_comm_button=nullptr,*g_comm_icon=nullptr,*g_comm_label=nullptr,*g_status_overlay=nullptr,*g_status_message=nullptr,*g_status_time=nullptr;
 lv_obj_t *g_signal_bars[4] = {};
 lv_obj_t *g_pages[PANEL_MAX_MODULES]={},*g_nav_buttons[PANEL_MAX_MODULES]={},*g_nav_icons[PANEL_MAX_MODULES]={},*g_nav_labels[PANEL_MAX_MODULES]={};bool g_created[PANEL_MAX_MODULES]={};size_t g_active_index=0;uint32_t g_last_header_ms=0,g_last_activity_ms=0;
@@ -95,6 +96,28 @@ void update_header() {
     char clock_text[48] = {};
     format_time(clock_text, sizeof(clock_text), "%a, %b %d  |  %I:%M %p");
     lv_label_set_text(g_clock, clock_text);
+    const bool show_weather = cfg.weather_header_enabled && cfg.weather_entity_id[0];
+    if (show_weather) {
+        lv_obj_remove_flag(g_weather_header, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(g_weather_header_divider, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_width(g_header_title, 520);
+        lv_obj_set_width(g_clock, 520);
+        HomeAssistantWeatherSnapshot weather = {};
+        if (home_assistant_get_weather(cfg.weather_entity_id, weather) && weather.available && weather.has_temperature) {
+            char temperature[20];
+            snprintf(temperature, sizeof(temperature), "%.0f\xC2\xB0", static_cast<double>(weather.temperature));
+            lv_label_set_text(g_weather_header_label, temperature);
+            lv_obj_set_style_text_color(g_weather_header_icon, lv_color_hex(ui_theme::CYAN), LV_PART_MAIN);
+        } else {
+            lv_label_set_text(g_weather_header_label, "--");
+            lv_obj_set_style_text_color(g_weather_header_icon, lv_color_hex(MUTED), LV_PART_MAIN);
+        }
+    } else {
+        lv_obj_add_flag(g_weather_header, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_weather_header_divider, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_width(g_header_title, 650);
+        lv_obj_set_width(g_clock, 650);
+    }
     HomeAssistantDiscoveryStatus discovery = {};
     home_assistant_get_discovery_status(discovery);
 
@@ -153,7 +176,27 @@ void create_header() {
         lv_obj_set_pos(vertical, x, 18);
         lv_obj_set_size(vertical, 1, 60);
     };
+    g_weather_header_divider = lv_obj_create(header);
+    style_box(g_weather_header_divider, BORDER);
+    lv_obj_set_pos(g_weather_header_divider, 568, 18);
+    lv_obj_set_size(g_weather_header_divider, 1, 60);
+    lv_obj_add_flag(g_weather_header_divider, LV_OBJ_FLAG_HIDDEN);
     divider_at(720); divider_at(828); divider_at(936); divider_at(1044); divider_at(1152);
+
+    g_weather_header = lv_obj_create(header);
+    lv_obj_set_pos(g_weather_header, 572, 8);
+    lv_obj_set_size(g_weather_header, 144, 80);
+    style_box(g_weather_header, 0x071D33, 0, 0);
+    g_weather_header_icon = label(g_weather_header, "", &ha_icons_font, ui_theme::CYAN);
+    ui_theme::set_glyph(g_weather_header_icon, 0xF0595);
+    lv_obj_set_pos(g_weather_header_icon, 0, 9);
+    lv_obj_set_width(g_weather_header_icon, 144);
+    lv_obj_set_style_text_align(g_weather_header_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    g_weather_header_label = label(g_weather_header, "--", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_pos(g_weather_header_label, 0, 51);
+    lv_obj_set_width(g_weather_header_label, 144);
+    lv_obj_set_style_text_align(g_weather_header_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_add_flag(g_weather_header, LV_OBJ_FLAG_HIDDEN);
 
     g_status_button = lv_obj_create(header);
     lv_obj_add_flag(g_status_button, LV_OBJ_FLAG_CLICKABLE);
