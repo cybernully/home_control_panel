@@ -101,7 +101,7 @@ void build_event(CalendarEventViewModel &out, const HomeAssistantCalendarEvent &
 }
 }
 
-bool ui_state_model_snapshot_calendar(int16_t week_offset, uint8_t selected_day,
+bool ui_state_model_snapshot_calendar(int16_t period_offset, uint8_t selected_day,
                                       CalendarViewModel &calendar) {
     memset(&calendar, 0, sizeof(calendar));
     const PanelConfig &cfg = config_service_get();
@@ -118,43 +118,53 @@ bool ui_state_model_snapshot_calendar(int16_t week_offset, uint8_t selected_day,
     struct tm today_tm = *localtime(&now);
     today_tm.tm_hour = 0; today_tm.tm_min = 0; today_tm.tm_sec = 0; today_tm.tm_isdst = -1;
     const time_t today = mktime(&today_tm);
-    const int first_day = cfg.calendar_week_starts_monday ? 1 : 0;
-    const int days_since_start = (today_tm.tm_wday - first_day + 7) % 7;
-    struct tm week_start_tm = today_tm;
-    week_start_tm.tm_mday += week_offset * 7 - days_since_start;
-    week_start_tm.tm_isdst = -1;
-    const time_t week_start = mktime(&week_start_tm);
-    struct tm week_end_tm = week_start_tm;
-    week_end_tm.tm_mday += 7; week_end_tm.tm_isdst = -1;
-    const time_t week_end = mktime(&week_end_tm);
-    if (selected_day > 6) selected_day = 0;
+    const uint8_t day_count = cfg.calendar_days == 1 || cfg.calendar_days == 3 ? cfg.calendar_days : 7;
+    calendar.day_count = day_count;
+    struct tm period_start_tm = today_tm;
+    if (day_count == 7) {
+        const int first_day = cfg.calendar_week_starts_monday ? 1 : 0;
+        const int days_since_start = (today_tm.tm_wday - first_day + 7) % 7;
+        period_start_tm.tm_mday += period_offset * 7 - days_since_start;
+    } else {
+        period_start_tm.tm_mday += period_offset * day_count;
+    }
+    period_start_tm.tm_isdst = -1;
+    const time_t period_start = mktime(&period_start_tm);
+    struct tm period_end_tm = period_start_tm;
+    period_end_tm.tm_mday += day_count; period_end_tm.tm_isdst = -1;
+    const time_t period_end = mktime(&period_end_tm);
+    if (selected_day >= day_count) selected_day = 0;
 
     char request_start[32] = {}, request_end[32] = {};
-    week_start_tm = *localtime(&week_start);
-    week_end_tm = *localtime(&week_end);
-    strftime(request_start, sizeof(request_start), "%Y-%m-%d 00:00:00", &week_start_tm);
-    strftime(request_end, sizeof(request_end), "%Y-%m-%d 00:00:00", &week_end_tm);
+    period_start_tm = *localtime(&period_start);
+    period_end_tm = *localtime(&period_end);
+    strftime(request_start, sizeof(request_start), "%Y-%m-%d 00:00:00", &period_start_tm);
+    strftime(request_end, sizeof(request_end), "%Y-%m-%d 00:00:00", &period_end_tm);
     home_assistant_request_calendar_events(request_start, request_end);
 
-    struct tm last_tm = week_start_tm;
-    last_tm.tm_mday += 6; last_tm.tm_isdst = -1;
-    const time_t week_last = mktime(&last_tm);
-    last_tm = *localtime(&week_last);
-    if (week_start_tm.tm_mon == last_tm.tm_mon)
-        strftime(calendar.week_label, sizeof(calendar.week_label), "%B %d", &week_start_tm);
-    else
-        strftime(calendar.week_label, sizeof(calendar.week_label), "%b %d", &week_start_tm);
-    char tail[24] = {};
-    strftime(tail, sizeof(tail), week_start_tm.tm_mon == last_tm.tm_mon ? " - %d, %Y" : " - %b %d, %Y", &last_tm);
-    strncat(calendar.week_label, tail, sizeof(calendar.week_label) - strlen(calendar.week_label) - 1);
+    struct tm last_tm = period_start_tm;
+    last_tm.tm_mday += day_count - 1; last_tm.tm_isdst = -1;
+    const time_t period_last = mktime(&last_tm);
+    last_tm = *localtime(&period_last);
+    if (day_count == 1) {
+        strftime(calendar.week_label, sizeof(calendar.week_label), "%A, %B %d, %Y", &period_start_tm);
+    } else {
+        if (period_start_tm.tm_mon == last_tm.tm_mon)
+            strftime(calendar.week_label, sizeof(calendar.week_label), "%B %d", &period_start_tm);
+        else
+            strftime(calendar.week_label, sizeof(calendar.week_label), "%b %d", &period_start_tm);
+        char tail[24] = {};
+        strftime(tail, sizeof(tail), period_start_tm.tm_mon == last_tm.tm_mon ? " - %d, %Y" : " - %b %d, %Y", &last_tm);
+        strncat(calendar.week_label, tail, sizeof(calendar.week_label) - strlen(calendar.week_label) - 1);
+    }
 
     time_t day_starts[8] = {};
-    for (uint8_t day = 0; day <= 7; ++day) {
-        struct tm local = week_start_tm;
+    for (uint8_t day = 0; day <= day_count; ++day) {
+        struct tm local = period_start_tm;
         local.tm_mday += day; local.tm_isdst = -1;
         day_starts[day] = mktime(&local);
         local = *localtime(&day_starts[day]);
-        if (day == 7) continue;
+        if (day == day_count) continue;
         strftime(calendar.days[day].weekday, sizeof(calendar.days[day].weekday), "%a", &local);
         strftime(calendar.days[day].date, sizeof(calendar.days[day].date), "%d", &local);
         calendar.days[day].today = day_starts[day] == today;
@@ -178,7 +188,7 @@ bool ui_state_model_snapshot_calendar(int16_t week_offset, uint8_t selected_day,
         if (!parse_time(source.start, start, start_all_day)) continue;
         if (!parse_time(source.end, end, end_all_day)) end = start + (start_all_day ? DAY_SECONDS : 3600);
         if (end <= start) end = start + (start_all_day ? DAY_SECONDS : 3600);
-        for (uint8_t day = 0; day < 7; ++day) {
+        for (uint8_t day = 0; day < day_count; ++day) {
             if (start < day_starts[day + 1] && end > day_starts[day] && calendar.days[day].event_count < 255)
                 ++calendar.days[day].event_count;
         }

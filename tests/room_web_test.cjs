@@ -50,9 +50,10 @@ for(const feature of ["weather_layout", "weather_show_current", "weather_show_ho
                      "weather_show_daily", "weather_header_enabled", "weather_entities"])
   assert(source.includes(feature),`missing v1.7.2 Weather configuration: ${feature}`);
 for(const feature of ["Calendar tab", "calendar_sources", "calendar_add_entity",
-                     "calendar_week_starts_monday", "function addCalendar",
-                     "function moveCalendar", "combined weekly view"])
-  assert(source.includes(feature),`missing v1.8 Calendar configuration: ${feature}`);
+                     "calendar_week_starts_monday", "calendar_days", "Days shown",
+                     "1 day", "3 days", "Full 7-day week", "function addCalendar",
+                     "function moveCalendar", "configured calendar view"])
+  assert(source.includes(feature),`missing v1.8.1 Calendar configuration: ${feature}`);
 assert(source.includes('function showModule(id)'),'show-tab buttons must update the web navigation immediately');
 assert(source.includes('onclick="showModule(\'${m}\')"'),'show-tab buttons must use the explicit handler');
 assert(source.match(/<section id="media"[\s\S]*?Refresh Home Assistant media/),'Media must expose its own HA search trigger');

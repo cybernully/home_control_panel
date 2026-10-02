@@ -31,7 +31,7 @@ lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font, uint3
 }
 
 void safe_text(lv_obj_t *object, const char *value) {
-    char display[192];
+    char display[640];
     panel_display_text(display, sizeof(display), value ? value : "");
     lv_label_set_text(object, display);
 }
@@ -48,12 +48,15 @@ uint32_t named_color(const char *color) {
 }
 
 void CalendarModule::select_today() {
-    week_offset_ = 0;
+    period_offset_ = 0;
     const time_t now = time(nullptr);
     const struct tm *local = localtime(&now);
     if (!local) { selected_day_ = 0; return; }
-    const bool monday = config_service_get().calendar_week_starts_monday;
-    selected_day_ = static_cast<uint8_t>((local->tm_wday - (monday ? 1 : 0) + 7) % 7);
+    const PanelConfig &config = config_service_get();
+    const uint8_t day_count = config.calendar_days == 1 || config.calendar_days == 3 ? config.calendar_days : 7;
+    const bool monday = config.calendar_week_starts_monday;
+    selected_day_ = day_count == 7 ?
+        static_cast<uint8_t>((local->tm_wday - (monday ? 1 : 0) + 7) % 7) : 0;
 }
 
 void CalendarModule::create(lv_obj_t *parent) {
@@ -155,24 +158,31 @@ void CalendarModule::create(lv_obj_t *parent) {
     lv_obj_add_flag(detail_overlay_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(detail_overlay_, close_detail_cb, LV_EVENT_CLICKED, this);
     lv_obj_t *dialog = lv_obj_create(detail_overlay_);
-    lv_obj_set_size(dialog, 760, 430); lv_obj_center(dialog);
+    lv_obj_set_size(dialog, 1100, 540); lv_obj_center(dialog);
     style_box(dialog, SURFACE, 22, 1);
     lv_obj_remove_flag(dialog, LV_OBJ_FLAG_CLICKABLE);
     auto *eyebrow = label(dialog, "EVENT DETAILS", &lv_font_montserrat_12, ui_theme::CYAN);
     lv_obj_set_pos(eyebrow, 30, 24);
     detail_title_ = label(dialog, "", &lv_font_montserrat_28, TEXT);
-    lv_obj_set_pos(detail_title_, 30, 55); lv_obj_set_width(detail_title_, 700);
-    lv_label_set_long_mode(detail_title_, LV_LABEL_LONG_DOT);
+    lv_obj_set_pos(detail_title_, 30, 52); lv_obj_set_width(detail_title_, 1040);
+    lv_label_set_long_mode(detail_title_, LV_LABEL_LONG_WRAP);
     detail_meta_ = label(dialog, "", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(detail_meta_, 30, 112); lv_obj_set_width(detail_meta_, 700);
-    detail_location_ = label(dialog, "", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(detail_location_, 30, 156); lv_obj_set_width(detail_location_, 700);
+    lv_obj_set_pos(detail_meta_, 30, 118); lv_obj_set_width(detail_meta_, 1040);
+    detail_body_ = lv_obj_create(dialog);
+    lv_obj_set_pos(detail_body_, 30, 158); lv_obj_set_size(detail_body_, 1040, 322);
+    style_box(detail_body_, 0x0D2138, 14, 1);
+    lv_obj_set_style_pad_all(detail_body_, 20, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(detail_body_, 16, LV_PART_MAIN);
+    lv_obj_set_flex_flow(detail_body_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(detail_body_, LV_DIR_VER);
+    detail_location_ = label(detail_body_, "", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_width(detail_location_, LV_PCT(100));
     lv_label_set_long_mode(detail_location_, LV_LABEL_LONG_WRAP);
-    detail_description_ = label(dialog, "", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(detail_description_, 30, 210); lv_obj_set_width(detail_description_, 700);
+    detail_description_ = label(detail_body_, "", &lv_font_montserrat_16, TEXT);
+    lv_obj_set_width(detail_description_, LV_PCT(100));
     lv_label_set_long_mode(detail_description_, LV_LABEL_LONG_WRAP);
     auto *close = label(dialog, "Tap outside to close", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(close, 30, 388);
+    lv_obj_set_pos(close, 30, 505);
     lv_obj_add_flag(detail_overlay_, LV_OBJ_FLAG_HIDDEN);
 
     select_today();
@@ -187,12 +197,27 @@ void CalendarModule::on_activate() {
 
 void CalendarModule::update() {
     if (!parent_) return;
-    ui_state_model_snapshot_calendar(week_offset_, selected_day_, model_);
+    ui_state_model_snapshot_calendar(period_offset_, selected_day_, model_);
     safe_text(week_label_, model_.week_label);
     safe_text(status_, model_.status);
     safe_text(selected_label_, model_.selected_day_label);
+    const uint8_t day_count = model_.day_count == 1 || model_.day_count == 3 ? model_.day_count : 7;
+    const int day_gap = day_count == 7 ? 8 : 12;
+    const int strip_width = day_count == 1 ? 420 : 1232;
+    const int day_width = (strip_width - day_gap * (day_count - 1)) / day_count;
+    const int day_x = 24 + (1232 - strip_width) / 2;
     for (uint8_t i = 0; i < 7; ++i) {
         DaySlot &slot = days_[i];
+        if (i >= day_count) {
+            lv_obj_add_flag(slot.root, LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_remove_flag(slot.root, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(slot.root, day_x + i * (day_width + day_gap), 72);
+        lv_obj_set_width(slot.root, day_width);
+        lv_obj_set_width(slot.weekday, day_width);
+        lv_obj_set_width(slot.date, day_width);
+        lv_obj_set_width(slot.count, day_width);
         safe_text(slot.weekday, model_.days[i].weekday);
         safe_text(slot.date, model_.days[i].date);
         char count[24] = {};
@@ -236,13 +261,18 @@ void CalendarModule::show_event(uint8_t index) {
     if (index >= model_.event_count) return;
     const CalendarEventViewModel &event = model_.events[index];
     safe_text(detail_title_, event.title);
-    char meta[128];
+    char meta[176];
     snprintf(meta, sizeof(meta), "%s  |  %s", event.calendar, event.date_range);
     safe_text(detail_meta_, meta);
-    char location[112];
-    snprintf(location, sizeof(location), "%s%s", event.location[0] ? "Location: " : "", event.location);
+    char location[160];
+    snprintf(location, sizeof(location), "LOCATION\n%s",
+             event.location[0] ? event.location : "No location provided");
     safe_text(detail_location_, location);
-    safe_text(detail_description_, event.description[0] ? event.description : "No additional details.");
+    char description[544];
+    snprintf(description, sizeof(description), "DETAILS\n%s",
+             event.description[0] ? event.description : "No additional details provided.");
+    safe_text(detail_description_, description);
+    if (detail_body_) lv_obj_scroll_to_y(detail_body_, 0, LV_ANIM_OFF);
     lv_obj_remove_flag(detail_overlay_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(detail_overlay_);
 }
@@ -259,8 +289,8 @@ void CalendarModule::nav_cb(lv_event_t *event) {
     auto *self = static_cast<CalendarModule *>(lv_event_get_user_data(event));
     if (!self) return;
     lv_obj_t *target = static_cast<lv_obj_t *>(lv_event_get_target(event));
-    if (target == self->previous_) --self->week_offset_;
-    else if (target == self->next_) ++self->week_offset_;
+    if (target == self->previous_) --self->period_offset_;
+    else if (target == self->next_) ++self->period_offset_;
     else if (target == self->today_) self->select_today();
     self->update();
 }

@@ -27,6 +27,7 @@ bool home_assistant_get_calendar_event(size_t index, HomeAssistantCalendarEvent 
 int main() {
     config.calendar_count = 2;
     config.calendar_week_starts_monday = true;
+    config.calendar_days = 7;
     snprintf(config.calendars[0].entity_id, sizeof(config.calendars[0].entity_id), "calendar.work");
     snprintf(config.calendars[0].label, sizeof(config.calendars[0].label), "Work");
     snprintf(config.calendars[0].color, sizeof(config.calendars[0].color), "cyan");
@@ -70,5 +71,40 @@ int main() {
     assert(strcmp(model.events[0].time, "All day") == 0);
     assert(strcmp(model.events[1].title, "Standup") == 0);
     assert(strstr(model.events[1].time, "9:00 AM"));
+
+    config.calendar_days = 1;
+    memset(&model, 0, sizeof(model));
+    assert(ui_state_model_snapshot_calendar(0, 0, model));
+    assert(model.day_count == 1);
+    assert(model.days[0].today);
+    assert(model.days[0].event_count == 2);
+    assert(model.event_count == 2);
+    char expected_start[32] = {}, expected_end[32] = {};
+    snprintf(expected_start, sizeof(expected_start), "%s 00:00:00", today);
+    snprintf(expected_end, sizeof(expected_end), "%s 00:00:00", tomorrow);
+    assert(strcmp(requested_start, expected_start) == 0);
+    assert(strcmp(requested_end, expected_end) == 0);
+
+    config.calendar_days = 3;
+    memset(&model, 0, sizeof(model));
+    assert(ui_state_model_snapshot_calendar(0, 1, model));
+    assert(model.day_count == 3);
+    assert(model.days[0].today);
+    assert(model.days[1].selected);
+    assert(model.days[1].event_count == 1);
+    assert(model.event_count == 1);
+    assert(strcmp(model.events[0].title, "Tomorrow") == 0);
+
+    struct tm after_three = local;
+    after_three.tm_mday += 3; after_three.tm_isdst = -1; mktime(&after_three);
+    char after_three_text[16] = {};
+    strftime(after_three_text, sizeof(after_three_text), "%Y-%m-%d", &after_three);
+    snprintf(expected_end, sizeof(expected_end), "%s 00:00:00", after_three_text);
+    assert(strcmp(requested_end, expected_end) == 0);
+
+    memset(&model, 0, sizeof(model));
+    assert(ui_state_model_snapshot_calendar(1, 0, model));
+    assert(!model.days[0].today);
+    assert(strcmp(requested_start, expected_end) == 0);
     return 0;
 }

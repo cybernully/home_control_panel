@@ -124,10 +124,10 @@ struct CalendarDayViewModel {
 struct CalendarEventViewModel {
     char calendar[40];
     char color[12];
-    char title[80];
+    char title[120];
     char time[40];
-    char location[80];
-    char description[160];
+    char location[120];
+    char description[512];
     char date_range[80];
 };
 
@@ -137,14 +137,16 @@ struct CalendarViewModel {
     char status[64];
     bool loading;
     bool available;
+    uint8_t day_count;
     CalendarDayViewModel days[7];
     uint8_t event_count;
     CalendarEventViewModel events[8];
 };
 
-// week_offset is relative to the current week. selected_day is 0-6 within
-// that week. The model owns date math and HA range requests; LVGL only renders.
-bool ui_state_model_snapshot_calendar(int16_t week_offset, uint8_t selected_day,
+// period_offset is relative to the current configured 1, 3, or 7-day period.
+// selected_day is an index within that period. The model owns date math and HA
+// range requests; LVGL only renders.
+bool ui_state_model_snapshot_calendar(int16_t period_offset, uint8_t selected_day,
                                       CalendarViewModel &calendar);
 
 struct MediaPlayerViewModel {

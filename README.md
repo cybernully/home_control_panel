@@ -1,19 +1,20 @@
 # Home Control Panel
 
-**Version 1.8.0**
+**Version 1.8.1**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
 
-## Comprehensive Calendar 1.8.0
+## Configurable Calendar Ranges 1.8.1
 
-The Calendar tab now combines up to six Home Assistant calendars into a weekly
-agenda. It opens to the current day, navigates between weeks, handles all-day
-and multi-day entries, and provides a touch detail view for each event. Calendar
-selection, ordering, labels, accent colors, and the week-start preference are
-managed in Web Admin. See the [1.8.0 release notes](docs/RELEASE_1.8.0.md).
+The Calendar tab combines up to six Home Assistant calendars into a configurable
+one-day, rolling three-day, or full seven-day agenda. Navigation advances by the
+selected period, Today returns to the current period, and the expanded event
+sheet displays longer titles, locations, date/time metadata, and scrollable
+descriptions. Calendar range, selection, ordering, labels, colors, and week-start
+preference are managed in Web Admin. See the [1.8.1 release notes](docs/RELEASE_1.8.1.md).
 
 ## Configurable Weather 1.7.2
 

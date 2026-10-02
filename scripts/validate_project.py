@@ -14,21 +14,22 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
 if missing:
     print("Missing:",*missing,sep="\n - ");sys.exit(1)
 cfg=json.loads((root/"data/panel.json").read_text())
-assert cfg["schema"]==5
+assert cfg["schema"]==6
+assert cfg["calendar_days"] in {1,3,7}
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=6
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.8.0"' in app
+assert '#define APP_VERSION "1.8.1"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
@@ -92,7 +93,7 @@ for feature in ["Overview layout", "Home Assistant entity", "active_states", "ov
     assert feature in web_ui
 for feature in ["Room status bar", "roomStatusDefaults", "status_slots", "binary sensors, timers"]:
     assert feature in web_ui
-for feature in ["Calendar tab", "calendar_sources", "calendar_week_starts_monday", "addCalendar", "moveCalendar"]:
+for feature in ["Calendar tab", "calendar_sources", "calendar_week_starts_monday", "calendar_days", "addCalendar", "moveCalendar"]:
     assert feature in web_ui
 assert "home_assistant_request_full_discovery" in ha and "is_layout_entity" in ha
 settings=(root/"src/modules/settings_module.cpp").read_text()
@@ -109,7 +110,7 @@ weather=(root/"src/modules/weather_module.cpp").read_text()
 for feature in ["HOURLY FORECAST", "MULTI-DAY FORECAST", "weather_layout", "ui_state_model_snapshot_weather"]:
     assert feature in weather
 calendar=(root/"src/modules/calendar_module.cpp").read_text()
-for feature in ["select_today", "week_offset_", "selected_day_", "EVENT DETAILS", "ui_state_model_snapshot_calendar"]:
+for feature in ["select_today", "period_offset_", "selected_day_", "EVENT DETAILS", "detail_body_", "ui_state_model_snapshot_calendar"]:
     assert feature in calendar
-print("Home Control Panel v1.8.0 structure validation passed.")
+print("Home Control Panel v1.8.1 structure validation passed.")
 

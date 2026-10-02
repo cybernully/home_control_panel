@@ -93,9 +93,9 @@ struct HomeAssistantWeatherSnapshot {
 
 struct HomeAssistantCalendarEvent {
     char calendar_entity_id[96];
-    char summary[80];
-    char description[160];
-    char location[80];
+    char summary[120];
+    char description[512];
+    char location[120];
     char start[40];
     char end[40];
     bool all_day;

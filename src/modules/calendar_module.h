@@ -42,9 +42,10 @@ private:
     lv_obj_t *detail_title_ = nullptr;
     lv_obj_t *detail_meta_ = nullptr;
     lv_obj_t *detail_location_ = nullptr;
+    lv_obj_t *detail_body_ = nullptr;
     lv_obj_t *detail_description_ = nullptr;
     CalendarViewModel model_ = {};
-    int16_t week_offset_ = 0;
+    int16_t period_offset_ = 0;
     uint8_t selected_day_ = 0;
     bool initialized_ = false;
 

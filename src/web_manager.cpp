@@ -184,6 +184,7 @@ void handle_get_config() {
     doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
+    doc["calendar_days"] = cfg.calendar_days;
     JsonArray calendars = doc["calendars"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
         JsonObject item = calendars.add<JsonObject>();
@@ -560,6 +561,12 @@ void handle_save_config() {
     String calendars_error;
     if (!parse_calendars(next, calendars_error)) { send_error(400, calendars_error.c_str()); return; }
     next.calendar_week_starts_monday = g_server.arg("calendar_week_starts_monday") != "0";
+    const int calendar_days = g_server.hasArg("calendar_days") ?
+        g_server.arg("calendar_days").toInt() : next.calendar_days;
+    if (calendar_days != 1 && calendar_days != 3 && calendar_days != 7) {
+        send_error(400, "Calendar days shown must be 1, 3, or 7."); return;
+    }
+    next.calendar_days = static_cast<uint8_t>(calendar_days);
     String widgets_error;
     if (g_server.hasArg("overview_widgets") &&
         !config_service_parse_overview_widgets(g_server.arg("overview_widgets"), next, widgets_error)) {

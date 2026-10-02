@@ -121,6 +121,8 @@ struct PanelConfig {
     PanelCalendarSource calendars[PANEL_MAX_CALENDARS];
     uint8_t calendar_count;
     bool calendar_week_starts_monday;
+    // Number of consecutive days rendered by the Calendar tab: 1, 3, or 7.
+    uint8_t calendar_days;
     PanelOverviewWidget overview_widgets[PANEL_MAX_OVERVIEW_WIDGETS];
     uint8_t overview_widget_count;
     PanelOverviewQuickAction overview_quick_actions[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];

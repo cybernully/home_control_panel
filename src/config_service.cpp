@@ -50,6 +50,7 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.weather_show_daily = true;
     cfg.weather_header_enabled = false;
     cfg.calendar_week_starts_monday = true;
+    cfg.calendar_days = 7;
     config_service_set_profile_defaults(cfg);
     cfg.room_count = 1;
     copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
@@ -65,7 +66,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 5;
+    doc["schema"] = 6;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -81,6 +82,7 @@ bool save_internal(const PanelConfig &cfg) {
     doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
+    doc["calendar_days"] = cfg.calendar_days;
     JsonArray calendars = doc["calendars"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
         JsonObject item = calendars.add<JsonObject>();
@@ -237,6 +239,9 @@ bool config_service_begin() {
         loaded.weather_show_current = true;
     copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), doc["calendar_entity_id"] | "");
     loaded.calendar_week_starts_monday = doc["calendar_week_starts_monday"] | true;
+    loaded.calendar_days = doc["calendar_days"] | 7;
+    if (loaded.calendar_days != 1 && loaded.calendar_days != 3 && loaded.calendar_days != 7)
+        loaded.calendar_days = 7;
     JsonArray calendar_sources = doc["calendars"].as<JsonArray>();
     if (!calendar_sources.isNull()) {
         for (JsonObject item : calendar_sources) {
@@ -378,6 +383,8 @@ bool config_service_save(const PanelConfig &config) {
         clean.media_player_count = PANEL_MAX_MEDIA_PLAYERS;
     }
     if (clean.calendar_count > PANEL_MAX_CALENDARS) clean.calendar_count = PANEL_MAX_CALENDARS;
+    if (clean.calendar_days != 1 && clean.calendar_days != 3 && clean.calendar_days != 7)
+        clean.calendar_days = 7;
     clean.calendar_entity_id[0] = '\0';
     if (clean.calendar_count)
         copy_text(clean.calendar_entity_id, sizeof(clean.calendar_entity_id), clean.calendars[0].entity_id);

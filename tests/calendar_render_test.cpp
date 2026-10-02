@@ -12,8 +12,8 @@ static CalendarViewModel calendar = {};
 
 const PanelConfig &config_service_get() { return config; }
 bool ui_state_model_snapshot_calendar(int16_t, uint8_t selected_day, CalendarViewModel &out) {
-    calendar.days[0].selected = selected_day == 0;
-    calendar.days[1].selected = selected_day == 1;
+    calendar.day_count = config.calendar_days;
+    for (uint8_t i = 0; i < 7; ++i) calendar.days[i].selected = selected_day == i;
     out = calendar;
     return out.available;
 }
@@ -42,18 +42,19 @@ int main() {
     lv_display_set_flush_cb(display, flush);
     config.calendar_count = 2;
     config.calendar_week_starts_monday = true;
+    config.calendar_days = 3;
     calendar.available = true;
-    snprintf(calendar.week_label, sizeof(calendar.week_label), "September 28 - October 4, 2026");
+    snprintf(calendar.week_label, sizeof(calendar.week_label), "October 01 - 03, 2026");
     snprintf(calendar.selected_day_label, sizeof(calendar.selected_day_label), "Thursday, October 01");
     snprintf(calendar.status, sizeof(calendar.status), "3 events");
-    const char *days[] = {"Mon","Tue","Wed","Thu","Fri","Sat","Sun"};
-    const char *dates[] = {"28","29","30","01","02","03","04"};
+    const char *days[] = {"Thu","Fri","Sat","Sun","Mon","Tue","Wed"};
+    const char *dates[] = {"01","02","03","04","05","06","07"};
     for (uint8_t i = 0; i < 7; ++i) {
         snprintf(calendar.days[i].weekday, sizeof(calendar.days[i].weekday), "%s", days[i]);
         snprintf(calendar.days[i].date, sizeof(calendar.days[i].date), "%s", dates[i]);
-        calendar.days[i].event_count = i == 3 ? 3 : i % 2;
-        calendar.days[i].selected = i == 3;
-        calendar.days[i].today = i == 3;
+        calendar.days[i].event_count = i == 0 ? 3 : i % 2;
+        calendar.days[i].selected = i == 0;
+        calendar.days[i].today = i == 0;
     }
     calendar.event_count = 3;
     const char *titles[] = {"Team standup", "Dentist appointment", "School concert"};
@@ -65,6 +66,10 @@ int main() {
         snprintf(calendar.events[i].color, sizeof(calendar.events[i].color), "%s", i == 2 ? "purple" : "cyan");
         if (i == 1) snprintf(calendar.events[i].location, sizeof(calendar.events[i].location), "Downtown Clinic");
     }
+    snprintf(calendar.events[0].date_range, sizeof(calendar.events[0].date_range), "Thu, Oct 01  |  9:00 AM - 9:30 AM");
+    snprintf(calendar.events[0].location, sizeof(calendar.events[0].location), "Conference Room A");
+    snprintf(calendar.events[0].description, sizeof(calendar.events[0].description),
+             "Review the launch checklist, confirm deployment owners, discuss open risks, and capture next steps for the release team.\n\nBring the updated rollout notes and testing results.");
     CalendarModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
     assert(find(root, "Calendar") && find(root, "Today") && find(root, "Thursday, October 01"));
     assert(find(root, "Team standup") && find(root, "Dentist appointment") && find(root, "School concert"));
@@ -74,5 +79,16 @@ int main() {
     auto *details = find(root, "EVENT DETAILS");
     assert(details && !lv_obj_has_flag(lv_obj_get_parent(lv_obj_get_parent(details)), LV_OBJ_FLAG_HIDDEN));
     shot(".test-build/calendar-event-details.ppm");
+    lv_obj_send_event(lv_obj_get_parent(lv_obj_get_parent(details)), LV_EVENT_CLICKED, nullptr);
+
+    config.calendar_days = 1;
+    snprintf(calendar.week_label, sizeof(calendar.week_label), "Thursday, October 01, 2026");
+    module.update(); lv_obj_update_layout(root);
+    shot(".test-build/calendar-one-day.ppm");
+
+    config.calendar_days = 7;
+    snprintf(calendar.week_label, sizeof(calendar.week_label), "October 01 - 07, 2026");
+    module.update(); lv_obj_update_layout(root);
+    shot(".test-build/calendar-seven-day.ppm");
     return 0;
 }
