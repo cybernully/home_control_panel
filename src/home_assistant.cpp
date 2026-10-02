@@ -160,6 +160,18 @@ uint32_t g_weather_forecast_started_ms = 0;
 uint32_t g_weather_forecast_retry_not_before_ms = 0;
 char g_weather_forecast_entity_id[96] = {};
 
+HomeAssistantCalendarSnapshot g_calendar_cache = {};
+HomeAssistantCalendarEvent *g_calendar_events = nullptr;
+bool g_calendar_requested = false;
+uint32_t g_calendar_request_ids[PANEL_MAX_CALENDARS] = {};
+uint32_t g_calendar_request_started_ms = 0;
+uint32_t g_calendar_retry_not_before_ms = 0;
+bool g_calendar_any_success = false;
+char g_calendar_requested_start[40] = {};
+char g_calendar_requested_end[40] = {};
+char g_calendar_next_start[40] = {};
+char g_calendar_next_end[40] = {};
+
 char g_resolved_area_id[64] = {};
 char g_resolved_area_name[64] = {};
 
@@ -168,6 +180,7 @@ void send_subscribe_entities_worker();
 void refresh_entity_subscription_worker();
 void populate_configured_layout_entities_worker();
 void send_weather_forecasts_worker();
+void send_calendar_events_worker();
 
 HomeAssistantMediaFavorite g_media_favorites[HA_MAX_MEDIA_FAVORITES] = {};
 size_t g_media_favorite_count = 0;
@@ -729,6 +742,11 @@ void handle_entity_registry_result_worker(JsonDocument &doc) {
 
     portENTER_CRITICAL(&g_mux);
     g_entity_count = 0;
+    g_calendar_cache.last_update_ms = 0;
+    g_calendar_cache.available = false;
+    g_calendar_cache.event_count = 0;
+    g_calendar_next_start[0] = '\0';
+    g_calendar_next_end[0] = '\0';
     portEXIT_CRITICAL(&g_mux);
     bool truncated = false;
     for (JsonObjectConst item : entities) {
@@ -803,8 +821,9 @@ bool is_layout_entity(const char *entity_id) {
             (cfg.overview_items[i].action_entity_id[0] &&
              strcmp(cfg.overview_items[i].action_entity_id, entity_id) == 0)) return true;
     }
-    if ((cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) ||
-        (cfg.calendar_entity_id[0] && strcmp(cfg.calendar_entity_id, entity_id) == 0)) return true;
+    if (cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.calendar_count; ++i)
+        if (strcmp(cfg.calendars[i].entity_id, entity_id) == 0) return true;
     const char *dot = strchr(entity_id, '.');
     const size_t domain_len = dot ? static_cast<size_t>(dot - entity_id) : 0;
     for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
@@ -819,6 +838,11 @@ void populate_configured_layout_entities_worker() {
     const PanelConfig &cfg = config_service_get();
     portENTER_CRITICAL(&g_mux);
     g_entity_count = 0;
+    g_calendar_cache.last_update_ms = 0;
+    g_calendar_cache.available = false;
+    g_calendar_cache.event_count = 0;
+    g_calendar_next_start[0] = '\0';
+    g_calendar_next_end[0] = '\0';
     portEXIT_CRITICAL(&g_mux);
 
     auto add_entity = [](const char *entity_id, bool allow_generic_status = false) {
@@ -860,7 +884,7 @@ void populate_configured_layout_entities_worker() {
         add_entity(cfg.overview_items[i].action_entity_id);
     }
     add_entity(cfg.weather_entity_id);
-    add_entity(cfg.calendar_entity_id);
+    for (uint8_t i = 0; i < cfg.calendar_count; ++i) add_entity(cfg.calendars[i].entity_id, true);
 
     portENTER_CRITICAL(&g_mux);
     g_discovery.area_found = true;
@@ -1026,6 +1050,118 @@ void handle_weather_forecast_result_worker(JsonDocument &doc, bool hourly) {
         g_weather_forecast_retry_not_before_ms = 0;
     }
     portEXIT_CRITICAL(&g_mux);
+}
+
+bool calendar_requests_active() {
+    for (uint8_t i = 0; i < PANEL_MAX_CALENDARS; ++i)
+        if (g_calendar_request_ids[i]) return true;
+    return false;
+}
+
+void send_calendar_events_worker() {
+    const PanelConfig &cfg = config_service_get();
+    if (!g_ws_authenticated || !cfg.calendar_count ||
+        !g_calendar_next_start[0] || !g_calendar_next_end[0]) return;
+
+    portENTER_CRITICAL(&g_mux);
+    copy_text(g_calendar_requested_start, sizeof(g_calendar_requested_start), g_calendar_next_start);
+    copy_text(g_calendar_requested_end, sizeof(g_calendar_requested_end), g_calendar_next_end);
+    portEXIT_CRITICAL(&g_mux);
+
+    memset(g_calendar_request_ids, 0, sizeof(g_calendar_request_ids));
+    g_calendar_any_success = false;
+    portENTER_CRITICAL(&g_mux);
+    g_calendar_cache.loading = true;
+    g_calendar_cache.event_count = 0;
+    g_calendar_cache.available = false;
+    if (g_calendar_events)
+        memset(g_calendar_events, 0, HA_MAX_CALENDAR_EVENTS * sizeof(HomeAssistantCalendarEvent));
+    portEXIT_CRITICAL(&g_mux);
+
+    bool sent = false;
+    for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
+        JsonDocument doc;
+        g_calendar_request_ids[i] = next_ws_id();
+        doc["id"] = g_calendar_request_ids[i];
+        doc["type"] = "call_service";
+        doc["domain"] = "calendar";
+        doc["service"] = "get_events";
+        doc["service_data"]["start_date_time"] = g_calendar_requested_start;
+        doc["service_data"]["end_date_time"] = g_calendar_requested_end;
+        doc["target"]["entity_id"] = cfg.calendars[i].entity_id;
+        doc["return_response"] = true;
+        if (send_json(doc)) sent = true;
+        else g_calendar_request_ids[i] = 0;
+    }
+    if (sent) g_calendar_request_started_ms = millis();
+    else {
+        portENTER_CRITICAL(&g_mux);
+        g_calendar_cache.loading = false;
+        portEXIT_CRITICAL(&g_mux);
+    }
+}
+
+void handle_calendar_result_worker(JsonDocument &doc, uint8_t calendar_index) {
+    HomeAssistantCalendarEvent *parsed = static_cast<HomeAssistantCalendarEvent *>(
+        heap_caps_calloc(HA_MAX_CALENDAR_EVENTS, sizeof(HomeAssistantCalendarEvent),
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!parsed) parsed = static_cast<HomeAssistantCalendarEvent *>(
+        heap_caps_calloc(HA_MAX_CALENDAR_EVENTS, sizeof(HomeAssistantCalendarEvent), MALLOC_CAP_8BIT));
+    size_t count = 0;
+    bool success = (doc["success"] | false) && parsed && g_calendar_events;
+    if (success) {
+        const PanelConfig &cfg = config_service_get();
+        JsonObjectConst response = doc["result"]["response"].as<JsonObjectConst>();
+        if (response.isNull()) response = doc["result"].as<JsonObjectConst>();
+        const char *entity_id = calendar_index < cfg.calendar_count ?
+            cfg.calendars[calendar_index].entity_id : "";
+        JsonArrayConst events = response[entity_id]["events"].as<JsonArrayConst>();
+        if (events.isNull()) events = response["events"].as<JsonArrayConst>();
+        if (events.isNull()) success = false;
+        for (JsonObjectConst item : events) {
+            if (count >= HA_MAX_CALENDAR_EVENTS) break;
+            HomeAssistantCalendarEvent &event = parsed[count++];
+            copy_text(event.calendar_entity_id, sizeof(event.calendar_entity_id), entity_id);
+            copy_text(event.summary, sizeof(event.summary), item["summary"] | "Untitled event");
+            copy_text(event.description, sizeof(event.description), item["description"] | "");
+            copy_text(event.location, sizeof(event.location), item["location"] | "");
+            copy_text(event.start, sizeof(event.start), item["start"] | "");
+            copy_text(event.end, sizeof(event.end), item["end"] | "");
+            event.all_day = strlen(event.start) == 10 && event.start[4] == '-' && event.start[7] == '-';
+        }
+    }
+
+    portENTER_CRITICAL(&g_mux);
+    if (success) {
+        const size_t remaining = HA_MAX_CALENDAR_EVENTS - g_calendar_cache.event_count;
+        const size_t append = count < remaining ? count : remaining;
+        memcpy(g_calendar_events + g_calendar_cache.event_count, parsed,
+               append * sizeof(HomeAssistantCalendarEvent));
+        g_calendar_cache.event_count += static_cast<uint8_t>(append);
+        g_calendar_any_success = true;
+    }
+    if (calendar_index < PANEL_MAX_CALENDARS) g_calendar_request_ids[calendar_index] = 0;
+    bool complete = true;
+    for (uint8_t i = 0; i < PANEL_MAX_CALENDARS; ++i)
+        if (g_calendar_request_ids[i]) { complete = false; break; }
+    if (complete) {
+        const bool newer_range_pending = g_calendar_requested &&
+            (strcmp(g_calendar_next_start, g_calendar_requested_start) != 0 ||
+             strcmp(g_calendar_next_end, g_calendar_requested_end) != 0);
+        g_calendar_cache.loading = newer_range_pending;
+        g_calendar_cache.available = !newer_range_pending && g_calendar_any_success;
+        if (newer_range_pending) {
+            g_calendar_cache.event_count = 0;
+        } else if (g_calendar_any_success) {
+            copy_text(g_calendar_cache.range_start, sizeof(g_calendar_cache.range_start), g_calendar_requested_start);
+            copy_text(g_calendar_cache.range_end, sizeof(g_calendar_cache.range_end), g_calendar_requested_end);
+            g_calendar_cache.last_update_ms = millis();
+            g_calendar_retry_not_before_ms = 0;
+        } else g_calendar_retry_not_before_ms = millis() + HA_CALENDAR_RETRY_MS;
+        g_calendar_request_started_ms = 0;
+    }
+    portEXIT_CRITICAL(&g_mux);
+    if (parsed) heap_caps_free(parsed);
 }
 
 void handle_media_browse_result_worker(JsonDocument &doc) {
@@ -1360,6 +1496,13 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
             handle_weather_forecast_result_worker(doc, false);
         } else if (id == g_action_request_id && g_action_in_flight) {
             handle_action_result_worker(doc);
+        } else {
+            for (uint8_t i = 0; i < PANEL_MAX_CALENDARS; ++i) {
+                if (id && id == g_calendar_request_ids[i]) {
+                    handle_calendar_result_worker(doc, i);
+                    break;
+                }
+            }
         }
         return;
     }
@@ -1384,8 +1527,12 @@ void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
             g_weather_daily_request_id = 0;
             g_weather_forecast_started_ms = 0;
             g_weather_forecast_retry_not_before_ms = millis() + HA_WEATHER_FORECAST_RETRY_MS;
+            memset(g_calendar_request_ids, 0, sizeof(g_calendar_request_ids));
+            g_calendar_request_started_ms = 0;
+            g_calendar_retry_not_before_ms = millis() + HA_CALENDAR_RETRY_MS;
             portENTER_CRITICAL(&g_mux);
             g_weather_cache.forecasts_loading = false;
+            g_calendar_cache.loading = false;
             portEXIT_CRITICAL(&g_mux);
             if (g_action_in_flight) {
                 record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -102);
@@ -2273,6 +2420,18 @@ void worker_task(void *) {
             set_discovery_message("Weather forecast refresh timed out; current conditions remain live.");
         }
 
+        if (g_calendar_request_started_ms &&
+            millis() - g_calendar_request_started_ms >= HA_CALENDAR_TIMEOUT_MS) {
+            memset(g_calendar_request_ids, 0, sizeof(g_calendar_request_ids));
+            g_calendar_request_started_ms = 0;
+            g_calendar_retry_not_before_ms = millis() + HA_CALENDAR_RETRY_MS;
+            portENTER_CRITICAL(&g_mux);
+            g_calendar_cache.loading = false;
+            g_calendar_cache.available = false;
+            portEXIT_CRITICAL(&g_mux);
+            set_discovery_message("Calendar refresh timed out; cached events remain visible.");
+        }
+
         if (g_action_in_flight &&
             millis() - g_action_started_ms >= HA_COMMAND_RESULT_TIMEOUT_MS) {
             record_action_result(g_action_description[0] ? g_action_description : "Home Assistant action", -110);
@@ -2292,6 +2451,7 @@ void worker_task(void *) {
                 send_media_browse_worker(media_entity, media_content_id, media_content_type, 0);
             }
             if (take_flag(g_weather_forecast_requested)) send_weather_forecasts_worker();
+            if (!calendar_requests_active() && take_flag(g_calendar_requested)) send_calendar_events_worker();
         }
 
         if (g_ws_authenticated && take_flag(g_resubscribe_requested)) {
@@ -2534,6 +2694,15 @@ void home_assistant_begin() {
         set_discovery_message("Could not allocate Home Assistant state cache.");
         return;
     }
+
+    g_calendar_events = static_cast<HomeAssistantCalendarEvent *>(
+        heap_caps_calloc(HA_MAX_CALENDAR_EVENTS, sizeof(HomeAssistantCalendarEvent),
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!g_calendar_events)
+        g_calendar_events = static_cast<HomeAssistantCalendarEvent *>(
+            calloc(HA_MAX_CALENDAR_EVENTS, sizeof(HomeAssistantCalendarEvent)));
+    if (!g_calendar_events)
+        Serial0.println("[HA] WARNING: calendar event cache unavailable");
 
     g_action_queue = xQueueCreate(HA_ACTION_QUEUE_DEPTH, sizeof(HaAction));
     if (!g_action_queue) {
@@ -3083,6 +3252,52 @@ bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnaps
             found = true;
             break;
         }
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return found;
+}
+
+bool home_assistant_request_calendar_events(const char *range_start, const char *range_end) {
+    if (!range_start || !range_end || !range_start[0] || !range_end[0] ||
+        !g_worker || !g_calendar_events || config_service_get().calendar_count == 0) return false;
+    bool queued = false;
+    portENTER_CRITICAL(&g_mux);
+    const bool range_changed = strcmp(g_calendar_next_start, range_start) != 0 ||
+                               strcmp(g_calendar_next_end, range_end) != 0;
+    const bool stale = !g_calendar_cache.last_update_ms ||
+        millis() - g_calendar_cache.last_update_ms >= HA_CALENDAR_REFRESH_MS;
+    const bool retry_ready = !g_calendar_retry_not_before_ms ||
+        static_cast<int32_t>(millis() - g_calendar_retry_not_before_ms) >= 0;
+    const bool in_flight_same = calendar_requests_active() &&
+        strcmp(g_calendar_requested_start, range_start) == 0 &&
+        strcmp(g_calendar_requested_end, range_end) == 0;
+    if ((range_changed || stale) && retry_ready && !in_flight_same) {
+        copy_text(g_calendar_next_start, sizeof(g_calendar_next_start), range_start);
+        copy_text(g_calendar_next_end, sizeof(g_calendar_next_end), range_end);
+        g_calendar_requested = true;
+        g_calendar_cache.loading = true;
+        if (range_changed && strcmp(g_calendar_cache.range_start, range_start) != 0) {
+            g_calendar_cache.event_count = 0;
+            g_calendar_cache.available = false;
+        }
+        queued = true;
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return queued;
+}
+
+void home_assistant_get_calendar(HomeAssistantCalendarSnapshot &out) {
+    portENTER_CRITICAL(&g_mux);
+    out = g_calendar_cache;
+    portEXIT_CRITICAL(&g_mux);
+}
+
+bool home_assistant_get_calendar_event(size_t index, HomeAssistantCalendarEvent &out) {
+    bool found = false;
+    portENTER_CRITICAL(&g_mux);
+    if (g_calendar_events && index < g_calendar_cache.event_count) {
+        out = g_calendar_events[index];
+        found = true;
     }
     portEXIT_CRITICAL(&g_mux);
     return found;

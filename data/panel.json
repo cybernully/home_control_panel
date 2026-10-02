@@ -1,5 +1,5 @@
 {
-  "schema": 4,
+  "schema": 5,
   "device_id": "panel-01",
   "display_name": "Living Room Panel",
   "profile": "room",
@@ -34,6 +34,8 @@
   "weather_show_daily": true,
   "weather_header_enabled": false,
   "calendar_entity_id": "",
+  "calendars": [],
+  "calendar_week_starts_monday": true,
   "explicit_layout": false,
   "media_players": [],
   "overview_widgets": [

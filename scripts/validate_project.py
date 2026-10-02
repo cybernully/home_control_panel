@@ -8,32 +8,34 @@ required=[
     "include/home_assistant.h","include/web_manager.h","src/main.cpp","src/board_lvgl.cpp",
     "src/lvgl_memory.cpp","src/stb_image_impl.cpp","src/ha_icons_font.c","include/ha_icons_font.h","src/config_service.cpp","src/module_registry.cpp","src/runtime_stats.cpp","include/runtime_stats.h",
     "src/home_assistant.cpp","src/web_manager.cpp","src/hosted_c6_blob.S","data/panel.json",
-    "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp","src/modules/weather_module.cpp","src/modules/weather_module.h",
-    "src/ui_state_model.cpp","src/overview_state_model.cpp","src/weather_state_model.cpp","src/ui_card.cpp","src/ui_theme.cpp",
+    "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp","src/modules/weather_module.cpp","src/modules/weather_module.h","src/modules/calendar_module.cpp","src/modules/calendar_module.h",
+    "src/ui_state_model.cpp","src/overview_state_model.cpp","src/weather_state_model.cpp","src/calendar_state_model.cpp","src/ui_card.cpp","src/ui_theme.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
 if missing:
     print("Missing:",*missing,sep="\n - ");sys.exit(1)
 cfg=json.loads((root/"data/panel.json").read_text())
-assert cfg["schema"]==4
+assert cfg["schema"]==5
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
 assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=6
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.7.2"' in app
+assert '#define APP_VERSION "1.8.0"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
 assert '#define PANEL_MAX_MEDIA_FAVORITES 6' in app
 assert '#define PANEL_MAX_MEDIA_PLAYERS 6' in app
+assert '#define PANEL_MAX_CALENDARS 6' in app
+assert '#define HA_MAX_CALENDAR_EVENTS 48' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_COMMAND_MAX_ATTEMPTS 2U' in app
 assert '#define HA_COMMAND_RESULT_TIMEOUT_MS 6000UL' in app
@@ -52,11 +54,11 @@ assert "JPEGDEC.git#430cf789ec96a28fd65c38f0cc3818ab4728fe57" in pio
 assert "-DLV_USE_LODEPNG=1" in pio
 assert "-DLV_USE_FS_MEMFS=1" not in pio
 registry=(root/"src/module_registry.cpp").read_text()
-for name in ["OverviewModule","RoomModule","MediaModule","WeatherModule","ClimateModule","SecurityModule","SettingsModule"]:
+for name in ["OverviewModule","RoomModule","MediaModule","WeatherModule","CalendarModule","ClimateModule","SecurityModule","SettingsModule"]:
     assert name in registry
 ha=(root/"src/home_assistant.cpp").read_text()
 for feature in ["media_player/browse_media","media_play_pause","volume_set","volume_up",
-                "volume_down","select_source","play_media","get_forecasts","return_response"]:
+                "volume_down","select_source","play_media","get_forecasts","get_events","return_response"]:
     assert feature in ha
 for feature in ['JsonObject media = doc["media"].to<JsonObject>();',
                 'media["media_content_id"]', 'media["media_content_type"]',
@@ -90,6 +92,8 @@ for feature in ["Overview layout", "Home Assistant entity", "active_states", "ov
     assert feature in web_ui
 for feature in ["Room status bar", "roomStatusDefaults", "status_slots", "binary sensors, timers"]:
     assert feature in web_ui
+for feature in ["Calendar tab", "calendar_sources", "calendar_week_starts_monday", "addCalendar", "moveCalendar"]:
+    assert feature in web_ui
 assert "home_assistant_request_full_discovery" in ha and "is_layout_entity" in ha
 settings=(root/"src/modules/settings_module.cpp").read_text()
 for feature in ['#include "network_service.h"', '#include "runtime_stats.h"',
@@ -104,5 +108,8 @@ assert "include/app_secrets.h" in ignore and "include/appsecrets.h" in ignore
 weather=(root/"src/modules/weather_module.cpp").read_text()
 for feature in ["HOURLY FORECAST", "MULTI-DAY FORECAST", "weather_layout", "ui_state_model_snapshot_weather"]:
     assert feature in weather
-print("Home Control Panel v1.7.2 structure validation passed.")
+calendar=(root/"src/modules/calendar_module.cpp").read_text()
+for feature in ["select_today", "week_offset_", "selected_day_", "EVENT DETAILS", "ui_state_model_snapshot_calendar"]:
+    assert feature in calendar
+print("Home Control Panel v1.8.0 structure validation passed.")
 

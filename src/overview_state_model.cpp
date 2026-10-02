@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 namespace {
 void copy_text(char *out, size_t out_len, const char *value) {
@@ -147,10 +148,18 @@ size_t ui_state_model_snapshot_overview(OverviewCardViewModel *cards, size_t cap
                    strcmp(item.type, "weather_hourly") == 0 || strcmp(item.type, "weather_daily") == 0) {
             build_weather(out, item.type);
         } else if (strcmp(item.type, "calendar") == 0) {
-            PanelOverviewItem entity_item = item;
-            const char *fallback_id = cfg.calendar_entity_id;
-            if (!entity_item.entity_id[0]) copy_text(entity_item.entity_id, sizeof(entity_item.entity_id), fallback_id);
-            build_entity(out, entity_item);
+            uint8_t today_index = 0;
+            const time_t now = time(nullptr);
+            if (const struct tm *local = localtime(&now))
+                today_index = static_cast<uint8_t>((local->tm_wday - (cfg.calendar_week_starts_monday ? 1 : 0) + 7) % 7);
+            CalendarViewModel calendar = {};
+            ui_state_model_snapshot_calendar(0, today_index, calendar);
+            out.available = calendar.available || calendar.loading;
+            out.active = calendar.event_count > 0;
+            if (calendar.event_count)
+                snprintf(out.state_text, sizeof(out.state_text), "%s  |  %s",
+                         calendar.events[0].time, calendar.events[0].title);
+            else copy_text(out.state_text, sizeof(out.state_text), calendar.status);
         } else {
             out.available = true;
             copy_text(out.state_text, sizeof(out.state_text), "Customize cards in Web Admin");

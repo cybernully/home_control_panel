@@ -79,6 +79,12 @@ struct PanelOverviewItem {
     bool confirm;
 };
 
+struct PanelCalendarSource {
+    char entity_id[96];
+    char label[PANEL_CALENDAR_LABEL_LEN];
+    char color[12];
+};
+
 struct PanelConfig {
     char device_id[32];
     char display_name[48];
@@ -109,7 +115,12 @@ struct PanelConfig {
     bool weather_show_hourly;
     bool weather_show_daily;
     bool weather_header_enabled;
+    // calendar_entity_id is retained as a migration alias and mirrors the
+    // first selected source for legacy Overview cards.
     char calendar_entity_id[96];
+    PanelCalendarSource calendars[PANEL_MAX_CALENDARS];
+    uint8_t calendar_count;
+    bool calendar_week_starts_monday;
     PanelOverviewWidget overview_widgets[PANEL_MAX_OVERVIEW_WIDGETS];
     uint8_t overview_widget_count;
     PanelOverviewQuickAction overview_quick_actions[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];

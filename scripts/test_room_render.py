@@ -11,8 +11,9 @@ media = '--media' in sys.argv
 header = '--header' in sys.argv
 overview = '--overview' in sys.argv
 weather = '--weather' in sys.argv
-fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/overview_render_test.cpp' if overview else 'tests/weather_render_test.cpp' if weather else 'tests/room_render_test.cpp'
-executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/overview_render_test.exe' if overview else '.test-build/weather_render_test.exe' if weather else '.test-build/room_render_test.exe'
+calendar = '--calendar' in sys.argv
+fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/overview_render_test.cpp' if overview else 'tests/weather_render_test.cpp' if weather else 'tests/calendar_render_test.cpp' if calendar else 'tests/room_render_test.cpp'
+executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/overview_render_test.exe' if overview else '.test-build/weather_render_test.exe' if weather else '.test-build/calendar_render_test.exe' if calendar else '.test-build/room_render_test.exe'
 args=['-O0','-Itests/host','-Iinclude','-Isrc/modules',f'-I{lvgl}',*flags,
       fixture]
 if media:
@@ -23,6 +24,8 @@ elif overview:
     args += ['src/modules/overview_module.cpp','src/overview_state_model.cpp','src/weather_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 elif weather:
     args += ['src/modules/weather_module.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
+elif calendar:
+    args += ['src/modules/calendar_module.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 else:
     args += ['src/modules/room_module.cpp','src/ui_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 args += ['-x','c']

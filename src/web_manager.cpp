@@ -183,6 +183,14 @@ void handle_get_config() {
     doc["weather_show_daily"] = cfg.weather_show_daily;
     doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
+    doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
+    JsonArray calendars = doc["calendars"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
+        JsonObject item = calendars.add<JsonObject>();
+        item["entity_id"] = cfg.calendars[i].entity_id;
+        item["label"] = cfg.calendars[i].label;
+        item["color"] = cfg.calendars[i].color;
+    }
     doc["ha_url"] = home_assistant_base_url();
     doc["ha_token_configured"] = home_assistant_token_configured();
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -288,6 +296,46 @@ bool parse_media_players(PanelConfig &config, String &error) {
             if (strcmp(config.media_players[i], id) == 0) { error = "Media player IDs must be unique."; return false; }
         snprintf(config.media_players[config.media_player_count++], PANEL_MEDIA_ENTITY_ID_LEN, "%s", id);
     }
+    return true;
+}
+
+bool parse_calendars(PanelConfig &config, String &error) {
+    config.calendar_count = 0;
+    memset(config.calendars, 0, sizeof(config.calendars));
+    config.calendar_entity_id[0] = '\0';
+    if (!g_server.hasArg("calendars")) return true;
+    JsonDocument doc;
+    if (deserializeJson(doc, g_server.arg("calendars")) || !doc.is<JsonArray>() ||
+        doc.size() > PANEL_MAX_CALENDARS) {
+        error = "Calendars must be an array of at most six selections.";
+        return false;
+    }
+    for (JsonObject item : doc.as<JsonArray>()) {
+        String entity = item["entity_id"] | "";
+        String label = item["label"] | "";
+        String color = item["color"] | "cyan";
+        entity.trim(); entity.toLowerCase(); label.trim(); color.trim(); color.toLowerCase();
+        if (!entity.startsWith("calendar.") || entity.length() >= 96) {
+            error = "Calendar entity IDs must begin with calendar.";
+            return false;
+        }
+        for (uint8_t i = 0; i < config.calendar_count; ++i) {
+            if (strcmp(config.calendars[i].entity_id, entity.c_str()) == 0) {
+                error = "Calendar selections must be unique.";
+                return false;
+            }
+        }
+        if (color != "cyan" && color != "green" && color != "yellow" &&
+            color != "red" && color != "purple" && color != "blue") color = "cyan";
+        PanelCalendarSource &source = config.calendars[config.calendar_count++];
+        snprintf(source.entity_id, sizeof(source.entity_id), "%s", entity.c_str());
+        snprintf(source.label, sizeof(source.label), "%s",
+                 (label.isEmpty() ? entity : label).substring(0, PANEL_CALENDAR_LABEL_LEN - 1).c_str());
+        snprintf(source.color, sizeof(source.color), "%s", color.c_str());
+    }
+    if (config.calendar_count)
+        snprintf(config.calendar_entity_id, sizeof(config.calendar_entity_id), "%s",
+                 config.calendars[0].entity_id);
     return true;
 }
 
@@ -495,8 +543,7 @@ void handle_save_config() {
     String rooms_error;
     if (g_server.hasArg("rooms") && !config_service_parse_rooms(g_server.arg("rooms"), next, rooms_error)) { send_error(400, rooms_error.c_str()); return; }
     String weather_entity = g_server.arg("weather_entity_id"); weather_entity.trim(); weather_entity.toLowerCase();
-    String calendar_entity = g_server.arg("calendar_entity_id"); calendar_entity.trim(); calendar_entity.toLowerCase();
-    if ((!weather_entity.isEmpty() && !weather_entity.startsWith("weather.")) || (!calendar_entity.isEmpty() && !calendar_entity.startsWith("calendar."))) { send_error(400, "Weather and Calendar selections must be matching Home Assistant entities."); return; }
+    if (!weather_entity.isEmpty() && !weather_entity.startsWith("weather.")) { send_error(400, "Weather selection must be a weather.* Home Assistant entity."); return; }
     snprintf(next.weather_entity_id, sizeof(next.weather_entity_id), "%s", weather_entity.substring(0,95).c_str());
     String weather_layout = g_server.arg("weather_layout"); weather_layout.trim(); weather_layout.toLowerCase();
     if (weather_layout != "balanced" && weather_layout != "current_focus" && weather_layout != "forecast_focus") {
@@ -510,7 +557,9 @@ void handle_save_config() {
     if (!next.weather_show_current && !next.weather_show_hourly && !next.weather_show_daily) {
         send_error(400, "Show at least one Weather tab section."); return;
     }
-    snprintf(next.calendar_entity_id, sizeof(next.calendar_entity_id), "%s", calendar_entity.substring(0,95).c_str());
+    String calendars_error;
+    if (!parse_calendars(next, calendars_error)) { send_error(400, calendars_error.c_str()); return; }
+    next.calendar_week_starts_monday = g_server.arg("calendar_week_starts_monday") != "0";
     String widgets_error;
     if (g_server.hasArg("overview_widgets") &&
         !config_service_parse_overview_widgets(g_server.arg("overview_widgets"), next, widgets_error)) {

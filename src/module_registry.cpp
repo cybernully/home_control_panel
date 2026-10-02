@@ -1,6 +1,7 @@
 #include "module_registry.h"
 #include "config_service.h"
 #include "modules/climate_module.h"
+#include "modules/calendar_module.h"
 #include "modules/info_module.h"
 #include "modules/media_module.h"
 #include "modules/overview_module.h"
@@ -12,7 +13,7 @@
 
 namespace {
 OverviewModule g_overview;
-InfoModule g_calendar("calendar", "Calendar", "Calendar module boundary. Family Calendar remains a separate project; this panel will later consume selected calendar data without replacing that application.");
+CalendarModule g_calendar;
 WeatherModule g_weather;
 RoomModule g_room;
 MediaModule g_media;

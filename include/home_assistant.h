@@ -91,6 +91,25 @@ struct HomeAssistantWeatherSnapshot {
     HomeAssistantWeatherForecast daily[HA_MAX_WEATHER_DAILY];
 };
 
+struct HomeAssistantCalendarEvent {
+    char calendar_entity_id[96];
+    char summary[80];
+    char description[160];
+    char location[80];
+    char start[40];
+    char end[40];
+    bool all_day;
+};
+
+struct HomeAssistantCalendarSnapshot {
+    char range_start[40];
+    char range_end[40];
+    uint32_t last_update_ms;
+    uint8_t event_count;
+    bool loading;
+    bool available;
+};
+
 
 enum class HomeAssistantArtworkFormat : uint8_t {
     None = 0,
@@ -151,6 +170,9 @@ size_t home_assistant_get_area_scenes(HomeAssistantEntitySnapshot *out, size_t m
 void home_assistant_get_light_stats(HomeAssistantLightStats &out);
 bool home_assistant_request_weather_forecasts(const char *entity_id);
 bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnapshot &out);
+bool home_assistant_request_calendar_events(const char *range_start, const char *range_end);
+void home_assistant_get_calendar(HomeAssistantCalendarSnapshot &out);
+bool home_assistant_get_calendar_event(size_t index, HomeAssistantCalendarEvent &out);
 
 size_t home_assistant_get_media_players(HomeAssistantMediaSnapshot *out, size_t max_count);
 size_t home_assistant_get_media_favorites(HomeAssistantMediaFavorite *out, size_t max_count);

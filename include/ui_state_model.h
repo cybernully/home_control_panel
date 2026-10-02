@@ -113,6 +113,40 @@ struct WeatherViewModel {
 
 bool ui_state_model_snapshot_weather(WeatherViewModel &weather);
 
+struct CalendarDayViewModel {
+    char weekday[8];
+    char date[8];
+    uint8_t event_count;
+    bool today;
+    bool selected;
+};
+
+struct CalendarEventViewModel {
+    char calendar[40];
+    char color[12];
+    char title[80];
+    char time[40];
+    char location[80];
+    char description[160];
+    char date_range[80];
+};
+
+struct CalendarViewModel {
+    char week_label[48];
+    char selected_day_label[48];
+    char status[64];
+    bool loading;
+    bool available;
+    CalendarDayViewModel days[7];
+    uint8_t event_count;
+    CalendarEventViewModel events[8];
+};
+
+// week_offset is relative to the current week. selected_day is 0-6 within
+// that week. The model owns date math and HA range requests; LVGL only renders.
+bool ui_state_model_snapshot_calendar(int16_t week_offset, uint8_t selected_day,
+                                      CalendarViewModel &calendar);
+
 struct MediaPlayerViewModel {
     char entity_id[96];
     char player_name[64];

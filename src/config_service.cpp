@@ -49,6 +49,7 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.weather_show_hourly = true;
     cfg.weather_show_daily = true;
     cfg.weather_header_enabled = false;
+    cfg.calendar_week_starts_monday = true;
     config_service_set_profile_defaults(cfg);
     cfg.room_count = 1;
     copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
@@ -64,7 +65,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 4;
+    doc["schema"] = 5;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -79,6 +80,14 @@ bool save_internal(const PanelConfig &cfg) {
     doc["weather_show_daily"] = cfg.weather_show_daily;
     doc["weather_header_enabled"] = cfg.weather_header_enabled;
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
+    doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
+    JsonArray calendars = doc["calendars"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
+        JsonObject item = calendars.add<JsonObject>();
+        item["entity_id"] = cfg.calendars[i].entity_id;
+        item["label"] = cfg.calendars[i].label;
+        item["color"] = cfg.calendars[i].color;
+    }
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
     JsonArray shortcuts = doc["media_shortcuts"].to<JsonArray>();
@@ -227,6 +236,28 @@ bool config_service_begin() {
     if (!loaded.weather_show_current && !loaded.weather_show_hourly && !loaded.weather_show_daily)
         loaded.weather_show_current = true;
     copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), doc["calendar_entity_id"] | "");
+    loaded.calendar_week_starts_monday = doc["calendar_week_starts_monday"] | true;
+    JsonArray calendar_sources = doc["calendars"].as<JsonArray>();
+    if (!calendar_sources.isNull()) {
+        for (JsonObject item : calendar_sources) {
+            if (loaded.calendar_count >= PANEL_MAX_CALENDARS) break;
+            const char *entity_id = item["entity_id"] | "";
+            if (strncmp(entity_id, "calendar.", 9) != 0) continue;
+            PanelCalendarSource &source = loaded.calendars[loaded.calendar_count++];
+            copy_text(source.entity_id, sizeof(source.entity_id), entity_id);
+            copy_text(source.label, sizeof(source.label), item["label"] | entity_id);
+            copy_text(source.color, sizeof(source.color), item["color"] | "cyan");
+        }
+    }
+    // Schema 4 exposed a single calendar entity. Promote it into the first
+    // source without losing existing Overview configuration.
+    if (loaded.calendar_count == 0 && loaded.calendar_entity_id[0]) {
+        loaded.calendar_count = 1;
+        copy_text(loaded.calendars[0].entity_id, sizeof(loaded.calendars[0].entity_id), loaded.calendar_entity_id);
+        copy_text(loaded.calendars[0].label, sizeof(loaded.calendars[0].label), "Calendar");
+        copy_text(loaded.calendars[0].color, sizeof(loaded.calendars[0].color), "cyan");
+    }
+    if (loaded.calendar_count) copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), loaded.calendars[0].entity_id);
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
     JsonArray modules = doc["modules"].as<JsonArray>();
@@ -346,6 +377,10 @@ bool config_service_save(const PanelConfig &config) {
     if (clean.media_player_count > PANEL_MAX_MEDIA_PLAYERS) {
         clean.media_player_count = PANEL_MAX_MEDIA_PLAYERS;
     }
+    if (clean.calendar_count > PANEL_MAX_CALENDARS) clean.calendar_count = PANEL_MAX_CALENDARS;
+    clean.calendar_entity_id[0] = '\0';
+    if (clean.calendar_count)
+        copy_text(clean.calendar_entity_id, sizeof(clean.calendar_entity_id), clean.calendars[0].entity_id);
     if (clean.overview_widget_count == 0 || clean.overview_widget_count > PANEL_MAX_OVERVIEW_WIDGETS)
         config_service_set_overview_defaults(clean);
     if (clean.overview_quick_action_count > PANEL_MAX_OVERVIEW_QUICK_ACTIONS)

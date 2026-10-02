@@ -27,6 +27,12 @@ bool home_assistant_get_entity(const char *id, HomeAssistantEntitySnapshot &out)
 }
 bool home_assistant_request_weather_forecasts(const char *) { return true; }
 bool home_assistant_get_weather(const char *, HomeAssistantWeatherSnapshot &out) { out = weather_snapshot; return out.available; }
+bool ui_state_model_snapshot_calendar(int16_t, uint8_t, CalendarViewModel &out) {
+    memset(&out, 0, sizeof(out));
+    snprintf(out.status, sizeof(out.status), "No events");
+    out.available = true;
+    return true;
+}
 bool home_assistant_queue_toggle(const char *id) { action_target = id; ++toggle_count; return true; }
 bool home_assistant_queue_scene(const char *) { return true; }
 bool home_assistant_queue_all_lights(bool) { ++all_lights_count; return true; }
