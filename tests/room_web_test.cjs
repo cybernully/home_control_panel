@@ -8,7 +8,7 @@ for(const feature of [
   "const $=id=>document.getElementById(id)", "function esc(s)",
   "Rooms and controls", "Media experience", "Administration", "Search Home Assistant",
   "/api/ha/discover", "/api/ha/entities", "room_controls",
-  "media_players", "mediaActionCard", "Favorites bubble menu", "media_favorites", "Save layout and configuration",
+  "media_players", "mediaActionCard", "Favorites bubble menu", "media_favorites", "Save changes",
   "explicit layout", "modules.join(',')", "Overview layout",
   "widget_catalog", "overview_widgets", "overview_items",
   "overviewBuiltinLabels", "weather:'Weather'", "calendar:'Calendar'"
@@ -53,6 +53,11 @@ for(const feature of ["Up to six icon-led shortcuts", "moveMediaPlayer", "moveMe
                      "mediaShortcuts", "mediaFavorites", "media_shortcuts",
                      "media_favorites", "DEFAULT PLAYER", "POPUP FAVORITES"])
   assert(source.includes(feature),`missing v1.7 Media editor feature: ${feature}`);
+for(const feature of ["class=\"app-header\"", "position:sticky", "id=\"header_save\"",
+                     "onclick=\"savePanelConfig()\"", "onclick=\"reboot()\"",
+                     "config_submit_guard", "MutationObserver(syncHeaderSave)"])
+  assert(source.includes(feature),`missing v1.7.1 fixed-header feature: ${feature}`);
+assert.equal((source.match(/>Reboot</g)||[]).length,1,'Reboot must have one visible Web Admin action');
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');

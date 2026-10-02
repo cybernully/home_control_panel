@@ -1,11 +1,19 @@
 # Home Control Panel
 
-**Version 1.6.4**
+**Version 1.7.1**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Web Admin header 1.7.1
+
+The Web Admin identity, connection state, navigation, Save, and Reboot controls
+remain visible in a fixed application header while long configuration pages
+scroll. Save uses the existing validated form submission path and remains
+disabled until configuration loading succeeds. See
+[1.7.1 release notes](docs/RELEASE_1.7.1.md).
 
 ## Configurable Overview 1.6.4
 
