@@ -35,11 +35,11 @@ void safe_text(lv_obj_t *target, const char *value) {
 
 void OverviewModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    lv_obj_t *heading = label(parent, "At a glance", &lv_font_montserrat_28, TEXT);
-    lv_obj_set_pos(heading, 24, 13);
-    feedback_ = label(parent, "Status and controls update live from Home Assistant", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(feedback_, 24, 48);
-    lv_obj_set_width(feedback_, 1000);
+    module_ui::title(parent, "Overview", "Whole-home status, controls, and quick actions");
+    feedback_ = label(parent, "Live status from Home Assistant", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(feedback_, 700, 54);
+    lv_obj_set_width(feedback_, 556);
+    lv_obj_set_style_text_align(feedback_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_label_set_long_mode(feedback_, LV_LABEL_LONG_DOT);
 
     card_count_ = ui_state_model_snapshot_overview(view_, PANEL_MAX_OVERVIEW_ITEMS);
@@ -51,7 +51,7 @@ void OverviewModule::create(lv_obj_t *parent) {
         BoundCard &slot = cards_[i];
         slot.owner = this;
         ui_card_create(slot.card, parent, UiCardVariant::STATUS,
-                       24 + column * 307, 76 + row * 132, span * 307 - 12, 120);
+                       24 + column * 307, PAGE_CONTENT_TOP + row * 132, span * 307 - 12, 120);
         lv_obj_add_event_cb(slot.card.root, card_cb, LV_EVENT_CLICKED, &slot);
         bind(slot, view_[i]);
         column = static_cast<uint8_t>(column + span);

@@ -58,7 +58,7 @@ void ClimateModule::create(lv_obj_t *parent) {
     module_ui::title(parent, "Climate", "Live thermostats, comfort and HVAC controls");
 
     for (uint8_t i = 0; i < PANEL_MAX_CLIMATE_DEVICES; ++i) {
-        tabs_[i] = button(parent, "Thermostat", 24 + i * 307, 80, 295, 46, CARD_ALT);
+        tabs_[i] = button(parent, "Thermostat", 24 + i * 307, PAGE_CONTENT_TOP, 295, 46, CARD_ALT);
         lv_obj_t *tab_label = lv_obj_get_child(tabs_[i], 0);
         lv_obj_set_width(tab_label, 263);
         lv_obj_set_style_text_align(tab_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);

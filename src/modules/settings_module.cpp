@@ -34,11 +34,11 @@ uint8_t used_percent(size_t used, size_t total) {
 
 void SettingsModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "System", "Panel controls, capacity, and connection diagnostics");
+    module_ui::title(parent, "Settings", "Panel controls, capacity, and connection diagnostics");
 
     const PanelConfig &cfg = config_service_get();
 
-    lv_obj_t *backlight = card(parent, 24, 92, 390, 166);
+    lv_obj_t *backlight = card(parent, 24, PAGE_CONTENT_TOP, 390, 166);
     lv_obj_t *bh = label(backlight, "Display brightness", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(bh, 18, 18);
 
@@ -64,13 +64,13 @@ void SettingsModule::create(lv_obj_t *parent) {
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(hint, 18, 128);
 
-    heap_label_ = stat_card(parent, "INTERNAL RAM", 434, 92, 196);
-    psram_label_ = stat_card(parent, "PSRAM", 648, 92, 196);
-    storage_label_ = stat_card(parent, "FLASH STORAGE", 862, 92, 190);
-    cpu_label_ = stat_card(parent, "CPU", 1070, 92, 182);
-    runtime_label_ = stat_card(parent, "UPTIME / NETWORK", 434, 180, 394);
+    heap_label_ = stat_card(parent, "INTERNAL RAM", 434, PAGE_CONTENT_TOP, 196);
+    psram_label_ = stat_card(parent, "PSRAM", 648, PAGE_CONTENT_TOP, 196);
+    storage_label_ = stat_card(parent, "FLASH STORAGE", 862, PAGE_CONTENT_TOP, 190);
+    cpu_label_ = stat_card(parent, "CPU", 1070, PAGE_CONTENT_TOP, 182);
+    runtime_label_ = stat_card(parent, "UPTIME / NETWORK", 434, 168, 394);
 
-    lv_obj_t *identity = card(parent, 846, 180, 406, 78);
+    lv_obj_t *identity = card(parent, 846, 168, 406, 78);
     lv_obj_t *ih = label(identity, "PANEL IDENTITY", &lv_font_montserrat_12, MUTED);
     lv_obj_set_pos(ih, 14, 10);
     identity_label_ = label(identity, "Checking...", &lv_font_montserrat_14, TEXT);
@@ -78,7 +78,7 @@ void SettingsModule::create(lv_obj_t *parent) {
     lv_label_set_long_mode(identity_label_, LV_LABEL_LONG_DOT);
     lv_obj_set_pos(identity_label_, 14, 36);
 
-    lv_obj_t *ha = card(parent, 24, 278, 1228, 210);
+    lv_obj_t *ha = card(parent, 24, 266, 1228, 210);
     lv_obj_t *hh = label(ha, "Home Assistant", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(hh, 18, 18);
 

@@ -29,9 +29,8 @@ bool is_disarmed(const SecurityViewModel &view) {
 void SecurityModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
     module_ui::title(parent, "Security", "Alarmo protection and monitored-device status");
-    add_live_badge(parent);
 
-    alarm_card_ = card(parent, 24, 76, 720, 236);
+    alarm_card_ = card(parent, 24, PAGE_CONTENT_TOP, 720, 236);
     alarm_icon_ = label(alarm_card_, "", &ha_icons_font, SUCCESS);
     lv_obj_set_pos(alarm_icon_, 26, 28);
     lv_obj_set_size(alarm_icon_, 76, 76);
@@ -59,7 +58,7 @@ void SecurityModule::create(lv_obj_t *parent) {
     disarm_button_ = button(alarm_card_, "Disarm", 566, 164, 136, 54, DANGER);
     lv_obj_add_event_cb(disarm_button_, mode_cb, LV_EVENT_CLICKED, &mode_bindings_[4]);
 
-    summary_card_ = card(parent, 760, 76, 496, 236);
+    summary_card_ = card(parent, 760, PAGE_CONTENT_TOP, 496, 236);
     lv_obj_t *summary_heading = label(summary_card_, "DYNAMIC ATTENTION", &lv_font_montserrat_12, MUTED);
     lv_obj_set_pos(summary_heading, 22, 20);
     summary_title_ = label(summary_card_, "All clear", &lv_font_montserrat_24, SUCCESS);
@@ -71,9 +70,9 @@ void SecurityModule::create(lv_obj_t *parent) {
     lv_label_set_long_mode(summary_detail_, LV_LABEL_LONG_WRAP);
 
     lv_obj_t *devices_heading = label(parent, "Monitored devices", &lv_font_montserrat_20, TEXT);
-    lv_obj_set_pos(devices_heading, 24, 326);
+    lv_obj_set_pos(devices_heading, 24, 330);
     feedback_ = label(parent, "Persistent cards; dynamic devices appear above only when abnormal", &lv_font_montserrat_14, MUTED);
-    lv_obj_set_pos(feedback_, 300, 331);
+    lv_obj_set_pos(feedback_, 300, 335);
     lv_obj_set_width(feedback_, 956);
     lv_obj_set_style_text_align(feedback_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_label_set_long_mode(feedback_, LV_LABEL_LONG_DOT);
@@ -82,7 +81,7 @@ void SecurityModule::create(lv_obj_t *parent) {
         const int column = i % 4;
         const int row = i / 4;
         ui_card_create(device_cards_[i], parent, UiCardVariant::STATUS,
-                       24 + column * 307, 360 + row * 122, 295, 110);
+                       24 + column * 307, 364 + row * 122, 295, 110);
         ui_card_set_visible(device_cards_[i], false);
     }
 

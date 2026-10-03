@@ -153,7 +153,9 @@ state is abnormal. An unavailable or missing configured device is always shown
 as abnormal so communication failures cannot look like an all-clear condition.
 Entries in `security_devices` receive persistent cards. Entries in
 `security_dynamic_devices` are evaluated continuously but use no card space
-while normal; they appear only in Dynamic Attention when abnormal.
+while normal; they appear only in Dynamic Attention when abnormal. Up to eight
+persistent monitored devices and sixteen dynamic attention devices may be
+configured.
 
 ## Media shortcuts
 

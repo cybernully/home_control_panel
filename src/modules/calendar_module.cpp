@@ -2,6 +2,7 @@
 
 #include "config_service.h"
 #include "display_text.h"
+#include "module_ui.h"
 #include "ui_theme.h"
 
 #include <stdio.h>
@@ -67,16 +68,17 @@ void CalendarModule::create(lv_obj_t *parent) {
     lv_obj_set_style_pad_all(parent, 0, LV_PART_MAIN);
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
-    auto *heading = label(parent, "Calendar", &lv_font_montserrat_28, TEXT);
-    lv_obj_set_pos(heading, 24, 16);
+    module_ui::title(parent, "Calendar", "Your selected calendars and schedule at a glance");
     week_label_ = label(parent, "Loading week...", &lv_font_montserrat_18, TEXT);
-    lv_obj_set_pos(week_label_, 190, 23); lv_obj_set_width(week_label_, 420);
+    lv_obj_set_pos(week_label_, 24, 94); lv_obj_set_width(week_label_, 580);
     status_ = label(parent, "", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(status_, 610, 27); lv_obj_set_width(status_, 180);
+    lv_obj_set_pos(status_, 610, 98); lv_obj_set_width(status_, 300);
+    lv_obj_set_style_text_align(status_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_label_set_long_mode(status_, LV_LABEL_LONG_DOT);
 
     auto nav_button = [&](const char *text, int x, int width) {
         lv_obj_t *button = lv_obj_create(parent);
-        lv_obj_set_pos(button, x, 12); lv_obj_set_size(button, width, 48);
+        lv_obj_set_pos(button, x, module_ui::PAGE_CONTENT_TOP); lv_obj_set_size(button, width, 48);
         style_box(button, SURFACE, 14, 1);
         lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_t *caption = label(button, text, &lv_font_montserrat_16, TEXT);
@@ -88,29 +90,29 @@ void CalendarModule::create(lv_obj_t *parent) {
     today_ = nav_button("Today", 1028, 112);
     next_ = nav_button(">", 1150, 58);
 
-    const int day_gap = 8, day_x = 24, day_y = 72;
+    const int day_gap = 8, day_x = 24, day_y = module_ui::PAGE_CONTENT_TOP + 60;
     const int day_width = (1232 - day_gap * 6) / 7;
     for (uint8_t i = 0; i < 7; ++i) {
         DaySlot &slot = days_[i];
         slot.root = lv_obj_create(parent);
         lv_obj_set_pos(slot.root, day_x + i * (day_width + day_gap), day_y);
-        lv_obj_set_size(slot.root, day_width, 104);
+        lv_obj_set_size(slot.root, day_width, 92);
         style_box(slot.root, SURFACE, 16, 1);
         lv_obj_add_flag(slot.root, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(slot.root, day_cb, LV_EVENT_CLICKED, this);
         slot.weekday = label(slot.root, "---", &lv_font_montserrat_12, MUTED);
-        lv_obj_set_pos(slot.weekday, 0, 12); lv_obj_set_width(slot.weekday, day_width);
+        lv_obj_set_pos(slot.weekday, 0, 8); lv_obj_set_width(slot.weekday, day_width);
         lv_obj_set_style_text_align(slot.weekday, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         slot.date = label(slot.root, "--", &lv_font_montserrat_24, TEXT);
-        lv_obj_set_pos(slot.date, 0, 34); lv_obj_set_width(slot.date, day_width);
+        lv_obj_set_pos(slot.date, 0, 29); lv_obj_set_width(slot.date, day_width);
         lv_obj_set_style_text_align(slot.date, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         slot.count = label(slot.root, "", &lv_font_montserrat_12, MUTED);
-        lv_obj_set_pos(slot.count, 0, 76); lv_obj_set_width(slot.count, day_width);
+        lv_obj_set_pos(slot.count, 0, 66); lv_obj_set_width(slot.count, day_width);
         lv_obj_set_style_text_align(slot.count, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
 
     lv_obj_t *agenda_card = lv_obj_create(parent);
-    lv_obj_set_pos(agenda_card, 24, 190); lv_obj_set_size(agenda_card, 1232, 414);
+    lv_obj_set_pos(agenda_card, 24, 244); lv_obj_set_size(agenda_card, 1232, 358);
     style_box(agenda_card, SURFACE, 18, 1);
     lv_obj_remove_flag(agenda_card, LV_OBJ_FLAG_SCROLLABLE);
     selected_label_ = label(agenda_card, "Today", &lv_font_montserrat_20, TEXT);
@@ -120,7 +122,7 @@ void CalendarModule::create(lv_obj_t *parent) {
     lv_obj_set_style_text_align(empty_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     agenda_ = lv_obj_create(agenda_card);
-    lv_obj_set_pos(agenda_, 12, 54); lv_obj_set_size(agenda_, 1208, 348);
+    lv_obj_set_pos(agenda_, 12, 54); lv_obj_set_size(agenda_, 1208, 292);
     style_box(agenda_, SURFACE, 0, 0);
     lv_obj_set_style_pad_all(agenda_, 8, LV_PART_MAIN);
     lv_obj_set_style_pad_row(agenda_, 8, LV_PART_MAIN);
@@ -213,7 +215,7 @@ void CalendarModule::update() {
             continue;
         }
         lv_obj_remove_flag(slot.root, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(slot.root, day_x + i * (day_width + day_gap), 72);
+        lv_obj_set_pos(slot.root, day_x + i * (day_width + day_gap), module_ui::PAGE_CONTENT_TOP + 60);
         lv_obj_set_width(slot.root, day_width);
         lv_obj_set_width(slot.weekday, day_width);
         lv_obj_set_width(slot.date, day_width);

@@ -168,6 +168,8 @@ bool g_full_discovery_requested = false;
 // response. It must remain usable while the live WSS subscription is
 // reconnecting, and the browser never receives the Home Assistant token.
 bool g_rest_discovery_requested = false;
+char g_rest_discovery_query[64] = {};
+char g_rest_discovery_domain[24] = {};
 bool g_reconnect_requested = false;
 bool g_network_ready = false;
 bool g_action_in_flight = false;
@@ -1901,18 +1903,34 @@ void run_rest_discovery_worker() {
     // Home Assistant renders the compact picker result.  Fetching /api/states
     // directly required the panel to allocate every state on the installation,
     // which is why large installations reported the opaque -103 failure.
-    static const char entity_picker_template[] =
-        "{% set ns = namespace(items=[]) %}"
+    char query[sizeof(g_rest_discovery_query)] = {};
+    char requested_domain[sizeof(g_rest_discovery_domain)] = {};
+    portENTER_CRITICAL(&g_mux);
+    copy_text(query, sizeof(query), g_rest_discovery_query);
+    copy_text(requested_domain, sizeof(requested_domain), g_rest_discovery_domain);
+    portEXIT_CRITICAL(&g_mux);
+
+    // Filtering happens inside Home Assistant before the bounded response is
+    // built. An exact entity ID therefore remains discoverable even when the
+    // installation has more entities than the panel-side picker cache.
+    String entity_picker_template;
+    entity_picker_template.reserve(1150);
+    entity_picker_template += "{% set q='";
+    entity_picker_template += query;
+    entity_picker_template += "' %}{% set d='";
+    entity_picker_template += requested_domain;
+    entity_picker_template += "' %}{% set ns = namespace(items=[]) %}";
+    entity_picker_template +=
         "{% for s in states if s.domain in ['light','switch','fan','cover','lock','binary_sensor','sensor','scene','media_player','weather','calendar','timer','climate','alarm_control_panel','vacuum','device_tracker','person','input_boolean'] %}"
+        "{% if (d | length == 0 or s.domain == d) and (q | length == 0 or q in (s.entity_id | lower) or q in (s.name | lower)) %}"
         "{% if ns.items | length < 161 %}"
-        "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state}] %}"
-        "{% endif %}"
-        "{% endfor %}{{ ns.items | to_json }}";
+        "{% set ns.items = ns.items + [{'entity_id': s.entity_id, 'name': s.name, 'state': s.state, 'brightness': ('brightness' in (s.attributes.supported_color_modes | default([])) or s.attributes.brightness is defined), 'position': s.attributes.current_position is defined}] %}"
+        "{% endif %}{% endif %}{% endfor %}{{ ns.items | to_json }}";
 
     set_discovery_message("Searching Home Assistant directly...");
     String payload;
     const uint32_t started = millis();
-    const int code = http_post_template_worker(entity_picker_template, payload);
+    const int code = http_post_template_worker(entity_picker_template.c_str(), payload);
     if (code < 200 || code >= 300) {
         char message[128] = {};
         snprintf(message, sizeof(message), "Direct Home Assistant search failed (%d).", code);
@@ -1960,6 +1978,8 @@ void run_rest_discovery_worker() {
         const char *state = item["state"] | "unknown";
         copy_text(model.state, sizeof(model.state), state);
         model.available = strcmp(state, "unavailable") != 0 && strcmp(state, "unknown") != 0;
+        model.supports_brightness = item["brightness"] | false;
+        model.supports_position = item["position"] | false;
         model.position_pct = -1;
         ++count;
     }
@@ -1970,10 +1990,17 @@ void run_rest_discovery_worker() {
     g_discovery.last_discovery_ms = millis();
     copy_text(g_discovery.area_id, sizeof(g_discovery.area_id), "all");
     copy_text(g_discovery.area_name, sizeof(g_discovery.area_name), "All Home Assistant");
-    snprintf(g_discovery.message, sizeof(g_discovery.message),
-             truncated ? "Direct search found %u supported controls (limited to %u)." :
-                         "Direct search found %u supported controls.",
-             static_cast<unsigned>(count), static_cast<unsigned>(HA_MAX_AREA_ENTITIES));
+    if (query[0]) {
+        snprintf(g_discovery.message, sizeof(g_discovery.message),
+                 truncated ? "Search for '%s' found at least %u matches (showing %u)." :
+                             "Search for '%s' found %u matching entities.",
+                 query, static_cast<unsigned>(count), static_cast<unsigned>(HA_MAX_AREA_ENTITIES));
+    } else {
+        snprintf(g_discovery.message, sizeof(g_discovery.message),
+                 truncated ? "Direct search found at least %u supported entities (showing %u)." :
+                             "Direct search found %u supported entities.",
+                 static_cast<unsigned>(count), static_cast<unsigned>(HA_MAX_AREA_ENTITIES));
+    }
     portEXIT_CRITICAL(&g_mux);
     Serial0.printf("[HA] REST entity search: %u supported controls in %lums\n",
                    static_cast<unsigned>(count), static_cast<unsigned long>(millis() - started));
@@ -3069,13 +3096,46 @@ bool home_assistant_request_discovery() {
 }
 
 bool home_assistant_request_full_discovery() {
+    return home_assistant_request_entity_search("", "");
+}
+
+bool home_assistant_request_entity_search(const char *query, const char *domain) {
     if (!g_worker || !configured_snapshot()) return false;
+    char normalized_query[sizeof(g_rest_discovery_query)] = {};
+    size_t query_length = 0;
+    for (size_t i = 0; query && query[i] && query_length + 1 < sizeof(normalized_query); ++i) {
+        char c = query[i];
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        const bool allowed = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                             c == '_' || c == '.' || c == '-' || c == ' ';
+        if (allowed) normalized_query[query_length++] = c;
+    }
+    normalized_query[query_length] = '\0';
+
+    char normalized_domain[sizeof(g_rest_discovery_domain)] = {};
+    size_t domain_length = 0;
+    for (size_t i = 0; domain && domain[i] && domain_length + 1 < sizeof(normalized_domain); ++i) {
+        char c = domain[i];
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+        normalized_domain[domain_length++] = c;
+    }
+    normalized_domain[domain_length] = '\0';
+    if (normalized_domain[0] && !is_supported_domain(normalized_domain)) return false;
+
     portENTER_CRITICAL(&g_mux);
     g_full_discovery_requested = false;
+    copy_text(g_rest_discovery_query, sizeof(g_rest_discovery_query), normalized_query);
+    copy_text(g_rest_discovery_domain, sizeof(g_rest_discovery_domain), normalized_domain);
     g_rest_discovery_requested = true;
     g_discovery.discovery_complete = false;
-    copy_text(g_discovery.message, sizeof(g_discovery.message),
-              "Direct Home Assistant search requested for the web layout editor...");
+    if (normalized_query[0]) {
+        snprintf(g_discovery.message, sizeof(g_discovery.message),
+                 "Searching Home Assistant for '%s'...", normalized_query);
+    } else {
+        copy_text(g_discovery.message, sizeof(g_discovery.message),
+                  "Refreshing supported Home Assistant entities...");
+    }
     portEXIT_CRITICAL(&g_mux);
     return true;
 }

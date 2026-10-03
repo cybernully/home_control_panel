@@ -61,14 +61,17 @@ int main() {
         snprintf(weather.daily[i].detail, sizeof(weather.daily[i].detail), "%u%% rain", i * 10);
     }
     WeatherModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
-    assert(find(root, "Weather") && find(root, "CURRENT") && find(root, "HOURLY FORECAST") && find(root, "MULTI-DAY FORECAST"));
+    auto *subtitle = find(root, "Current conditions and forecasts from Home Assistant");
+    assert(find(root, "Weather") && subtitle && find(root, "CURRENT") && find(root, "HOURLY FORECAST") && find(root, "MULTI-DAY FORECAST"));
     assert(find(root, "72\xC2\xB0") && find(root, "Partly Cloudy") && find(root, "Today"));
+    auto *current_card = lv_obj_get_parent(find(root, "CURRENT"));
+    assert(lv_obj_get_y(current_card) >= lv_obj_get_y(subtitle) + lv_obj_get_height(subtitle) + 8);
     shot(".test-build/weather-balanced.ppm");
 
     config.weather_show_current = false;
     snprintf(config.weather_layout, sizeof(config.weather_layout), "forecast_focus");
     module.update(); lv_obj_update_layout(root);
-    auto *current_card = lv_obj_get_parent(find(root, "CURRENT"));
+    current_card = lv_obj_get_parent(find(root, "CURRENT"));
     auto *hourly_card = lv_obj_get_parent(find(root, "HOURLY FORECAST"));
     auto *daily_card = lv_obj_get_parent(find(root, "MULTI-DAY FORECAST"));
     assert(lv_obj_has_flag(current_card, LV_OBJ_FLAG_HIDDEN));

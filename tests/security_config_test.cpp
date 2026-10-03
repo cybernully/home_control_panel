@@ -21,7 +21,30 @@ int main() {
                   "binary_sensor.back_gate") == 0);
     assert(config_service_validate_security_device_uniqueness(config, error));
 
+    auto dynamic_json = [](unsigned count) {
+        String json = "[";
+        for (unsigned i = 0; i < count; ++i) {
+            if (i) json += ",";
+            json += "{\"entity_id\":\"binary_sensor.dynamic_" + std::to_string(i) +
+                    "\",\"label\":\"Dynamic " + std::to_string(i) +
+                    "\",\"icon\":\"alert\",\"abnormal_states\":\"on\","
+                    "\"normal_label\":\"Normal\",\"abnormal_label\":\"Attention\","
+                    "\"color\":\"red\"}";
+        }
+        json += "]";
+        return json;
+    };
+    assert(config_service_parse_security_dynamic_devices(
+        dynamic_json(PANEL_MAX_SECURITY_DYNAMIC_DEVICES), config, error));
+    assert(config.security_dynamic_device_count == PANEL_MAX_SECURITY_DYNAMIC_DEVICES);
+    assert(strcmp(config.security_dynamic_devices[15].entity_id,
+                  "binary_sensor.dynamic_15") == 0);
+
     const PanelConfig before = config;
+    assert(!config_service_parse_security_dynamic_devices(
+        dynamic_json(PANEL_MAX_SECURITY_DYNAMIC_DEVICES + 1), config, error));
+    assert(error.find("at most 16") != String::npos);
+    assert(memcmp(&config, &before, sizeof(config)) == 0);
     for (const char *bad : {
              R"([{"entity_id":"front_door","label":"Door","icon":"door","abnormal_states":"on","color":"red"}])",
              R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"temperature","abnormal_states":"on","color":"red"}])",

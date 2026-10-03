@@ -119,5 +119,24 @@ int main() {
     assert(ui_state_model_snapshot_security(view));
     assert(view.transitioning && view.command_ready);
     assert(ui_state_model_security_action(view, "disarm", "2468"));
+
+    // Dynamic attention must evaluate the expanded collection, not silently
+    // truncate it to the original eight-device limit.
+    for (uint8_t i = 2; i < 10; ++i) {
+        auto &dynamic = config.security_dynamic_devices[i];
+        snprintf(dynamic.entity_id, sizeof(dynamic.entity_id),
+                 "binary_sensor.dynamic_%u", static_cast<unsigned>(i));
+        snprintf(dynamic.label, sizeof(dynamic.label),
+                 "Dynamic %u", static_cast<unsigned>(i));
+        snprintf(dynamic.icon, sizeof(dynamic.icon), "alert");
+        snprintf(dynamic.abnormal_states, sizeof(dynamic.abnormal_states), "on");
+        snprintf(dynamic.normal_label, sizeof(dynamic.normal_label), "Normal");
+        snprintf(dynamic.abnormal_label, sizeof(dynamic.abnormal_label), "Attention");
+        snprintf(dynamic.color, sizeof(dynamic.color), "red");
+    }
+    config.security_dynamic_device_count = 10;
+    assert(ui_state_model_snapshot_security(view));
+    assert(view.dynamic_device_count == 10);
+    assert(view.abnormal_count == 11);  // prior three plus eight unavailable entries
     std::cout << "Security state model and Alarmo action tests passed.\n";
 }

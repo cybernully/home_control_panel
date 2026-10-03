@@ -2,7 +2,7 @@
 
 ## Panel experience
 
-- Removes the redundant `HA LIVE` badge from Climate.
+- Removes the redundant live-state badge from Climate.
 - Rebuilds Climate as three balanced cards for live conditions, temperature
   adjustment, and HVAC/fan/preset controls, matching the visual language used
   by the other primary tabs.

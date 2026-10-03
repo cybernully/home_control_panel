@@ -16,6 +16,9 @@ constexpr uint32_t ACCENT_SOFT = ui_theme::ACCENT_DARK;
 constexpr uint32_t SUCCESS = ui_theme::SUCCESS;
 constexpr uint32_t WARN = ui_theme::WARN;
 constexpr uint32_t DANGER = ui_theme::DANGER;
+constexpr int PAGE_TITLE_Y = 16;
+constexpr int PAGE_SUBTITLE_Y = 52;
+constexpr int PAGE_CONTENT_TOP = 80;
 
 inline void box(lv_obj_t *o, uint32_t bg = CARD, int radius = 14, int border = 1) {
     lv_obj_set_style_bg_color(o, lv_color_hex(bg), LV_PART_MAIN);
@@ -38,10 +41,10 @@ inline lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font
 
 inline lv_obj_t *title(lv_obj_t *parent, const char *heading, const char *subtitle) {
     lv_obj_t *h = label(parent, heading, &lv_font_montserrat_28, TEXT);
-    lv_obj_set_pos(h, 24, 16);
+    lv_obj_set_pos(h, 24, PAGE_TITLE_Y);
     if (subtitle && subtitle[0]) {
         lv_obj_t *s = label(parent, subtitle, &lv_font_montserrat_14, MUTED);
-        lv_obj_set_pos(s, 24, 52);
+        lv_obj_set_pos(s, 24, PAGE_SUBTITLE_Y);
     }
     return h;
 }
@@ -109,11 +112,6 @@ inline void style_slider(lv_obj_t *slider) {
 
 inline void add_preview_badge(lv_obj_t *parent) {
     lv_obj_t *b = chip(parent, "UI PREVIEW", 1092, 18, ACCENT_SOFT);
-    lv_obj_set_width(b, 160);
-}
-
-inline void add_live_badge(lv_obj_t *parent) {
-    lv_obj_t *b = chip(parent, "HA LIVE", 1092, 18, SUCCESS);
     lv_obj_set_width(b, 160);
 }
 }

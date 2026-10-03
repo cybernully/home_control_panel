@@ -15,7 +15,7 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "docs/RELEASE_1.9.0.md", "docs/RELEASE_1.9.1.md", "docs/RELEASE_1.9.2.md", "docs/RELEASE_1.9.3.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "docs/RELEASE_1.9.0.md", "docs/RELEASE_1.9.1.md", "docs/RELEASE_1.9.2.md", "docs/RELEASE_1.9.3.md", "docs/RELEASE_1.9.4.md", "docs/RELEASE_1.9.5.md", "docs/RELEASE_1.9.6.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "include/home_assistant_capabilities.h",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
@@ -32,7 +32,7 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.9.3"' in app
+assert '#define APP_VERSION "1.9.6"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
@@ -40,7 +40,7 @@ assert '#define PANEL_MAX_MEDIA_FAVORITES 6' in app
 assert '#define PANEL_MAX_MEDIA_PLAYERS 6' in app
 assert '#define PANEL_MAX_CALENDARS 6' in app
 assert '#define PANEL_MAX_SECURITY_DEVICES 8' in app
-assert '#define PANEL_MAX_SECURITY_DYNAMIC_DEVICES 8' in app
+assert '#define PANEL_MAX_SECURITY_DYNAMIC_DEVICES 16' in app
 assert '#define PANEL_MAX_CLIMATE_DEVICES 4' in app
 assert '#define HA_MAX_CALENDAR_EVENTS 48' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
@@ -70,6 +70,10 @@ for feature in ["media_player/browse_media","media_play_pause","volume_set","vol
 for feature in ["supported_color_modes", "home_assistant_light_mode_supports_brightness",
                 "An off light may remove only its current brightness"]:
     assert feature in ha
+for feature in ["home_assistant_request_entity_search", "g_rest_discovery_query",
+                "q in (s.entity_id | lower)", "q in (s.name | lower)",
+                "Filtering happens inside Home Assistant", 'item["brightness"]']:
+    assert feature in ha
 for feature in ['JsonObject media = doc["media"].to<JsonObject>();',
                 'media["media_content_id"]', 'media["media_content_type"]',
                 'media["metadata"].to<JsonObject>();']:
@@ -95,10 +99,13 @@ web=(root/"src/web_manager.cpp").read_text()
 for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
                 "shortcut_type_", "favorite_label_", "favorite_entity_", "parse_media_shortcuts", "parse_media_favorites"]:
     assert feature in web
-for feature in ["handle_ha_entities", "handle_ha_discover", "parse_media_players", "home_assistant_request_full_discovery"]:
+for feature in ["handle_ha_entities", "handle_ha_discover", "parse_media_players", "home_assistant_request_entity_search"]:
+    assert feature in web
+for feature in ['g_server.arg("q")', 'g_server.arg("domain")',
+                "home_assistant_request_entity_search(query.c_str(), domain.c_str())"]:
     assert feature in web
 web_ui=(root/"include/web_ui.h").read_text()
-for feature in ["Panel display manager", "Rooms and controls", "Media experience", "Administration", "Search Home Assistant"]:
+for feature in ["Panel display manager", "Find and add controls", "Media experience", "Administration", "Search Home Assistant"]:
     assert feature in web_ui
 for feature in ["Overview layout", "Home Assistant entity", "active_states", "overview_items", "overviewDrop"]:
     assert feature in web_ui
@@ -111,6 +118,13 @@ for feature in ["Alarmo security", "security_devices", "reverse_abnormal", "secu
 for feature in ["Dynamic attention devices", "security_dynamic_devices", "securityDynamicDevices", "addSecurityDynamicDevice"]:
     assert feature in web_ui
 for feature in ["Climate tab", "climate_devices", "climateDevices", "addClimateDevice", "climate_show_humidity"]:
+    assert feature in web_ui
+for feature in ["v1.9.5 Web Admin design system", "Sync devices", "roomSearchChanged",
+                "scanRoomEntities", "addRoomManual", "mergeEntityCandidates",
+                "light.office_office_ceiling_fan_light"]:
+    assert feature in web_ui
+for feature in ["v1.9.6: larger dynamic-attention collection", "securityDynamicLimit=16",
+                "reorderRoomFavorite", "decorateRoomFavoriteOrdering"]:
     assert feature in web_ui
 assert "home_assistant_request_full_discovery" in ha and "is_layout_entity" in ha
 settings=(root/"src/modules/settings_module.cpp").read_text()
@@ -146,7 +160,20 @@ for feature in ["ClimateTemperature", "set_temperature", "set_hvac_mode", "set_f
 climate=(root/"src/modules/climate_module.cpp").read_text()
 for feature in ["Live thermostats", "CURRENT", "TARGET", "CURRENT STATE", "TEMPERATURE", "HVAC MODE", "ui_state_model_climate_adjust_target"]:
     assert feature in climate
-assert "add_live_badge(parent)" not in climate
+headers = {
+    "overview_module.cpp": ('"Overview", "Whole-home status, controls, and quick actions"', "PAGE_CONTENT_TOP + row * 132"),
+    "room_module.cpp": ('"Rooms", "Favorites, quick access, and live status for the selected room"', "card(parent, 24, PAGE_CONTENT_TOP"),
+    "media_module.cpp": ('"Media", "Now playing, shortcuts, and favorites"', "card(parent, 24, PAGE_CONTENT_TOP"),
+    "weather_module.cpp": ('"Weather", "Current conditions and forecasts from Home Assistant"', "card(parent, 24, PAGE_CONTENT_TOP"),
+    "calendar_module.cpp": ('"Calendar", "Your selected calendars and schedule at a glance"', "module_ui::PAGE_CONTENT_TOP + 60"),
+    "climate_module.cpp": ('"Climate", "Live thermostats, comfort and HVAC controls"', "24 + i * 307, PAGE_CONTENT_TOP"),
+    "security_module.cpp": ('"Security", "Alarmo protection and monitored-device status"', "card(parent, 24, PAGE_CONTENT_TOP"),
+    "settings_module.cpp": ('"Settings", "Panel controls, capacity, and connection diagnostics"', "card(parent, 24, PAGE_CONTENT_TOP"),
+}
+for filename, (header, content_geometry) in headers.items():
+    source = (root / "src/modules" / filename).read_text()
+    assert "module_ui::title(parent, " + header + ")" in source
+    assert content_geometry in source
 room_state=(root/"src/ui_state_model.cpp").read_text()
 for feature in ['strcmp(pref.device_type, "dimmable") == 0',
                 'strcmp(type, "dimmable") == 0']:
@@ -154,5 +181,5 @@ for feature in ['strcmp(pref.device_type, "dimmable") == 0',
 for feature in ["Dimmable light (brightness slider)",
                 "Dimmable light forces a brightness slider"]:
     assert feature in web_ui
-print("Home Control Panel v1.9.3 structure validation passed.")
+print("Home Control Panel v1.9.6 structure validation passed.")
 

@@ -81,6 +81,7 @@ int main(){ setbuf(stdout,nullptr);
     config.media_shortcut_count=6;snprintf(config.display_name,sizeof(config.display_name),"Home Panel");snprintf(config.profile,sizeof(config.profile),"room");snprintf(config.area_id,sizeof(config.area_id),"office");
     lv_init();auto *display=lv_display_create(1280,800);lv_display_set_color_format(display,LV_COLOR_FORMAT_XRGB8888);lv_display_set_buffers(display,pixels,nullptr,sizeof(pixels),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(display,flush);
     ui_shell_begin();show_module(2);auto *page=g_pages[2];lv_obj_update_layout(lv_screen_active());shot(".test-build/media-refined.ppm");
+    assert(find(page,"Media")&&find(page,"Now playing, shortcuts, and favorites"));
     auto *track=find(page,"Midnight City - Live Session");assert(track);click(page,"Pause");assert(action=="play"&&target==ids[0]);click(page,"Evening mix");assert(action=="playlist-0");click(page,"Wind down");assert(action=="playlist-5");
     auto *volume=slider(page);assert(volume);lv_obj_send_event(volume,LV_EVENT_PRESSED,nullptr);lv_slider_set_value(volume,47,LV_ANIM_OFF);lv_obj_send_event(volume,LV_EVENT_VALUE_CHANGED,nullptr);media.update();assert(lv_slider_get_value(volume)==47&&find(page,"47%"));lv_obj_send_event(volume,LV_EVENT_PRESS_LOST,nullptr);lv_obj_send_event(volume,LV_EVENT_RELEASED,nullptr);assert(volume_calls==0);
     lv_obj_send_event(volume,LV_EVENT_PRESSED,nullptr);lv_slider_set_value(volume,41,LV_ANIM_OFF);lv_obj_send_event(volume,LV_EVENT_RELEASED,nullptr);assert(volume_calls==1&&target==ids[0]);

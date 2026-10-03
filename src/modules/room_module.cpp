@@ -59,8 +59,9 @@ lv_obj_t *section_heading(lv_obj_t *parent, const char *value, int y) {
 void RoomModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
     ui_state_model_snapshot_room(room_, controls_, PANEL_MAX_ROOM_CONTROLS, control_count_);
+    module_ui::title(parent, "Rooms", "Favorites, quick access, and live status for the selected room");
 
-    lv_obj_t *room_status = card(parent, 24, 10, 1232, 78);
+    lv_obj_t *room_status = card(parent, 24, PAGE_CONTENT_TOP, 1232, 78);
     lv_obj_set_style_radius(room_status, 14, LV_PART_MAIN);
     room_selector_ = lv_dropdown_create(room_status);
     lv_obj_set_pos(room_selector_, 12, 10);
@@ -106,28 +107,28 @@ void RoomModule::create(lv_obj_t *parent) {
         lv_label_set_long_mode(status_captions_[i], LV_LABEL_LONG_DOT);
     }
 
-    section_heading(parent, "Favorite Controls", 102);
+    section_heading(parent, "Favorite Controls", 174);
     for (int i = 0; i < 4; ++i) {
         favorites_[i].owner = this;
         const UiCardVariant variant = i < room_.favorite_count
                                           ? variant_for(room_.favorites[i])
                                           : UiCardVariant::CONTROL;
-        prepare_card(favorites_[i], parent, variant, 24 + i * 312, 138, 296, 132);
+        prepare_card(favorites_[i], parent, variant, 24 + i * 312, 210, 296, 132);
     }
 
-    empty_ = card(parent, 24, 138, 1232, 132);
+    empty_ = card(parent, 24, 210, 1232, 132);
     lv_obj_t *empty_title = label(empty_, "Build your favorites", &lv_font_montserrat_24, TEXT);
     lv_obj_set_pos(empty_title, 28, 24);
     lv_obj_t *empty_copy = label(empty_, "Choose up to four primary controls in Web Admin. Everything else remains available below.",
                                  &lv_font_montserrat_16, MUTED);
     lv_obj_set_pos(empty_copy, 28, 68);
 
-    section_heading(parent, "Quick Access", 294);
+    section_heading(parent, "Quick Access", 366);
     for (int i = 0; i < 4; ++i) {
         groups_[i].owner = this;
         groups_[i].index = static_cast<uint8_t>(i);
         ui_card_create(groups_[i].card, parent, UiCardVariant::NAVIGATION,
-                       24 + i * 312, 330, 296, 142);
+                       24 + i * 312, 402, 296, 142);
         lv_obj_add_event_cb(groups_[i].card.root, group_cb, LV_EVENT_CLICKED, &groups_[i]);
     }
 

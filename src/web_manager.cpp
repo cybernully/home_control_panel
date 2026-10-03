@@ -763,9 +763,13 @@ void handle_ha_entities() {
 
 void handle_ha_discover() {
     if (!ensure_auth()) return;
+    const String query = g_server.arg("q");
+    const String domain = g_server.arg("domain");
     JsonDocument doc;
     doc["ok"] = true;
-    doc["queued"] = home_assistant_request_full_discovery();
+    doc["queued"] = home_assistant_request_entity_search(query.c_str(), domain.c_str());
+    doc["query"] = query;
+    doc["domain"] = domain;
     send_json(doc);
 }
 

@@ -71,8 +71,15 @@ int main() {
     snprintf(calendar.events[0].description, sizeof(calendar.events[0].description),
              "Review the launch checklist, confirm deployment owners, discuss open risks, and capture next steps for the release team.\n\nBring the updated rollout notes and testing results.");
     CalendarModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
-    assert(find(root, "Calendar") && find(root, "Today") && find(root, "Thursday, October 01"));
+    auto *subtitle = find(root, "Your selected calendars and schedule at a glance");
+    assert(find(root, "Calendar") && subtitle && find(root, "Today") && find(root, "Thursday, October 01"));
     assert(find(root, "Team standup") && find(root, "Dentist appointment") && find(root, "School concert"));
+    auto *today_button = lv_obj_get_parent(find(root, "Today"));
+    auto *day_card = lv_obj_get_parent(find(root, "Thu"));
+    auto *agenda_card = lv_obj_get_parent(find(root, "Thursday, October 01"));
+    assert(lv_obj_get_y(today_button) >= lv_obj_get_y(subtitle) + lv_obj_get_height(subtitle) + 8);
+    assert(lv_obj_get_y(day_card) >= lv_obj_get_y(today_button) + lv_obj_get_height(today_button) + 12);
+    assert(lv_obj_get_y(agenda_card) >= lv_obj_get_y(day_card) + lv_obj_get_height(day_card) + 12);
     shot(".test-build/calendar-week.ppm");
     lv_obj_send_event(lv_obj_get_parent(find(root, "Team standup")), LV_EVENT_CLICKED, nullptr);
     lv_obj_update_layout(root);

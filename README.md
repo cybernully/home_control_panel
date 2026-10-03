@@ -1,16 +1,45 @@
 # Home Control Panel
 
-**Version 1.9.3**
+**Version 1.9.6**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
 
+## Expanded attention monitoring and ordered Room favorites 1.9.6
+
+Security now supports up to sixteen dynamic attention-only devices in addition
+to the eight persistent monitored-device cards. The larger collection is
+validated and persisted end to end; normal entries remain invisible on the
+panel while abnormal or unavailable entries feed the compact attention summary.
+Room favorite cards can now be reordered within each panel room from Web Admin
+using explicit Earlier and Later actions with numbered positions. See the
+[1.9.6 release notes](docs/RELEASE_1.9.6.md).
+
+## Professional Web Admin and complete entity search 1.9.5
+
+Web Admin now uses a cohesive responsive design system with a cleaner sticky
+header, consistent cards and forms, compact entity results, and a single global
+device-sync action. Room and Overview searches filter inside Home Assistant by
+friendly name, entity ID, and domain before the bounded result reaches the
+panel, so entities on large installations no longer disappear simply because
+they occur late in the state list. Rooms also supports adding a known entity ID
+directly. See the [1.9.5 release notes](docs/RELEASE_1.9.5.md).
+
+## Consistent tab layouts 1.9.4
+
+All eight primary tabs now use one title/subtitle hierarchy and a consistent
+content baseline. Rooms gains the missing page header while keeping its compact
+room selector and four status slots together. Calendar, Weather, Security,
+Media, Overview, Climate, and Settings use the same spacing rhythm, and
+redundant connection-state pills have been removed. See the
+[1.9.4 release notes](docs/RELEASE_1.9.4.md).
+
 ## Refined Climate and split Weather sources 1.9.3
 
 Climate now uses the same professional card hierarchy as the Room, Weather,
-and Security tabs, without the redundant HA LIVE pill. Footer icon captions
+and Security tabs, without a redundant connection-state pill. Footer icon captions
 have clearer vertical separation. Weather can independently select current,
 hourly, and daily Home Assistant providers; blank forecast sources safely fall
 back to the current-conditions entity. See the [1.9.3 release notes](docs/RELEASE_1.9.3.md).
@@ -31,12 +60,12 @@ service domain. See the [1.9.2 release notes](docs/RELEASE_1.9.2.md).
 
 Security is now a live, configurable Alarmo experience. Select an
 `alarm_control_panel` in Web Admin, choose the Home/Away/Night/Vacation modes
-shown on the panel, and monitor up to eight Home Assistant entities with custom
+shown on the panel, monitor up to eight persistent Home Assistant entities with custom
 icons, labels, severity colors, abnormal-state lists, and optional reversed
 logic. The panel can arm with confirmation or an optional PIN and always uses
 an on-screen keypad to disarm. PINs are sent through the existing Home Assistant
 worker and are never persisted. Persistent monitored devices retain individual
-cards, while a second collection of dynamic devices stays hidden until abnormal
+cards, while a second collection of up to sixteen dynamic devices stays hidden until abnormal
 and then appears only in the attention summary. See the
 [1.9.1 release notes](docs/RELEASE_1.9.1.md).
 

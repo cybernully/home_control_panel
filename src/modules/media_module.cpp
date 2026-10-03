@@ -179,7 +179,7 @@ bool MediaModule::allocate_work_buffers() {
 void MediaModule::create(lv_obj_t *parent) {
     const bool buffers_ready = allocate_work_buffers();
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Media", "Now playing, shortcuts, and favorites.");
+    module_ui::title(parent, "Media", "Now playing, shortcuts, and favorites");
 
     const char *menus[] = {"Players", "Sources", "Favorites"};
     const char *menu_icons[] = {LV_SYMBOL_AUDIO, LV_SYMBOL_LIST, LV_SYMBOL_OK};
@@ -193,7 +193,7 @@ void MediaModule::create(lv_obj_t *parent) {
         lv_obj_add_event_cb(trigger.button, popup_cb, LV_EVENT_CLICKED, &trigger);
     }
 
-    lv_obj_t *now = card(parent, 24, 92, 1232, 356);
+    lv_obj_t *now = card(parent, 24, PAGE_CONTENT_TOP, 1232, 356);
     lv_obj_set_style_radius(now, 24, LV_PART_MAIN);
     artwork_box_ = card(now, 22, 22, 312, 312);
     lv_obj_set_style_bg_color(artwork_box_, lv_color_hex(0x101A2B), LV_PART_MAIN);
@@ -274,10 +274,10 @@ void MediaModule::create(lv_obj_t *parent) {
     set_enabled(mute_button_, false);
 
     auto *caption = label(parent, "QUICK PLAY", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(caption, 24, 470);
+    lv_obj_set_pos(caption, 24, 458);
     for (int i = 0; i < PANEL_MAX_MEDIA_SHORTCUTS; ++i) {
         auto &control = shortcuts_[i]; control.owner = this;
-        control.button = button(parent, LV_SYMBOL_AUDIO, 24 + i * 204, 494, 194, 98);
+        control.button = button(parent, LV_SYMBOL_AUDIO, 24 + i * 204, 482, 194, 98);
         lv_obj_set_style_radius(control.button, 20, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(control.button, 0, LV_PART_MAIN);
         control.icon_label = lv_obj_get_child(control.button, 0);
@@ -287,9 +287,9 @@ void MediaModule::create(lv_obj_t *parent) {
         lv_obj_add_event_cb(control.button, favorite_cb, LV_EVENT_CLICKED, &control);
     }
     shortcuts_empty_ = label(parent, "Add your favorite playlists or stations in the web manager.", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_pos(shortcuts_empty_, 24, 532);
+    lv_obj_set_pos(shortcuts_empty_, 24, 520);
     status_label_ = label(parent, "Waiting for media discovery...", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(status_label_, 24, 602);
+    lv_obj_set_pos(status_label_, 24, 590);
     lv_obj_set_width(status_label_, 1232);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
 

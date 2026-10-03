@@ -42,12 +42,12 @@ void WeatherModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
     module_ui::title(parent, "Weather", "Current conditions and forecasts from Home Assistant");
     subtitle_ = label(parent, "Select a weather entity in Web Admin", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(subtitle_, 850, 27);
-    lv_obj_set_width(subtitle_, 400);
+    lv_obj_set_pos(subtitle_, 650, 54);
+    lv_obj_set_width(subtitle_, 606);
     lv_obj_set_style_text_align(subtitle_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_label_set_long_mode(subtitle_, LV_LABEL_LONG_DOT);
 
-    current_card_ = card(parent, 24, 76, 360, 526);
+    current_card_ = card(parent, 24, PAGE_CONTENT_TOP, 360, 522);
     lv_obj_t *current_heading = label(current_card_, "CURRENT", &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(current_heading, 22, 18);
     current_icon_ = label(current_card_, "", &ha_icons_font, ui_theme::CYAN);
@@ -70,7 +70,7 @@ void WeatherModule::create(lv_obj_t *parent) {
     lv_obj_set_style_text_align(current_detail_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(current_detail_, LV_LABEL_LONG_WRAP);
 
-    hourly_card_ = card(parent, 400, 76, 856, 250);
+    hourly_card_ = card(parent, 400, PAGE_CONTENT_TOP, 856, 250);
     lv_obj_t *hourly_heading = label(hourly_card_, "HOURLY FORECAST", &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(hourly_heading, 20, 16);
     hourly_status_ = label(hourly_card_, "Loading forecast...", &lv_font_montserrat_12, MUTED);
@@ -79,7 +79,7 @@ void WeatherModule::create(lv_obj_t *parent) {
     lv_obj_set_style_text_align(hourly_status_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     for (auto &slot : hourly_) forecast_card(hourly_card_, slot);
 
-    daily_card_ = card(parent, 400, 342, 856, 260);
+    daily_card_ = card(parent, 400, 346, 856, 256);
     lv_obj_t *daily_heading = label(daily_card_, "MULTI-DAY FORECAST", &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(daily_heading, 20, 16);
     daily_status_ = label(daily_card_, "Loading forecast...", &lv_font_montserrat_12, MUTED);
@@ -146,22 +146,22 @@ void WeatherModule::apply_layout() {
 
     if (sections == 1 || sections == 2 || sections == 4) {
         lv_obj_t *only = sections == 1 ? current_card_ : sections == 2 ? hourly_card_ : daily_card_;
-        lv_obj_set_pos(only, 24, 76); lv_obj_set_size(only, 1232, 526);
+        lv_obj_set_pos(only, 24, PAGE_CONTENT_TOP); lv_obj_set_size(only, 1232, 522);
     } else if (sections == 6) {
-        lv_obj_set_pos(hourly_card_, 24, 76); lv_obj_set_size(hourly_card_, 1232, 250);
-        lv_obj_set_pos(daily_card_, 24, 342); lv_obj_set_size(daily_card_, 1232, 260);
+        lv_obj_set_pos(hourly_card_, 24, PAGE_CONTENT_TOP); lv_obj_set_size(hourly_card_, 1232, 250);
+        lv_obj_set_pos(daily_card_, 24, 346); lv_obj_set_size(daily_card_, 1232, 256);
     } else if (sections == 3 || sections == 5) {
         lv_obj_t *forecast = sections == 3 ? hourly_card_ : daily_card_;
-        lv_obj_set_pos(current_card_, 24, 76); lv_obj_set_size(current_card_, 380, 526);
-        lv_obj_set_pos(forecast, 420, 76); lv_obj_set_size(forecast, 836, 526);
+        lv_obj_set_pos(current_card_, 24, PAGE_CONTENT_TOP); lv_obj_set_size(current_card_, 380, 522);
+        lv_obj_set_pos(forecast, 420, PAGE_CONTENT_TOP); lv_obj_set_size(forecast, 836, 522);
     } else {
         const int current_width = strcmp(cfg.weather_layout, "current_focus") == 0 ? 480 :
                                   strcmp(cfg.weather_layout, "forecast_focus") == 0 ? 320 : 360;
         const int forecast_x = 24 + current_width + 16;
         const int forecast_width = 1232 - current_width - 16;
-        lv_obj_set_pos(current_card_, 24, 76); lv_obj_set_size(current_card_, current_width, 526);
-        lv_obj_set_pos(hourly_card_, forecast_x, 76); lv_obj_set_size(hourly_card_, forecast_width, 250);
-        lv_obj_set_pos(daily_card_, forecast_x, 342); lv_obj_set_size(daily_card_, forecast_width, 260);
+        lv_obj_set_pos(current_card_, 24, PAGE_CONTENT_TOP); lv_obj_set_size(current_card_, current_width, 522);
+        lv_obj_set_pos(hourly_card_, forecast_x, PAGE_CONTENT_TOP); lv_obj_set_size(hourly_card_, forecast_width, 250);
+        lv_obj_set_pos(daily_card_, forecast_x, 346); lv_obj_set_size(daily_card_, forecast_width, 256);
     }
     // LVGL resolves new coordinates lazily. Resolve the two containers before
     // deriving their child grid so the very first Weather frame is complete.

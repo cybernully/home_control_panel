@@ -88,8 +88,11 @@ int main() {
     dynamic.available = dynamic.abnormal = true;
 
     SecurityModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
-    assert(find(root, "Security") && find(root, "DISARMED") && find(root, "Attention needed"));
+    auto *subtitle = find(root, "Alarmo protection and monitored-device status");
+    assert(find(root, "Security") && subtitle && find(root, "DISARMED") && find(root, "Attention needed"));
     assert(find(root, "Front door") && find(root, "Open") && find(root, "Alarm network"));
+    auto *alarm_card = lv_obj_get_parent(find(root, "DISARMED"));
+    assert(lv_obj_get_y(alarm_card) >= lv_obj_get_y(subtitle) + lv_obj_get_height(subtitle) + 8);
     assert(find_containing(root, "Back gate - Open"));
     assert(!find(root, "Back gate"));  // dynamic devices never receive persistent cards
     shot(".test-build/security-disarmed.ppm");

@@ -6,13 +6,26 @@ const source=fs.readFileSync('include/web_ui.h','utf8');
 // without needing a browser or a Home Assistant server in host CI.
 for(const feature of [
   "const $=id=>document.getElementById(id)", "function esc(s)",
-  "Rooms and controls", "Media experience", "Administration", "Search Home Assistant",
+  "Find and add controls", "Media experience", "Administration", "Search Home Assistant",
   "/api/ha/discover", "/api/ha/entities", "room_controls",
   "media_players", "mediaActionCard", "Favorites bubble menu", "media_favorites", "Save changes",
   "explicit layout", "modules.join(',')", "Overview layout",
   "widget_catalog", "overview_widgets", "overview_items",
   "overviewBuiltinLabels", "weather_current:'Current weather'", "weather_hourly:'Hourly forecast'", "weather_daily:'Multi-day forecast'", "calendar:'Calendar'"
 ]) assert(source.includes(feature),`missing web manager feature: ${feature}`);
+for(const feature of ["v1.9.5 Web Admin design system", "Sync devices", "function roomSearchChanged",
+                      "function scanRoomEntities", "function addRoomManual", "mergeEntityCandidates",
+                      "encodeURIComponent(query)", "light.office_office_ceiling_fan_light",
+                      "Searches run directly in Home Assistant", "#room_fields{display:grid"])
+  assert(source.includes(feature),`missing v1.9.5 Web Admin feature: ${feature}`);
+for(const feature of ["v1.9.6: larger dynamic-attention collection", "securityDynamicLimit=16",
+                     "function reorderRoomFavorite", "function moveRoomFavorite",
+                     "function decorateRoomFavoriteOrdering", "Favorite ${position+1}",
+                     "Move favorite ${entry.item.name||entry.item.entity_id} earlier"])
+  assert(source.includes(feature),`missing v1.9.6 ordering/capacity feature: ${feature}`);
+const embeddedScript=source.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+assert(embeddedScript,'embedded Web Admin script must be present');
+assert.doesNotThrow(()=>new Function(embeddedScript),'embedded Web Admin JavaScript must parse');
 assert(source.includes('renderWidgets=function()'),'Overview cards must have an editable renderer');
 assert(!source.includes('renderWidgets=function(){readOverviewItems();'),
   'Overview rendering must not reread stale index-bound DOM after cards have moved');
@@ -86,6 +99,19 @@ for(const feature of ["Dynamic attention devices", "securityDynamicDevices",
   assert(source.includes(feature),`missing v1.9.1 dynamic Security feature: ${feature}`);
 assert(source.includes("o.body.set('security_dynamic_devices',JSON.stringify(securityDynamicDevices))"),
   'Dynamic Security device entries must be serialized as complete objects');
+const roomFavoriteSource=source.match(/function reorderRoomFavorite\(items,roomIndex,index,direction\)\{[\s\S]*?return true\}/)?.[0];
+assert(roomFavoriteSource,'Room favorites must use one room-scoped complete-object reorder helper');
+const officeA={entity_id:'light.office_a',room_index:0,placement:1,label:'A'};
+const grouped={entity_id:'switch.grouped',room_index:0,placement:0,label:'Grouped'};
+const bedroom={entity_id:'light.bedroom',room_index:1,placement:1,label:'Bedroom'};
+const officeB={entity_id:'light.office_b',room_index:0,placement:1,label:'B'};
+const favoriteOrderTest=Function(`${roomFavoriteSource};return reorderRoomFavorite`)([officeA,grouped,bedroom,officeB]);
+const favoriteRows=[officeA,grouped,bedroom,officeB];
+assert.equal(favoriteOrderTest(favoriteRows,0,3,-1),true,'a valid Room favorite move should succeed');
+assert.strictEqual(favoriteRows[0],officeB,'later favorite must move earlier as one complete object');
+assert.strictEqual(favoriteRows[1],grouped,'grouped control must keep its relative slot');
+assert.strictEqual(favoriteRows[2],bedroom,'another room must remain untouched');
+assert.strictEqual(favoriteRows[3],officeA,'displaced favorite must retain its complete object');
 for(const feature of ["Climate tab", "climateDevices", "climate_devices",
                      "climate_show_humidity", "climate_show_fan", "climate_show_presets",
                      "function renderClimateAdmin", "function addClimateDevice",
@@ -97,4 +123,4 @@ assert.equal((source.match(/>Reboot</g)||[]).length,1,'Reboot must have one visi
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');
-console.log('Web layout manager tests passed: unified Overview cards, configurable Room status slots, typed HA scan, explicit layout payload, and safe rendering hooks.');
+console.log('Web layout manager tests passed: professional responsive layout, 16 dynamic attention devices, scoped Room favorite ordering, entity search, and safe rendering hooks.');

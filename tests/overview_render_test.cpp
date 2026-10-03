@@ -118,10 +118,12 @@ int main() {
     assert(model[8].active && strstr(model[8].state_text, "Today"));
 
     auto *root = lv_screen_active(); OverviewModule overview; overview.create(root); lv_obj_update_layout(root);
-    assert(find(root, "At a glance") && find(root, "Garage Door") && find(root, "Open") && find(root, "Closed"));
+    auto *subtitle = find(root, "Whole-home status, controls, and quick actions");
+    assert(find(root, "Overview") && subtitle && find(root, "Garage Door") && find(root, "Open") && find(root, "Closed"));
     assert(find(root, "Office energy saver") && find(root, "00:12:34"));
     assert(find(root, "Current Weather") && find(root, "Next Hours") && find(root, "Next Days"));
     auto *garage_card = lv_obj_get_parent(find(root, "Garage Door")); assert(lv_obj_get_height(garage_card) == 120);
+    assert(lv_obj_get_y(garage_card) >= lv_obj_get_y(subtitle) + lv_obj_get_height(subtitle) + 8);
     lv_obj_send_event(garage_card, LV_EVENT_CLICKED, nullptr);
     assert(find(root, "Garage Door?") && toggle_count == 0);
     snprintf(entities[0].state, sizeof(entities[0].state), "closed"); overview.update();

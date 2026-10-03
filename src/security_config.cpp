@@ -27,7 +27,10 @@ bool parse_collection(const String &json, PanelSecurityDevice *destination,
         return false;
     }
 
-    PanelSecurityDevice parsed[PANEL_MAX_SECURITY_DEVICES] = {};
+    // The dynamic collection is intentionally larger than the persistent-card
+    // collection. Keep the transactional scratch buffer sized for the larger
+    // collection so validation never writes past the temporary array.
+    PanelSecurityDevice parsed[PANEL_MAX_SECURITY_DYNAMIC_DEVICES] = {};
     size_t count = 0;
     for (JsonObject item : doc.as<JsonArray>()) {
         const unsigned position = static_cast<unsigned>(count + 1);

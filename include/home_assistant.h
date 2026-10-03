@@ -194,6 +194,9 @@ bool home_assistant_request_discovery();
 // A temporary whole-home entity search used by the web layout editor. It is
 // never the normal startup mode once an explicit layout has been saved.
 bool home_assistant_request_full_discovery();
+// Runs a bounded, ESP-proxied Home Assistant search. Query matches friendly
+// names and entity IDs; domain may be blank or a supported HA domain.
+bool home_assistant_request_entity_search(const char *query, const char *domain);
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out);
 
 size_t home_assistant_get_room_controls(HomeAssistantEntitySnapshot *out, size_t max_count);

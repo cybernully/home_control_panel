@@ -91,7 +91,8 @@ int main() {
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);pref(id.c_str(),"",0);}
     RoomViewModel model={};RoomControlViewModel model_controls[48]={};size_t model_count=0;assert(ui_state_model_snapshot_room(model,model_controls,48,model_count));assert(model.favorite_count==4);assert(strcmp(model.favorites[0].title,"Desk — warm")==0);
     RoomModule room;room.create(root);room.update();
-    lv_obj_update_layout(root);assert(find(root,"Desk - warm"));assert(find(root,"Favorite Controls"));assert(!find(root,"Room Status"));assert(find(root,"72°F"));assert(find(root,"Closed"));assert(find(root,"00:12:34"));assert(find(root,"1 offline"));auto *room_dropdown=find_dropdown(root);assert(room_dropdown&&lv_dropdown_get_option_count(room_dropdown)==2);
+    lv_obj_update_layout(root);auto *room_subtitle=find(root,"Favorites, quick access, and live status for the selected room");assert(find(root,"Rooms")&&room_subtitle);assert(find(root,"Desk - warm"));assert(find(root,"Favorite Controls"));assert(!find(root,"Room Status"));assert(find(root,"72°F"));assert(find(root,"Closed"));assert(find(root,"00:12:34"));assert(find(root,"1 offline"));auto *room_dropdown=find_dropdown(root);assert(room_dropdown&&lv_dropdown_get_option_count(room_dropdown)==2);
+    auto *room_status=lv_obj_get_parent(room_dropdown);assert(lv_obj_get_y(room_status)>=lv_obj_get_y(room_subtitle)+lv_obj_get_height(room_subtitle)+8);
     auto *favorite=lv_obj_get_parent(find(root,"Desk - warm"));assert(lv_obj_get_height(favorite)==132);
     auto *favorite_high=find(root,"High");assert(favorite_high);
     auto *fan_card=lv_obj_get_parent(lv_obj_get_parent(favorite_high));
