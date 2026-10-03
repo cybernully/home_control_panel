@@ -59,9 +59,9 @@ static void entity(const char *id,const char *name,const char *domain,const char
     e.supports_brightness=strcmp(domain,"light")==0;e.brightness_pct=62;
     e.supports_fan_speed=strcmp(domain,"fan")==0;e.fan_speed_pct=66;
 }
-static void pref(const char *id,const char *label,int placement) {
+static void pref(const char *id,const char *label,int placement,const char *device_type="auto") {
     auto &p=config.room_controls[config.room_control_count++];snprintf(p.entity_id,sizeof(p.entity_id),"%s",id);
-    snprintf(p.label,sizeof(p.label),"%s",label);p.placement=placement;
+    snprintf(p.label,sizeof(p.label),"%s",label);p.placement=placement;snprintf(p.device_type,sizeof(p.device_type),"%s",device_type);
 }
 static void status_slot(int i,const char *type,const char *id,const char *label,const char *icon,
                         const char *states="",const char *active="",const char *inactive="",const char *color="cyan") {
@@ -78,7 +78,7 @@ int main() {
     status_slot(2,"entity","timer.office_energy_saver_countdown","Energy Timer","timer","active,paused","","","cyan");
     status_slot(3,"controls","","Room Controls","shield","","","","green");
     entity("light.desk","Desk — warm","light","on");entity("light.ceiling","Ceiling","light","off");
-    entity("fan.ceiling","Ceiling fan with an intentionally long upstairs office name","fan","on");entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entities[count-1].supports_brightness=true;entities[count-1].brightness_pct=35;entity("cover.window","Window shades","cover","open");
+    entity("fan.ceiling","Ceiling fan with an intentionally long upstairs office name","fan","on");entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entities[count-1].brightness_pct=35;entity("cover.window","Window shades","cover","open");
     entity("scene.focus","Focus","scene","scening");entity("light.offline","Reading lamp","light","unavailable",false);
     entity("switch.hidden","Hidden control","switch","on");
     entity("sensor.office_temperature","Office temperature","sensor","72");snprintf(entities[count-1].unit_of_measurement,sizeof(entities[count-1].unit_of_measurement),"°F");
@@ -87,7 +87,7 @@ int main() {
     entity("timer.office_energy_saver_countdown","Office energy saver","timer","active");entities[count-1].timer_has_remaining=true;entities[count-1].timer_remaining_seconds=754;
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);std::string name="Accent light "+std::to_string(i+1);entity(id.c_str(),name.c_str(),"light","off");}
     pref("light.desk","Desk — warm",1);pref("light.ceiling","Ceiling",0);pref("fan.ceiling","Ceiling fan with an intentionally long upstairs office name",1);pref("scene.focus","Focus",1);
-    pref("cover.window","Window shades",1);pref("switch.fan","Desk fan",1);pref("switch.lamp","Desk lamp",1);pref("light.missing","Reading lamp",1);pref("switch.hidden","",2);
+    pref("cover.window","Window shades",1);pref("switch.fan","Desk fan",1);pref("switch.lamp","Desk lamp",1,"dimmable");pref("light.missing","Reading lamp",1);pref("switch.hidden","",2);
     for(int i=0;i<8;++i){std::string id="light.extra"+std::to_string(i);pref(id.c_str(),"",0);}
     RoomViewModel model={};RoomControlViewModel model_controls[48]={};size_t model_count=0;assert(ui_state_model_snapshot_room(model,model_controls,48,model_count));assert(model.favorite_count==4);assert(strcmp(model.favorites[0].title,"Desk — warm")==0);
     RoomModule room;room.create(root);room.update();
@@ -118,15 +118,16 @@ int main() {
     lv_obj_send_event(slider,LV_EVENT_RELEASED,nullptr);
     assert(brightness_calls==1 && toggles==1 && target=="light.desk");
     lv_obj_send_event(slider,LV_EVENT_PRESSED,nullptr);
+    lv_slider_set_value(slider,55,LV_ANIM_OFF);
     lv_obj_send_event(slider,LV_EVENT_PRESS_LOST,nullptr);
     lv_obj_send_event(slider,LV_EVENT_RELEASED,nullptr);
-    assert(brightness_calls==1); // Lost touch never sends a brightness action.
+    assert(brightness_calls==2); // Leaving the narrow track still commits exactly once.
     auto *switch_lamp=lv_obj_get_parent(find(sheet,"Desk lamp"));
     auto *switch_slider=find_slider(switch_lamp);assert(switch_slider);
     lv_obj_send_event(switch_slider,LV_EVENT_PRESSED,nullptr);
     lv_slider_set_value(switch_slider,70,LV_ANIM_OFF);
     lv_obj_send_event(switch_slider,LV_EVENT_RELEASED,nullptr);
-    assert(brightness_calls==2&&target=="switch.lamp");
+    assert(brightness_calls==3&&target=="switch.lamp");
     click(root,"Next");shot(".test-build/room-lights-page2.ppm");assert(find(root,"2 / 2"));
     click(root,"Close");click(root,"Devices");assert(!find(root,"Hidden control"));
     auto *popup_high=find(sheet,"High");assert(popup_high);

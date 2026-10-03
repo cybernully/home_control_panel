@@ -298,10 +298,10 @@ void RoomModule::slider_cb(lv_event_t *event) {
     if (code == LV_EVENT_PRESSED) slot->dragging = true;
     else if (code == LV_EVENT_VALUE_CHANGED && slot->dragging)
         ui_card_set_level(slot->card, static_cast<uint8_t>(lv_slider_get_value(slot->card.slider)), false);
-    else if (code == LV_EVENT_PRESS_LOST) {
-        slot->dragging = false;
-        slot->owner->update();
-    } else if (code == LV_EVENT_RELEASED && slot->dragging) {
+    else if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) && slot->dragging) {
+        // A finger can leave the slider's bounds before lifting, especially on
+        // a wall panel. Commit PRESS_LOST as the end of the drag; a following
+        // RELEASED event sees dragging=false and cannot enqueue a duplicate.
         const uint8_t level = static_cast<uint8_t>(lv_slider_get_value(slot->card.slider));
         slot->dragging = false;
         const bool queued = ui_state_model_set_level(slot->control, level);

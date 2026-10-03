@@ -17,8 +17,9 @@ struct PanelRoomControl {
     char label[64];
     uint8_t placement;
     uint8_t room_index;
-    // "auto" uses the entity's Home Assistant domain; an explicit value lets
-    // the owner render a compatible device as light, switch, fan, cover, or scene.
+    // "auto" uses Home Assistant capabilities. "dimmable" explicitly renders
+    // a light with a brightness slider when an integration reports only on/off.
+    // Other explicit values render a compatible entity as that control type.
     char device_type[12];
 };
 
@@ -127,7 +128,12 @@ struct PanelConfig {
     bool explicit_layout;
     char media_players[PANEL_MAX_MEDIA_PLAYERS][PANEL_MEDIA_ENTITY_ID_LEN];
     uint8_t media_player_count;
+    // Current conditions remain the legacy Weather source. Hourly and daily
+    // may use integrations that expose different forecast capabilities; when
+    // blank they inherit weather_entity_id for migration compatibility.
     char weather_entity_id[96];
+    char weather_hourly_entity_id[96];
+    char weather_daily_entity_id[96];
     // Weather presentation remains configuration-only. The Home Assistant
     // transport exposes a UI-neutral current/hourly/daily snapshot.
     char weather_layout[20]; // balanced, current_focus, or forecast_focus

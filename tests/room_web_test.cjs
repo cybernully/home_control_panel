@@ -29,6 +29,10 @@ for(const feature of ["Room status bar", "roomStatusDefaults", "ensureRoomStatus
                      "sensor, binary_sensor, timer...", "function utf8Trim",
                      "label:utf8Trim(entity.name||entity.entity_id,23)"])
   assert(source.includes(feature),`missing configurable Room-status feature: ${feature}`);
+for(const feature of ["Dimmable light (brightness slider)",
+                     "Dimmable light forces a brightness slider",
+                     "['dimmable','Dimmable light (brightness slider)']"])
+  assert(source.includes(feature),`missing explicit dimmable Room-control behavior: ${feature}`);
 
 const reorderSource=source.match(/function reorderOverviewItems\(from,to\)\{[\s\S]*?return true\}/)?.[0];
 assert(reorderSource,'Overview reordering must use one complete-object move helper');
@@ -47,7 +51,9 @@ for(const feature of ["function ensureWidget(type)", "Add Calendar card", "Add c
                      "Edit room controls", "function renderLinkedPages()"])
   assert(source.includes(feature),`missing working panel-tab configuration: ${feature}`);
 for(const feature of ["weather_layout", "weather_show_current", "weather_show_hourly",
-                     "weather_show_daily", "weather_header_enabled", "weather_entities"])
+                     "weather_show_daily", "weather_header_enabled", "weather_entities",
+                     "weather_hourly_entity_id", "weather_daily_entity_id",
+                     "Blank forecast sources inherit current conditions"])
   assert(source.includes(feature),`missing v1.7.2 Weather configuration: ${feature}`);
 for(const feature of ["Calendar tab", "calendar_sources", "calendar_add_entity",
                      "calendar_week_starts_monday", "calendar_days", "Days shown",

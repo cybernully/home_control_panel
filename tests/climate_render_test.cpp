@@ -74,6 +74,16 @@ int main() {
 
     ClimateModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
     assert(find(root, "Climate") && find(root, "Office") && find(root, "Bedroom"));
+    auto *subtitle = find(root, "Live thermostats, comfort and HVAC controls");
+    auto *office_button = lv_obj_get_parent(find(root, "Office"));
+    auto *current_state = find(root, "CURRENT STATE");
+    auto *thermostat_card = lv_obj_get_parent(current_state);
+    assert(subtitle && office_button && thermostat_card);
+    assert(lv_obj_get_y(office_button) >= lv_obj_get_y(subtitle) + lv_obj_get_height(subtitle) + 8);
+    assert(lv_obj_get_y(thermostat_card) >= lv_obj_get_y(office_button) + lv_obj_get_height(office_button) + 12);
+    assert(lv_label_get_long_mode(lv_obj_get_child(office_button, 0)) == LV_LABEL_LONG_DOT);
+    assert(!find(root, "HA LIVE") && !find(root, "SYSTEM STATUS"));
+    assert(find(root, "CURRENT STATE") && find(root, "TEMPERATURE") && find(root, "HVAC MODE"));
     assert(find_containing(root, "71.5") && find_containing(root, "72.0") && find(root, "Humidity 42%"));
     assert(find(root, "Heat") && find(root, "Cool") && find(root, "Auto") && find(root, "Off"));
     assert(find_containing(root, "Fan") && find_containing(root, "Preset"));

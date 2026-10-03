@@ -36,6 +36,8 @@ int main() {
     lv_display_set_buffers(display, buffer, nullptr, sizeof(buffer), LV_DISPLAY_RENDER_MODE_FULL);
     lv_display_set_flush_cb(display, flush);
     snprintf(config.weather_entity_id, sizeof(config.weather_entity_id), "weather.home");
+    snprintf(config.weather_hourly_entity_id, sizeof(config.weather_hourly_entity_id), "weather.hourly_station");
+    snprintf(config.weather_daily_entity_id, sizeof(config.weather_daily_entity_id), "weather.daily_station");
     snprintf(config.weather_layout, sizeof(config.weather_layout), "balanced");
     config.weather_show_current = config.weather_show_hourly = config.weather_show_daily = true;
     weather.available = true;

@@ -7,8 +7,9 @@ int main() {
     PanelConfig config = {}; String error;
     auto parse = [&](const String &s) { return config_service_parse_room_controls(s, config, error); };
     assert(parse("[]") && config.room_control_count == 0);
-    assert(parse(R"([{"entity_id":"light.desk","label":"Desk — warm","placement":1},{"entity_id":"switch.fan","label":"","placement":2}])"));
+    assert(parse(R"([{"entity_id":"light.desk","label":"Desk — warm","placement":1},{"entity_id":"switch.fan","label":"","placement":2,"device_type":"dimmable"}])"));
     assert(config.room_control_count == 2 && config.room_controls[1].placement == 2);
+    assert(strcmp(config.room_controls[1].device_type, "dimmable") == 0);
     const auto before = config;
     for (const auto *bad : {"{}", "null", "[1]", "[{}]",
         R"([{"entity_id":"light.a","label":"","placement":3}])",
@@ -16,6 +17,7 @@ int main() {
         R"([{"entity_id":"light.a","label":"","placement":"1"}])",
         R"([{"entity_id":"light.a","label":"","placement":1.5}])",
         R"([{"entity_id":"light.a","label":"","placement":true}])",
+        R"([{"entity_id":"light.a","label":"","placement":0,"device_type":"slider"}])",
         R"([{"entity_id":"light.a.b","label":"","placement":0}])",
         R"([{"entity_id":"light.","label":"","placement":0}])",
         R"([{"entity_id":"lock.front","label":"","placement":0}])",

@@ -4,7 +4,7 @@ Room panel example:
 
 ```json
 {
-  "schema": 9,
+  "schema": 10,
   "device_id": "living-room-panel",
   "display_name": "Living Room",
   "profile": "room",
@@ -79,6 +79,22 @@ Dimmable `switch.*` entities are capability-driven: when Home Assistant reports
 a brightness attribute, Room renders the same slider used by a dimmable light.
 The resulting brightness command still targets the `switch` domain, so no entity
 renaming or helper light is required.
+
+## Weather sources (1.9.3)
+
+Current conditions, hourly forecasts, and daily forecasts can come from three
+different `weather.*` entities. The optional hourly and daily values inherit
+the current-conditions entity when blank, so schema 9 configurations keep the
+same behavior after upgrading.
+
+```json
+"weather_entity_id": "weather.home",
+"weather_hourly_entity_id": "weather.hourly_station",
+"weather_daily_entity_id": "weather.regional_daily"
+```
+
+The current source also supplies the optional header temperature. Forecast
+service calls are sent independently to their selected hourly or daily source.
 
 ## Alarmo security (1.9.1)
 
@@ -225,8 +241,12 @@ The local web-management page writes the same configuration format to SPIFFS.
 ## Room layout (1.4.0)
 
 `room_controls` is an optional array of up to 48 entity preferences. Each entry
-has `entity_id`, `label` (empty uses the HA name), and `placement` (0 grouped,
-1 favorite, 2 hidden). Array order controls display order. Six favorites maximum;
+has `entity_id`, `label` (empty uses the HA name), `placement` (0 grouped,
+1 favorite, 2 hidden), and an optional `device_type`. Set `device_type` to
+`dimmable` to force a brightness slider when Home Assistant reports the entity
+as on/off only. `auto` retains capability-based behavior; `light`, `switch`,
+`fan`, `cover`, and `scene` force the corresponding presentation. Array order
+controls display order. Six favorites maximum;
 labels have a 63-byte UTF-8 limit. Use the authenticated web manager's Room
 controls editor; changes apply live after Save. Existing files without this
 array load with all supported controls grouped and no favorites.

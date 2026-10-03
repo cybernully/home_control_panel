@@ -177,6 +177,8 @@ void handle_get_config() {
     doc["timeout"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
     doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["weather_hourly_entity_id"] = cfg.weather_hourly_entity_id;
+    doc["weather_daily_entity_id"] = cfg.weather_daily_entity_id;
     doc["weather_layout"] = cfg.weather_layout;
     doc["weather_show_current"] = cfg.weather_show_current;
     doc["weather_show_hourly"] = cfg.weather_show_hourly;
@@ -586,9 +588,22 @@ void handle_save_config() {
     }
     String rooms_error;
     if (g_server.hasArg("rooms") && !config_service_parse_rooms(g_server.arg("rooms"), next, rooms_error)) { send_error(400, rooms_error.c_str()); return; }
-    String weather_entity = g_server.arg("weather_entity_id"); weather_entity.trim(); weather_entity.toLowerCase();
-    if (!weather_entity.isEmpty() && !weather_entity.startsWith("weather.")) { send_error(400, "Weather selection must be a weather.* Home Assistant entity."); return; }
-    snprintf(next.weather_entity_id, sizeof(next.weather_entity_id), "%s", weather_entity.substring(0,95).c_str());
+    auto save_weather_entity = [&](const char *arg_name, char *target, size_t target_len,
+                                   const char *label) -> bool {
+        String value = g_server.arg(arg_name); value.trim(); value.toLowerCase();
+        if (!value.isEmpty() && !value.startsWith("weather.")) {
+            String message = String(label) + " must be a weather.* Home Assistant entity.";
+            send_error(400, message.c_str()); return false;
+        }
+        snprintf(target, target_len, "%s", value.substring(0, 95).c_str());
+        return true;
+    };
+    if (!save_weather_entity("weather_entity_id", next.weather_entity_id,
+                             sizeof(next.weather_entity_id), "Current conditions selection") ||
+        !save_weather_entity("weather_hourly_entity_id", next.weather_hourly_entity_id,
+                             sizeof(next.weather_hourly_entity_id), "Hourly forecast selection") ||
+        !save_weather_entity("weather_daily_entity_id", next.weather_daily_entity_id,
+                             sizeof(next.weather_daily_entity_id), "Daily forecast selection")) return;
     String weather_layout = g_server.arg("weather_layout"); weather_layout.trim(); weather_layout.toLowerCase();
     if (weather_layout != "balanced" && weather_layout != "current_focus" && weather_layout != "forecast_focus") {
         send_error(400, "Weather layout must be balanced, current focus, or forecast focus."); return;

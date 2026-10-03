@@ -1,11 +1,19 @@
 # Home Control Panel
 
-**Version 1.9.2**
+**Version 1.9.3**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Refined Climate and split Weather sources 1.9.3
+
+Climate now uses the same professional card hierarchy as the Room, Weather,
+and Security tabs, without the redundant HA LIVE pill. Footer icon captions
+have clearer vertical separation. Weather can independently select current,
+hourly, and daily Home Assistant providers; blank forecast sources safely fall
+back to the current-conditions entity. See the [1.9.3 release notes](docs/RELEASE_1.9.3.md).
 
 ## Live Climate and dimmable switches 1.9.2
 

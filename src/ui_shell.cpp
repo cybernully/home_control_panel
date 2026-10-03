@@ -378,11 +378,11 @@ void ui_shell_begin() {
         ui_theme::set_glyph(g_nav_icons[i], glyph);
         lv_obj_set_width(g_nav_icons[i], button_w);
         lv_obj_set_style_text_align(g_nav_icons[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_pos(g_nav_icons[i], 0, 5);
+        lv_obj_set_pos(g_nav_icons[i], 0, 1);
         g_nav_labels[i] = label(g_nav_buttons[i], module->title(), &lv_font_montserrat_12, MUTED);
         lv_obj_set_width(g_nav_labels[i], button_w);
         lv_obj_set_style_text_align(g_nav_labels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_pos(g_nav_labels[i], 0, 38);
+        lv_obj_set_pos(g_nav_labels[i], 0, 43);
         x += button_w + gap;
     }
     g_active_index = 0;

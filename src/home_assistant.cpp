@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "config_service.h"
+#include "home_assistant_capabilities.h"
 #include "network_service.h"
 
 #include <ArduinoJson.h>
@@ -195,7 +196,9 @@ uint32_t g_weather_hourly_request_id = 0;
 uint32_t g_weather_daily_request_id = 0;
 uint32_t g_weather_forecast_started_ms = 0;
 uint32_t g_weather_forecast_retry_not_before_ms = 0;
-char g_weather_forecast_entity_id[96] = {};
+char g_weather_current_entity_id[96] = {};
+char g_weather_hourly_entity_id[96] = {};
+char g_weather_daily_entity_id[96] = {};
 
 HomeAssistantCalendarSnapshot g_calendar_cache = {};
 HomeAssistantCalendarEvent *g_calendar_events = nullptr;
@@ -539,6 +542,23 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
         model.supports_brightness = true;
     }
 
+    // Brightness is commonly absent while a light is off. The supported
+    // color modes are the authoritative capability signal and remain present
+    // regardless of the current on/off state.
+    if (strcmp(model.domain, "light") == 0) {
+        JsonArrayConst modes = attrs["supported_color_modes"].as<JsonArrayConst>();
+        if (!modes.isNull()) {
+            bool supports_brightness = false;
+            for (JsonVariantConst item : modes) {
+                if (home_assistant_light_mode_supports_brightness(item.as<const char *>())) {
+                    supports_brightness = true;
+                    break;
+                }
+            }
+            model.supports_brightness = supports_brightness;
+        }
+    }
+
     if (!attrs["current_position"].isNull()) {
         int position = attrs["current_position"].as<int>();
         model.position_pct = static_cast<int16_t>(constrain(position, 0, 100));
@@ -724,7 +744,10 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
                 if (!key) continue;
                 if (strcmp(key, "brightness") == 0) {
                     model->brightness_pct = 0;
-                    model->supports_brightness = false;
+                    // An off light may remove only its current brightness.
+                    // Keep the capability learned from supported_color_modes.
+                    if (strcmp(model->domain, "light") != 0)
+                        model->supports_brightness = false;
                 } else if (strcmp(key, "current_position") == 0) {
                     model->position_pct = -1;
                     model->supports_position = false;
@@ -972,7 +995,9 @@ bool is_layout_entity(const char *entity_id) {
             (cfg.overview_items[i].action_entity_id[0] &&
              strcmp(cfg.overview_items[i].action_entity_id, entity_id) == 0)) return true;
     }
-    if (cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) return true;
+    if ((cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) ||
+        (cfg.weather_hourly_entity_id[0] && strcmp(cfg.weather_hourly_entity_id, entity_id) == 0) ||
+        (cfg.weather_daily_entity_id[0] && strcmp(cfg.weather_daily_entity_id, entity_id) == 0)) return true;
     for (uint8_t i = 0; i < cfg.calendar_count; ++i)
         if (strcmp(cfg.calendars[i].entity_id, entity_id) == 0) return true;
     if (cfg.alarm_entity_id[0] && strcmp(cfg.alarm_entity_id, entity_id) == 0) return true;
@@ -1043,6 +1068,8 @@ void populate_configured_layout_entities_worker() {
         add_entity(cfg.overview_items[i].action_entity_id);
     }
     add_entity(cfg.weather_entity_id);
+    add_entity(cfg.weather_hourly_entity_id);
+    add_entity(cfg.weather_daily_entity_id);
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) add_entity(cfg.calendars[i].entity_id, true);
     add_entity(cfg.alarm_entity_id);
     for (uint8_t i = 0; i < cfg.climate_device_count; ++i)
@@ -1093,7 +1120,10 @@ void send_subscribe_entities_worker() {
     if (send_json(doc)) {
         g_last_entity_subscription_refresh_ms = millis();
         set_discovery_message("Subscribing to live Home Assistant state...");
-        const char *weather_id = config_service_get().weather_entity_id;
+        const PanelConfig &cfg = config_service_get();
+        const char *weather_id = cfg.weather_entity_id[0] ? cfg.weather_entity_id :
+                                 cfg.weather_hourly_entity_id[0] ? cfg.weather_hourly_entity_id :
+                                 cfg.weather_daily_entity_id;
         if (weather_id[0]) home_assistant_request_weather_forecasts(weather_id);
     } else {
         set_discovery_message("Could not start live state subscription.");
@@ -1129,8 +1159,9 @@ void send_media_browse_worker(const char *entity_id,
     }
 }
 
-void send_weather_forecast_worker(const char *forecast_type, uint32_t &request_id) {
-    if (!g_weather_forecast_entity_id[0] || !g_ws_authenticated) return;
+void send_weather_forecast_worker(const char *forecast_type, const char *entity_id,
+                                  uint32_t &request_id) {
+    if (!entity_id || !entity_id[0] || !g_ws_authenticated) return;
     JsonDocument doc;
     request_id = next_ws_id();
     doc["id"] = request_id;
@@ -1138,7 +1169,7 @@ void send_weather_forecast_worker(const char *forecast_type, uint32_t &request_i
     doc["domain"] = "weather";
     doc["service"] = "get_forecasts";
     doc["service_data"]["type"] = forecast_type;
-    doc["target"]["entity_id"] = g_weather_forecast_entity_id;
+    doc["target"]["entity_id"] = entity_id;
     doc["return_response"] = true;
     if (!send_json(doc)) request_id = 0;
 }
@@ -1151,8 +1182,10 @@ void send_weather_forecasts_worker() {
         if (strcmp(cfg.overview_items[i].type, "weather_hourly") == 0) need_hourly = true;
         if (strcmp(cfg.overview_items[i].type, "weather_daily") == 0) need_daily = true;
     }
-    if (need_hourly) send_weather_forecast_worker("hourly", g_weather_hourly_request_id);
-    if (need_daily) send_weather_forecast_worker("daily", g_weather_daily_request_id);
+    if (need_hourly) send_weather_forecast_worker("hourly", g_weather_hourly_entity_id,
+                                                  g_weather_hourly_request_id);
+    if (need_daily) send_weather_forecast_worker("daily", g_weather_daily_entity_id,
+                                                 g_weather_daily_request_id);
     if (!g_weather_hourly_request_id && !g_weather_daily_request_id) {
         portENTER_CRITICAL(&g_mux);
         g_weather_cache.forecasts_loading = false;
@@ -1167,7 +1200,8 @@ void handle_weather_forecast_result_worker(JsonDocument &doc, bool hourly) {
     size_t count = 0;
     if (doc["success"] | false) {
         JsonObjectConst response = doc["result"]["response"].as<JsonObjectConst>();
-        JsonObjectConst provider = response[g_weather_forecast_entity_id].as<JsonObjectConst>();
+        const char *provider_id = hourly ? g_weather_hourly_entity_id : g_weather_daily_entity_id;
+        JsonObjectConst provider = response[provider_id].as<JsonObjectConst>();
         JsonArrayConst forecasts = provider["forecast"].as<JsonArrayConst>();
         // Keep compatibility with integrations that return the forecast body
         // without the provider wrapper.
@@ -2338,7 +2372,10 @@ void process_action_worker(const HaAction &action) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
         const bool brightness_domain = model &&
             (strcmp(model->domain, "light") == 0 || strcmp(model->domain, "switch") == 0);
-        if (!model || !model->available || !brightness_domain || !model->supports_brightness) {
+        // The action was admitted only from a level-capable control. Do not
+        // reject it later merely because an off-state update temporarily
+        // omitted the brightness attribute before the worker executes.
+        if (!model || !model->available || !brightness_domain) {
             record_action_result("Dimmer no longer available", -103); return;
         }
         JsonDocument doc;
@@ -3540,15 +3577,29 @@ bool home_assistant_get_climate(const char *entity_id, HomeAssistantClimateSnaps
 
 bool home_assistant_request_weather_forecasts(const char *entity_id) {
     if (!entity_id || strncmp(entity_id, "weather.", 8) != 0 || !g_worker) return false;
+    const PanelConfig &cfg = config_service_get();
+    const char *current_id = cfg.weather_entity_id[0] ? cfg.weather_entity_id : entity_id;
+    const char *hourly_id = cfg.weather_hourly_entity_id[0] ? cfg.weather_hourly_entity_id : current_id;
+    const char *daily_id = cfg.weather_daily_entity_id[0] ? cfg.weather_daily_entity_id : current_id;
     bool queued = false;
     portENTER_CRITICAL(&g_mux);
-    const bool entity_changed = strcmp(g_weather_forecast_entity_id, entity_id) != 0;
+    const bool current_changed = strcmp(g_weather_current_entity_id, current_id) != 0;
+    const bool hourly_changed = strcmp(g_weather_hourly_entity_id, hourly_id) != 0;
+    const bool daily_changed = strcmp(g_weather_daily_entity_id, daily_id) != 0;
+    const bool entity_changed = current_changed || hourly_changed || daily_changed;
     const bool stale = !g_weather_cache.last_forecast_ms ||
         millis() - g_weather_cache.last_forecast_ms >= HA_WEATHER_FORECAST_REFRESH_MS;
-    if (entity_changed) {
-        memset(&g_weather_cache, 0, sizeof(g_weather_cache));
-        copy_text(g_weather_forecast_entity_id, sizeof(g_weather_forecast_entity_id), entity_id);
+    if (hourly_changed) {
+        memset(g_weather_cache.hourly, 0, sizeof(g_weather_cache.hourly));
+        g_weather_cache.hourly_count = 0;
     }
+    if (daily_changed) {
+        memset(g_weather_cache.daily, 0, sizeof(g_weather_cache.daily));
+        g_weather_cache.daily_count = 0;
+    }
+    copy_text(g_weather_current_entity_id, sizeof(g_weather_current_entity_id), current_id);
+    copy_text(g_weather_hourly_entity_id, sizeof(g_weather_hourly_entity_id), hourly_id);
+    copy_text(g_weather_daily_entity_id, sizeof(g_weather_daily_entity_id), daily_id);
     const bool retry_ready = !g_weather_forecast_retry_not_before_ms ||
         static_cast<int32_t>(millis() - g_weather_forecast_retry_not_before_ms) >= 0;
     if ((entity_changed || stale) && retry_ready && !g_weather_forecast_requested &&
@@ -3563,20 +3614,20 @@ bool home_assistant_request_weather_forecasts(const char *entity_id) {
 
 bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnapshot &out) {
     memset(&out, 0, sizeof(out));
-    if (!entity_id || !entity_id[0] || !g_entities) return false;
+    if (!g_entities) return false;
     bool found = false;
     portENTER_CRITICAL(&g_mux);
-    for (size_t i = 0; i < g_entity_count; ++i) {
+    out = g_weather_cache;
+    if (entity_id && entity_id[0]) for (size_t i = 0; i < g_entity_count; ++i) {
         if (strcmp(entity_id, g_entities[i].entity_id) == 0 &&
             strcmp(g_entities[i].domain, "weather") == 0) {
-            if (strcmp(g_weather_forecast_entity_id, entity_id) == 0) out = g_weather_cache;
             snapshot_weather_current(g_entities[i], out);
             found = true;
             break;
         }
     }
     portEXIT_CRITICAL(&g_mux);
-    return found;
+    return found || out.hourly_count || out.daily_count || out.forecasts_loading;
 }
 
 bool home_assistant_request_calendar_events(const char *range_start, const char *range_end) {

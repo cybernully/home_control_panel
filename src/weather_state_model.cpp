@@ -113,20 +113,29 @@ void build_forecast(WeatherForecastViewModel &out,
 bool ui_state_model_snapshot_weather(WeatherViewModel &weather) {
     memset(&weather, 0, sizeof(weather));
     const PanelConfig &cfg = config_service_get();
-    if (!cfg.weather_entity_id[0]) {
+    const char *current_id = cfg.weather_entity_id;
+    const char *hourly_id = cfg.weather_hourly_entity_id[0] ?
+                            cfg.weather_hourly_entity_id : current_id;
+    const char *daily_id = cfg.weather_daily_entity_id[0] ?
+                           cfg.weather_daily_entity_id : current_id;
+    const char *request_id = current_id[0] ? current_id :
+                             hourly_id[0] ? hourly_id : daily_id;
+    if (!request_id[0]) {
         copy_text(weather.condition, sizeof(weather.condition), "Select a weather entity");
         return false;
     }
-    home_assistant_request_weather_forecasts(cfg.weather_entity_id);
+    home_assistant_request_weather_forecasts(request_id);
     HomeAssistantWeatherSnapshot source = {};
-    if (!home_assistant_get_weather(cfg.weather_entity_id, source)) {
-        copy_text(weather.entity_name, sizeof(weather.entity_name), cfg.weather_entity_id);
+    if (!home_assistant_get_weather(current_id, source)) {
+        copy_text(weather.entity_name, sizeof(weather.entity_name),
+                  current_id[0] ? current_id : request_id);
         copy_text(weather.condition, sizeof(weather.condition), "Waiting for Home Assistant");
         return false;
     }
     weather.available = source.available;
     weather.loading = source.forecasts_loading;
-    copy_text(weather.entity_name, sizeof(weather.entity_name), source.name);
+    copy_text(weather.entity_name, sizeof(weather.entity_name),
+              source.name[0] ? source.name : current_id[0] ? current_id : request_id);
     friendly_condition(weather.condition, sizeof(weather.condition), source.condition);
     format_temp(weather.temperature, sizeof(weather.temperature), source.has_temperature, source.temperature);
     char feels[24] = {};

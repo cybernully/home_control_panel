@@ -74,7 +74,7 @@ UiControlKind kind_from(const PanelRoomControl &pref, const HomeAssistantEntityS
     const char *type = pref.device_type[0] && strcmp(pref.device_type, "auto") != 0
                            ? pref.device_type
                            : entity ? entity->domain : "";
-    if (strcmp(type, "light") == 0) return UiControlKind::Light;
+    if (strcmp(type, "light") == 0 || strcmp(type, "dimmable") == 0) return UiControlKind::Light;
     if (strcmp(type, "fan") == 0) return UiControlKind::Fan;
     if (strcmp(type, "cover") == 0) return UiControlKind::Cover;
     if (strcmp(type, "scene") == 0) return UiControlKind::Scene;
@@ -127,7 +127,9 @@ void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
                             strcmp(entity->state, "opening") == 0);
     out.favorite = pref.placement == 1;
     if (entity) {
-        out.supports_level = ((out.kind == UiControlKind::Light || out.kind == UiControlKind::Switch) &&
+        const bool forced_dimmer = strcmp(pref.device_type, "dimmable") == 0;
+        out.supports_level = forced_dimmer ||
+                             ((out.kind == UiControlKind::Light || out.kind == UiControlKind::Switch) &&
                               entity->supports_brightness) ||
                              (out.kind == UiControlKind::Fan && entity->supports_fan_speed);
         out.level_pct = out.kind == UiControlKind::Fan ? entity->fan_speed_pct : entity->brightness_pct;

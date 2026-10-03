@@ -16,6 +16,7 @@ private:
     lv_obj_t *tabs_[PANEL_MAX_CLIMATE_DEVICES] = {};
     lv_obj_t *thermostat_card_ = nullptr;
     lv_obj_t *details_card_ = nullptr;
+    lv_obj_t *controls_card_ = nullptr;
     lv_obj_t *empty_card_ = nullptr;
     lv_obj_t *name_label_ = nullptr;
     lv_obj_t *connection_label_ = nullptr;

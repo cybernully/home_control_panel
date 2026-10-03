@@ -76,7 +76,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 9;
+    doc["schema"] = 10;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -85,6 +85,8 @@ bool save_internal(const PanelConfig &cfg) {
     doc["screen_timeout_seconds"] = cfg.screen_timeout_seconds;
     doc["explicit_layout"] = cfg.explicit_layout;
     doc["weather_entity_id"] = cfg.weather_entity_id;
+    doc["weather_hourly_entity_id"] = cfg.weather_hourly_entity_id;
+    doc["weather_daily_entity_id"] = cfg.weather_daily_entity_id;
     doc["weather_layout"] = cfg.weather_layout;
     doc["weather_show_current"] = cfg.weather_show_current;
     doc["weather_show_hourly"] = cfg.weather_show_hourly;
@@ -278,6 +280,10 @@ bool config_service_begin() {
     // until the owner saves a layout from the 1.5 web manager.
     loaded.explicit_layout = doc["explicit_layout"] | false;
     copy_text(loaded.weather_entity_id, sizeof(loaded.weather_entity_id), doc["weather_entity_id"] | "");
+    copy_text(loaded.weather_hourly_entity_id, sizeof(loaded.weather_hourly_entity_id),
+              doc["weather_hourly_entity_id"] | "");
+    copy_text(loaded.weather_daily_entity_id, sizeof(loaded.weather_daily_entity_id),
+              doc["weather_daily_entity_id"] | "");
     copy_text(loaded.weather_layout, sizeof(loaded.weather_layout), doc["weather_layout"] | "balanced");
     if (strcmp(loaded.weather_layout, "balanced") != 0 &&
         strcmp(loaded.weather_layout, "current_focus") != 0 &&
@@ -459,6 +465,11 @@ bool config_service_save(const PanelConfig &config) {
     PanelConfig &clean = *clean_storage;
     if (clean.room_control_count > HA_MAX_AREA_ENTITIES) return false;
     clean.backlight = constrain(static_cast<int>(clean.backlight), 10, 100);
+    if ((clean.weather_entity_id[0] && strncmp(clean.weather_entity_id, "weather.", 8) != 0) ||
+        (clean.weather_hourly_entity_id[0] &&
+         strncmp(clean.weather_hourly_entity_id, "weather.", 8) != 0) ||
+        (clean.weather_daily_entity_id[0] &&
+         strncmp(clean.weather_daily_entity_id, "weather.", 8) != 0)) return false;
     if (strcmp(clean.weather_layout, "balanced") != 0 &&
         strcmp(clean.weather_layout, "current_focus") != 0 &&
         strcmp(clean.weather_layout, "forecast_focus") != 0)

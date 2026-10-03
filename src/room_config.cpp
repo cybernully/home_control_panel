@@ -133,9 +133,9 @@ bool config_service_parse_room_controls(const String &json, PanelConfig &config,
             error = "Invalid room entry: entity, label (max 63 UTF-8 bytes), and placement 0-2 required.";
             return false;
         }
-        if (strcmp(device_type,"auto") && strcmp(device_type,"light") && strcmp(device_type,"switch") &&
+        if (strcmp(device_type,"auto") && strcmp(device_type,"light") && strcmp(device_type,"dimmable") && strcmp(device_type,"switch") &&
             strcmp(device_type,"fan") && strcmp(device_type,"cover") && strcmp(device_type,"scene")) {
-            error = "Device type must be auto, light, switch, fan, cover, or scene."; return false;
+            error = "Control behavior must be auto, light, dimmable, switch, fan, cover, or scene."; return false;
         }
         const char *dot = strchr(id, '.');
         if (!dot || !dot[1] || !(strncmp(id,"light.",6)==0 || strncmp(id,"switch.",7)==0 ||

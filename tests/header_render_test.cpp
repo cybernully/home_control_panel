@@ -143,7 +143,11 @@ int main(){
     assert(settings_text.y1>settings_icon.y2);
     auto *footer=lv_obj_get_parent(g_nav_buttons[0]);
     assert(lv_obj_get_style_border_width(footer,LV_PART_MAIN)==0);
-    for(size_t i=0;i<7;++i)assert(lv_obj_get_style_border_width(g_nav_buttons[i],LV_PART_MAIN)==0);
+    for(size_t i=0;i<7;++i){
+        assert(lv_obj_get_style_border_width(g_nav_buttons[i],LV_PART_MAIN)==0);
+        lv_area_t nav_icon,nav_text;lv_obj_get_coords(g_nav_icons[i],&nav_icon);lv_obj_get_coords(g_nav_labels[i],&nav_text);
+        assert(nav_text.y1-nav_icon.y2>=4);
+    }
     assert(navigation_glyph("overview")==0xF0A1D);
     assert(navigation_glyph("room")==0xF156D);
     assert(navigation_glyph("media")==0xF0387);
