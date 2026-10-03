@@ -25,7 +25,7 @@ namespace {
 struct HaEntityModel {
     char entity_id[96];
     char name[64];
-    char domain[16];
+    char domain[24];
     char state[32];
     char unit_of_measurement[16];
     uint8_t brightness_pct;
@@ -87,6 +87,7 @@ enum class HaActionType : uint8_t {
     MediaMute,
     MediaSource,
     MediaFavorite,
+    AlarmControl,
 };
 
 struct HaAction {
@@ -754,7 +755,7 @@ void handle_entity_registry_result_worker(JsonDocument &doc) {
         if (!entity_id[0]) entity_id = item["entity_id"] | "";
         if (!entity_id[0]) continue;
 
-        char domain[16] = {};
+        char domain[24] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
         if (!is_supported_domain(domain)) continue;
 
@@ -824,6 +825,9 @@ bool is_layout_entity(const char *entity_id) {
     if (cfg.weather_entity_id[0] && strcmp(cfg.weather_entity_id, entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.calendar_count; ++i)
         if (strcmp(cfg.calendars[i].entity_id, entity_id) == 0) return true;
+    if (cfg.alarm_entity_id[0] && strcmp(cfg.alarm_entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.security_device_count; ++i)
+        if (strcmp(cfg.security_devices[i].entity_id, entity_id) == 0) return true;
     const char *dot = strchr(entity_id, '.');
     const size_t domain_len = dot ? static_cast<size_t>(dot - entity_id) : 0;
     for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
@@ -847,7 +851,7 @@ void populate_configured_layout_entities_worker() {
 
     auto add_entity = [](const char *entity_id, bool allow_generic_status = false) {
         if (!entity_id || !entity_id[0]) return;
-        char domain[16] = {};
+        char domain[24] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
         if (!is_supported_domain(domain) && !allow_generic_status) return;
 
@@ -885,6 +889,9 @@ void populate_configured_layout_entities_worker() {
     }
     add_entity(cfg.weather_entity_id);
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) add_entity(cfg.calendars[i].entity_id, true);
+    add_entity(cfg.alarm_entity_id);
+    for (uint8_t i = 0; i < cfg.security_device_count; ++i)
+        add_entity(cfg.security_devices[i].entity_id, true);
 
     portENTER_CRITICAL(&g_mux);
     g_discovery.area_found = true;
@@ -1321,7 +1328,7 @@ void handle_extract_result_worker(JsonDocument &doc) {
         const char *entity_id = item.as<const char *>();
         if (!entity_id || !entity_id[0]) continue;
 
-        char domain[16] = {};
+        char domain[24] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
         if (!is_supported_domain(domain)) continue;
         if (!g_full_discovery_requested && !is_layout_entity(entity_id)) continue;
@@ -1743,7 +1750,7 @@ void run_rest_discovery_worker() {
     for (JsonObjectConst item : states) {
         const char *entity_id = item["entity_id"] | "";
         if (!entity_id[0]) continue;
-        char domain[16] = {};
+        char domain[24] = {};
         domain_from_entity_id(entity_id, domain, sizeof(domain));
         if (!is_supported_domain(domain)) continue;
         if (g_entity_count >= HA_MAX_AREA_ENTITIES) {
@@ -2094,6 +2101,7 @@ bool action_is_idempotent(const HaAction &action) {
         case HaActionType::MediaVolume:
         case HaActionType::MediaMute:
         case HaActionType::MediaSource:
+        case HaActionType::AlarmControl:
             return true;
         case HaActionType::MediaPlayPause:
         case HaActionType::MediaPrevious:
@@ -2206,6 +2214,29 @@ void process_action_worker(const HaAction &action) {
         code = call_service_with_recovery(action, "scene", "turn_on",
                                           entity_target_body(model->entity_id), retried);
         snprintf(description, sizeof(description), "Scene %s", model->name);
+    } else if (action.type == HaActionType::AlarmControl) {
+        HaEntityModel *model = find_entity_worker(action.entity_id);
+        if (!model || strcmp(model->domain, "alarm_control_panel") != 0 || !model->available) {
+            record_action_result("Alarmo panel no longer available", -103);
+            return;
+        }
+        const char *service = nullptr;
+        if (strcmp(action.aux, "home") == 0) service = "alarm_arm_home";
+        else if (strcmp(action.aux, "away") == 0) service = "alarm_arm_away";
+        else if (strcmp(action.aux, "night") == 0) service = "alarm_arm_night";
+        else if (strcmp(action.aux, "vacation") == 0) service = "alarm_arm_vacation";
+        else if (strcmp(action.aux, "disarm") == 0) service = "alarm_disarm";
+        else {
+            record_action_result("Unsupported alarm mode", -103);
+            return;
+        }
+        JsonDocument doc;
+        doc["entity_id"] = model->entity_id;
+        if (action.text[0]) doc["code"] = action.text;
+        String body;
+        serializeJson(doc, body);
+        code = call_service_with_recovery(action, "alarm_control_panel", service, body, retried);
+        snprintf(description, sizeof(description), "%s %s", model->name, service);
     } else {
         HaEntityModel *model = find_entity_worker(action.entity_id);
         if (!model || strcmp(model->domain, "media_player") != 0 || !model->available) {
@@ -3186,6 +3217,20 @@ bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage) {
     action.type = HaActionType::FanSpeed;
     copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
     action.value = constrain(static_cast<int>(percentage), 0, 100);
+    return queue_action(action);
+}
+
+bool home_assistant_queue_alarm(const char *entity_id, const char *mode, const char *code) {
+    if (!entity_id || strncmp(entity_id, "alarm_control_panel.", 20) != 0 ||
+        !mode || !mode[0]) return false;
+    if (strcmp(mode, "home") != 0 && strcmp(mode, "away") != 0 &&
+        strcmp(mode, "night") != 0 && strcmp(mode, "vacation") != 0 &&
+        strcmp(mode, "disarm") != 0) return false;
+    HaAction action = {};
+    action.type = HaActionType::AlarmControl;
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    copy_text(action.aux, sizeof(action.aux), mode);
+    copy_text(action.text, sizeof(action.text), code ? code : "");
     return queue_action(action);
 }
 

@@ -46,8 +46,53 @@ Supported live area entities in 1.3.0 are:
 - `media_player`
 
 Media players are live in 1.3.0, including transport, volume, sources, artwork,
-and browse-media shortcuts when the integration exposes them. Climate and
-security remain preview modules until their roadmap releases.
+and browse-media shortcuts when the integration exposes them. Security is live
+in 1.9.0 through Alarmo's standard `alarm_control_panel` entity and services.
+Climate remains a preview module.
+
+## Alarmo security (1.9.0)
+
+Choose the Alarmo `alarm_control_panel` entity and monitored devices in Web
+Admin. The PIN is never stored in `panel.json`; disarming always opens the local
+keypad and sends the entered code directly through the Home Assistant command
+worker.
+
+```json
+"alarm_entity_id": "alarm_control_panel.alarmo",
+"security_show_abnormal_summary": true,
+"security_confirm_arming": true,
+"security_code_to_arm": false,
+"security_arm_home": true,
+"security_arm_away": true,
+"security_arm_night": true,
+"security_arm_vacation": false,
+"security_devices": [
+  {
+    "entity_id": "binary_sensor.front_door",
+    "label": "Front door",
+    "icon": "door",
+    "abnormal_states": "on,open,opening",
+    "normal_label": "Closed",
+    "abnormal_label": "Open",
+    "color": "red",
+    "reverse_abnormal": false
+  },
+  {
+    "entity_id": "binary_sensor.alarm_network",
+    "label": "Alarm network",
+    "icon": "power",
+    "abnormal_states": "on",
+    "normal_label": "Online",
+    "abnormal_label": "Offline",
+    "color": "yellow",
+    "reverse_abnormal": true
+  }
+]
+```
+
+`reverse_abnormal` means the listed states are healthy and every other live
+state is abnormal. An unavailable or missing configured device is always shown
+as abnormal so communication failures cannot look like an all-clear condition.
 
 ## Media shortcuts
 

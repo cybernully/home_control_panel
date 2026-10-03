@@ -185,6 +185,27 @@ void handle_get_config() {
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
     doc["calendar_days"] = cfg.calendar_days;
+    doc["alarm_entity_id"] = cfg.alarm_entity_id;
+    doc["security_show_abnormal_summary"] = cfg.security_show_abnormal_summary;
+    doc["security_confirm_arming"] = cfg.security_confirm_arming;
+    doc["security_code_to_arm"] = cfg.security_code_to_arm;
+    doc["security_arm_home"] = cfg.security_arm_home;
+    doc["security_arm_away"] = cfg.security_arm_away;
+    doc["security_arm_night"] = cfg.security_arm_night;
+    doc["security_arm_vacation"] = cfg.security_arm_vacation;
+    JsonArray security_devices = doc["security_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.security_device_count; ++i) {
+        const PanelSecurityDevice &source = cfg.security_devices[i];
+        JsonObject item = security_devices.add<JsonObject>();
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["abnormal_states"] = source.abnormal_states;
+        item["normal_label"] = source.normal_label;
+        item["abnormal_label"] = source.abnormal_label;
+        item["color"] = source.color;
+        item["reverse_abnormal"] = source.reverse_abnormal;
+    }
     JsonArray calendars = doc["calendars"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) {
         JsonObject item = calendars.add<JsonObject>();
@@ -567,6 +588,28 @@ void handle_save_config() {
         send_error(400, "Calendar days shown must be 1, 3, or 7."); return;
     }
     next.calendar_days = static_cast<uint8_t>(calendar_days);
+    String alarm_entity = g_server.arg("alarm_entity_id"); alarm_entity.trim(); alarm_entity.toLowerCase();
+    if (!alarm_entity.isEmpty() && !alarm_entity.startsWith("alarm_control_panel.")) {
+        send_error(400, "Alarmo selection must be an alarm_control_panel.* Home Assistant entity."); return;
+    }
+    snprintf(next.alarm_entity_id, sizeof(next.alarm_entity_id), "%s",
+             alarm_entity.substring(0, 95).c_str());
+    next.security_show_abnormal_summary = g_server.arg("security_show_abnormal_summary") != "0";
+    next.security_confirm_arming = g_server.arg("security_confirm_arming") != "0";
+    next.security_code_to_arm = g_server.arg("security_code_to_arm") == "1";
+    next.security_arm_home = g_server.arg("security_arm_home") != "0";
+    next.security_arm_away = g_server.arg("security_arm_away") != "0";
+    next.security_arm_night = g_server.arg("security_arm_night") != "0";
+    next.security_arm_vacation = g_server.arg("security_arm_vacation") == "1";
+    if (!next.security_arm_home && !next.security_arm_away &&
+        !next.security_arm_night && !next.security_arm_vacation) {
+        send_error(400, "Enable at least one Alarmo arming mode."); return;
+    }
+    String security_error;
+    if (g_server.hasArg("security_devices") &&
+        !config_service_parse_security_devices(g_server.arg("security_devices"), next, security_error)) {
+        send_error(400, security_error.c_str()); return;
+    }
     String widgets_error;
     if (g_server.hasArg("overview_widgets") &&
         !config_service_parse_overview_widgets(g_server.arg("overview_widgets"), next, widgets_error)) {

@@ -65,6 +65,15 @@ for(const feature of ["class=\"app-header\"", "position:sticky", "id=\"header_sa
                      "onclick=\"savePanelConfig()\"", "onclick=\"reboot()\"",
                      "config_submit_guard", "MutationObserver(syncHeaderSave)"])
   assert(source.includes(feature),`missing v1.7.1 fixed-header feature: ${feature}`);
+for(const feature of ["Alarmo security", "alarm_entity_id", "security_devices",
+                     "security_show_abnormal_summary", "security_confirm_arming",
+                     "security_code_to_arm", "security_arm_vacation",
+                     "function renderSecurity", "function addSecurityDevice",
+                     "reverse_abnormal", "Reverse abnormal logic",
+                     "PINs are entered only on the panel keypad and are never stored"])
+  assert(source.includes(feature),`missing v1.9.0 Security configuration: ${feature}`);
+assert(source.includes("p.set('security_devices',JSON.stringify(securityDevices))"),
+  'Security device entries must be serialized as complete objects');
 assert.equal((source.match(/>Reboot</g)||[]).length,1,'Reboot must have one visible Web Admin action');
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),

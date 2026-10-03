@@ -35,7 +35,9 @@ struct HomeAssistantDiscoveryStatus {
 struct HomeAssistantEntitySnapshot {
     char entity_id[96];
     char name[64];
-    char domain[16];
+    // alarm_control_panel is 19 characters; leave room for it and future HA
+    // domains without truncating discovery or action routing.
+    char domain[24];
     char state[32];
     char unit_of_measurement[16];
     uint8_t brightness_pct;
@@ -211,6 +213,9 @@ size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size
 
 bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct);
 bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage);
+// mode is one of home, away, night, vacation, or disarm. Code is optional for
+// arming and required by the Security UI for every disarm attempt.
+bool home_assistant_queue_alarm(const char *entity_id, const char *mode, const char *code);
 
 bool home_assistant_get_room_entity(const char *entity_id, HomeAssistantEntitySnapshot &out);
 // UI-neutral lookup for configurable Overview status and action cards.

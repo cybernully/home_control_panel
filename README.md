@@ -1,11 +1,23 @@
 # Home Control Panel
 
-**Version 1.8.2**
+**Version 1.9.0**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Alarmo Security 1.9.0
+
+Security is now a live, configurable Alarmo experience. Select an
+`alarm_control_panel` in Web Admin, choose the Home/Away/Night/Vacation modes
+shown on the panel, and monitor up to eight Home Assistant entities with custom
+icons, labels, severity colors, abnormal-state lists, and optional reversed
+logic. The panel can arm with confirmation or an optional PIN and always uses
+an on-screen keypad to disarm. PINs are sent through the existing Home Assistant
+worker and are never persisted. A dynamic attention card lists abnormal and
+unavailable devices while the individual status cards remain visible below it.
+See the [1.9.0 release notes](docs/RELEASE_1.9.0.md).
 
 ## Intent-matched Navigation Icons 1.8.2
 

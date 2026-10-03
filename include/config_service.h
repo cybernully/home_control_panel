@@ -85,6 +85,21 @@ struct PanelCalendarSource {
     char color[12];
 };
 
+// Security devices are presentation-only state sources. abnormal_states is a
+// comma-separated list compared case-insensitively with the live HA state.
+// reverse_abnormal flips that result for devices whose healthy state is the
+// exceptional value (for example, a connectivity sensor that is normally on).
+struct PanelSecurityDevice {
+    char entity_id[96];
+    char label[PANEL_SECURITY_LABEL_LEN];
+    char icon[20];
+    char abnormal_states[PANEL_SECURITY_STATE_LEN];
+    char normal_label[24];
+    char abnormal_label[24];
+    char color[12];
+    bool reverse_abnormal;
+};
+
 struct PanelConfig {
     char device_id[32];
     char display_name[48];
@@ -123,6 +138,18 @@ struct PanelConfig {
     bool calendar_week_starts_monday;
     // Number of consecutive days rendered by the Calendar tab: 1, 3, or 7.
     uint8_t calendar_days;
+    // Alarmo exposes a standard alarm_control_panel entity and services. The
+    // PIN is intentionally never persisted; it is entered on the panel keypad.
+    char alarm_entity_id[96];
+    PanelSecurityDevice security_devices[PANEL_MAX_SECURITY_DEVICES];
+    uint8_t security_device_count;
+    bool security_show_abnormal_summary;
+    bool security_confirm_arming;
+    bool security_code_to_arm;
+    bool security_arm_home;
+    bool security_arm_away;
+    bool security_arm_night;
+    bool security_arm_vacation;
     PanelOverviewWidget overview_widgets[PANEL_MAX_OVERVIEW_WIDGETS];
     uint8_t overview_widget_count;
     PanelOverviewQuickAction overview_quick_actions[PANEL_MAX_OVERVIEW_QUICK_ACTIONS];
@@ -151,6 +178,7 @@ void config_service_set_room_status_defaults(PanelRoom &room,
 bool config_service_parse_overview_widgets(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_quick_actions(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_items(const String &json, PanelConfig &config, String &error);
+bool config_service_parse_security_devices(const String &json, PanelConfig &config, String &error);
 void config_service_set_overview_defaults(PanelConfig &config);
 void config_service_set_overview_quick_action_defaults(PanelConfig &config);
 void config_service_set_overview_item_defaults(PanelConfig &config);

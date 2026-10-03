@@ -1,5 +1,5 @@
 {
-  "schema": 6,
+  "schema": 7,
   "device_id": "panel-01",
   "display_name": "Living Room Panel",
   "profile": "room",
@@ -37,6 +37,15 @@
   "calendars": [],
   "calendar_week_starts_monday": true,
   "calendar_days": 7,
+  "alarm_entity_id": "",
+  "security_devices": [],
+  "security_show_abnormal_summary": true,
+  "security_confirm_arming": true,
+  "security_code_to_arm": false,
+  "security_arm_home": true,
+  "security_arm_away": true,
+  "security_arm_night": true,
+  "security_arm_vacation": false,
   "explicit_layout": false,
   "media_players": [],
   "overview_widgets": [

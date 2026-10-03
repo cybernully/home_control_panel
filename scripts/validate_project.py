@@ -11,17 +11,18 @@ required=[
     "src/modules/overview_module.cpp","src/modules/room_module.cpp","src/modules/media_module.cpp","src/modules/weather_module.cpp","src/modules/weather_module.h","src/modules/calendar_module.cpp","src/modules/calendar_module.h",
     "src/ui_state_model.cpp","src/overview_state_model.cpp","src/weather_state_model.cpp","src/calendar_state_model.cpp","src/ui_card.cpp","src/ui_theme.cpp",
     "src/modules/climate_module.cpp","src/modules/security_module.cpp","src/modules/settings_module.cpp",
+    "src/security_config.cpp","src/security_state_model.cpp",
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "docs/RELEASE_1.9.0.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
 if missing:
     print("Missing:",*missing,sep="\n - ");sys.exit(1)
 cfg=json.loads((root/"data/panel.json").read_text())
-assert cfg["schema"]==6
+assert cfg["schema"]==7
 assert cfg["calendar_days"] in {1,3,7}
 assert cfg["profile"] in {"calendar","room","whole_home","custom"}
 assert 1<=len(cfg["modules"])<=8
@@ -29,13 +30,14 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.8.2"' in app
+assert '#define APP_VERSION "1.9.0"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
 assert '#define PANEL_MAX_MEDIA_FAVORITES 6' in app
 assert '#define PANEL_MAX_MEDIA_PLAYERS 6' in app
 assert '#define PANEL_MAX_CALENDARS 6' in app
+assert '#define PANEL_MAX_SECURITY_DEVICES 8' in app
 assert '#define HA_MAX_CALENDAR_EVENTS 48' in app
 assert '#define HA_HTTP_INTER_REQUEST_GAP_MS 1000UL' in app
 assert '#define HA_COMMAND_MAX_ATTEMPTS 2U' in app
@@ -80,6 +82,7 @@ config=(root/"src/config_service.cpp").read_text()
 assert 'doc["media_shortcuts"]' in config and 'doc["media_favorites"]' in config
 assert 'doc["explicit_layout"]' in config and 'doc["media_players"]' in config
 assert 'doc["overview_widgets"]' in config and 'doc["overview_items"]' in config
+assert 'doc["security_devices"]' in config and 'doc["alarm_entity_id"]' in config
 web=(root/"src/web_manager.cpp").read_text()
 for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
                 "shortcut_type_", "favorite_label_", "favorite_entity_", "parse_media_shortcuts", "parse_media_favorites"]:
@@ -94,6 +97,8 @@ for feature in ["Overview layout", "Home Assistant entity", "active_states", "ov
 for feature in ["Room status bar", "roomStatusDefaults", "status_slots", "binary sensors, timers"]:
     assert feature in web_ui
 for feature in ["Calendar tab", "calendar_sources", "calendar_week_starts_monday", "calendar_days", "addCalendar", "moveCalendar"]:
+    assert feature in web_ui
+for feature in ["Alarmo security", "security_devices", "reverse_abnormal", "security_code_to_arm", "addSecurityDevice"]:
     assert feature in web_ui
 assert "home_assistant_request_full_discovery" in ha and "is_layout_entity" in ha
 settings=(root/"src/modules/settings_module.cpp").read_text()
@@ -115,5 +120,10 @@ for feature in ["select_today", "period_offset_", "selected_day_", "EVENT DETAIL
 shell=(root/"src/ui_shell.cpp").read_text()
 for feature in ["navigation_glyph", "0xF0A1D", "0xF156D", "0xF0387", "0xF0393", "0xF0CCB", "0xF0595", "0xF0E18"]:
     assert feature in shell
-print("Home Control Panel v1.8.2 structure validation passed.")
+security=(root/"src/modules/security_module.cpp").read_text()
+for feature in ["Alarmo protection", "DYNAMIC ATTENTION", "Enter code to", "ui_state_model_security_action"]:
+    assert feature in security
+for feature in ["AlarmControl", "alarm_arm_home", "alarm_arm_away", "alarm_arm_night", "alarm_arm_vacation", "alarm_disarm"]:
+    assert feature in ha
+print("Home Control Panel v1.9.0 structure validation passed.")
 

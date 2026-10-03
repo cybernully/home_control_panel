@@ -113,6 +113,49 @@ struct WeatherViewModel {
 
 bool ui_state_model_snapshot_weather(WeatherViewModel &weather);
 
+struct SecurityDeviceViewModel {
+    char entity_id[96];
+    char title[PANEL_SECURITY_LABEL_LEN];
+    char state_text[48];
+    char raw_state[32];
+    char icon[20];
+    char color[12];
+    bool available;
+    bool abnormal;
+};
+
+struct SecurityViewModel {
+    char alarm_entity_id[96];
+    char alarm_name[64];
+    char alarm_state[32];
+    char state_label[48];
+    char state_detail[96];
+    char abnormal_summary[96];
+    bool configured;
+    bool available;
+    bool command_ready;
+    bool armed;
+    bool triggered;
+    bool transitioning;
+    bool show_abnormal_summary;
+    bool confirm_arming;
+    bool code_to_arm;
+    bool arm_home;
+    bool arm_away;
+    bool arm_night;
+    bool arm_vacation;
+    uint8_t device_count;
+    uint8_t abnormal_count;
+    SecurityDeviceViewModel devices[PANEL_MAX_SECURITY_DEVICES];
+};
+
+bool ui_state_model_snapshot_security(SecurityViewModel &security);
+bool ui_state_model_security_state_is_abnormal(const char *state,
+                                                const char *abnormal_states,
+                                                bool reverse_abnormal);
+bool ui_state_model_security_action(const SecurityViewModel &security,
+                                    const char *mode, const char *code);
+
 struct CalendarDayViewModel {
     char weekday[8];
     char date[8];

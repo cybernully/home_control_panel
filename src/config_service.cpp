@@ -51,6 +51,13 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.weather_header_enabled = false;
     cfg.calendar_week_starts_monday = true;
     cfg.calendar_days = 7;
+    cfg.security_show_abnormal_summary = true;
+    cfg.security_confirm_arming = true;
+    cfg.security_code_to_arm = false;
+    cfg.security_arm_home = true;
+    cfg.security_arm_away = true;
+    cfg.security_arm_night = true;
+    cfg.security_arm_vacation = false;
     config_service_set_profile_defaults(cfg);
     cfg.room_count = 1;
     copy_text(cfg.rooms[0].tab_label, PANEL_ROOM_NAME_LEN, "Room");
@@ -66,7 +73,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 6;
+    doc["schema"] = 7;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -89,6 +96,27 @@ bool save_internal(const PanelConfig &cfg) {
         item["entity_id"] = cfg.calendars[i].entity_id;
         item["label"] = cfg.calendars[i].label;
         item["color"] = cfg.calendars[i].color;
+    }
+    doc["alarm_entity_id"] = cfg.alarm_entity_id;
+    doc["security_show_abnormal_summary"] = cfg.security_show_abnormal_summary;
+    doc["security_confirm_arming"] = cfg.security_confirm_arming;
+    doc["security_code_to_arm"] = cfg.security_code_to_arm;
+    doc["security_arm_home"] = cfg.security_arm_home;
+    doc["security_arm_away"] = cfg.security_arm_away;
+    doc["security_arm_night"] = cfg.security_arm_night;
+    doc["security_arm_vacation"] = cfg.security_arm_vacation;
+    JsonArray security_devices = doc["security_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.security_device_count; ++i) {
+        const PanelSecurityDevice &source = cfg.security_devices[i];
+        JsonObject item = security_devices.add<JsonObject>();
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["abnormal_states"] = source.abnormal_states;
+        item["normal_label"] = source.normal_label;
+        item["abnormal_label"] = source.abnormal_label;
+        item["color"] = source.color;
+        item["reverse_abnormal"] = source.reverse_abnormal;
     }
     JsonArray modules = doc["modules"].to<JsonArray>();
     for (uint8_t i = 0; i < cfg.module_count; ++i) modules.add(cfg.modules[i]);
@@ -263,6 +291,25 @@ bool config_service_begin() {
         copy_text(loaded.calendars[0].color, sizeof(loaded.calendars[0].color), "cyan");
     }
     if (loaded.calendar_count) copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), loaded.calendars[0].entity_id);
+    const char *alarm_entity = doc["alarm_entity_id"] | "";
+    if (strncmp(alarm_entity, "alarm_control_panel.", 20) == 0)
+        copy_text(loaded.alarm_entity_id, sizeof(loaded.alarm_entity_id), alarm_entity);
+    loaded.security_show_abnormal_summary = doc["security_show_abnormal_summary"] | true;
+    loaded.security_confirm_arming = doc["security_confirm_arming"] | true;
+    loaded.security_code_to_arm = doc["security_code_to_arm"] | false;
+    loaded.security_arm_home = doc["security_arm_home"] | true;
+    loaded.security_arm_away = doc["security_arm_away"] | true;
+    loaded.security_arm_night = doc["security_arm_night"] | true;
+    loaded.security_arm_vacation = doc["security_arm_vacation"] | false;
+    if (!loaded.security_arm_home && !loaded.security_arm_away &&
+        !loaded.security_arm_night && !loaded.security_arm_vacation)
+        loaded.security_arm_away = true;
+    if (!doc["security_devices"].isNull()) {
+        String json, error;
+        serializeJson(doc["security_devices"], json);
+        if (!config_service_parse_security_devices(json, loaded, error))
+            Serial0.printf("[Config] Invalid security devices: %s\n", error.c_str());
+    }
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
     JsonArray modules = doc["modules"].as<JsonArray>();
@@ -388,6 +435,13 @@ bool config_service_save(const PanelConfig &config) {
     clean.calendar_entity_id[0] = '\0';
     if (clean.calendar_count)
         copy_text(clean.calendar_entity_id, sizeof(clean.calendar_entity_id), clean.calendars[0].entity_id);
+    if (clean.security_device_count > PANEL_MAX_SECURITY_DEVICES)
+        clean.security_device_count = PANEL_MAX_SECURITY_DEVICES;
+    if (clean.alarm_entity_id[0] && strncmp(clean.alarm_entity_id, "alarm_control_panel.", 20) != 0)
+        return false;
+    if (!clean.security_arm_home && !clean.security_arm_away &&
+        !clean.security_arm_night && !clean.security_arm_vacation)
+        clean.security_arm_away = true;
     if (clean.overview_widget_count == 0 || clean.overview_widget_count > PANEL_MAX_OVERVIEW_WIDGETS)
         config_service_set_overview_defaults(clean);
     if (clean.overview_quick_action_count > PANEL_MAX_OVERVIEW_QUICK_ACTIONS)
