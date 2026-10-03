@@ -93,6 +93,35 @@ struct HomeAssistantWeatherSnapshot {
     HomeAssistantWeatherForecast daily[HA_MAX_WEATHER_DAILY];
 };
 
+struct HomeAssistantClimateSnapshot {
+    char entity_id[96];
+    char name[64];
+    char hvac_mode[HA_CLIMATE_OPTION_LEN];
+    char hvac_action[HA_CLIMATE_OPTION_LEN];
+    char fan_mode[HA_CLIMATE_OPTION_LEN];
+    char preset_mode[HA_CLIMATE_OPTION_LEN];
+    char temperature_unit[12];
+    float current_temperature;
+    float target_temperature;
+    float target_low;
+    float target_high;
+    float min_temperature;
+    float max_temperature;
+    float target_step;
+    float humidity;
+    bool available;
+    bool has_current_temperature;
+    bool has_target_temperature;
+    bool has_target_range;
+    bool has_humidity;
+    uint8_t hvac_mode_count;
+    uint8_t fan_mode_count;
+    uint8_t preset_count;
+    char hvac_modes[HA_MAX_CLIMATE_MODES][HA_CLIMATE_OPTION_LEN];
+    char fan_modes[HA_MAX_CLIMATE_FAN_MODES][HA_CLIMATE_OPTION_LEN];
+    char presets[HA_MAX_CLIMATE_PRESETS][HA_CLIMATE_OPTION_LEN];
+};
+
 struct HomeAssistantCalendarEvent {
     char calendar_entity_id[96];
     char summary[120];
@@ -172,6 +201,7 @@ size_t home_assistant_get_area_scenes(HomeAssistantEntitySnapshot *out, size_t m
 void home_assistant_get_light_stats(HomeAssistantLightStats &out);
 bool home_assistant_request_weather_forecasts(const char *entity_id);
 bool home_assistant_get_weather(const char *entity_id, HomeAssistantWeatherSnapshot &out);
+bool home_assistant_get_climate(const char *entity_id, HomeAssistantClimateSnapshot &out);
 bool home_assistant_request_calendar_events(const char *range_start, const char *range_end);
 void home_assistant_get_calendar(HomeAssistantCalendarSnapshot &out);
 bool home_assistant_get_calendar_event(size_t index, HomeAssistantCalendarEvent &out);
@@ -211,8 +241,15 @@ size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out, size_t
 // players. Intended for the authenticated web layout editor.
 size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size_t max_count);
 
+// Brightness-capable light and switch entities share this legacy entry point.
 bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct);
 bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage);
+bool home_assistant_queue_climate_temperature(const char *entity_id, float temperature,
+                                              float target_low, float target_high,
+                                              bool use_range);
+bool home_assistant_queue_climate_hvac_mode(const char *entity_id, const char *mode);
+bool home_assistant_queue_climate_fan_mode(const char *entity_id, const char *mode);
+bool home_assistant_queue_climate_preset(const char *entity_id, const char *preset);
 // mode is one of home, away, night, vacation, or disarm. Code is optional for
 // arming and required by the Security UI for every disarm attempt.
 bool home_assistant_queue_alarm(const char *entity_id, const char *mode, const char *code);

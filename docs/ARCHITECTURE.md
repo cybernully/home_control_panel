@@ -33,7 +33,7 @@ from Family Calendar.
   deleting/rebuilding screens.
 - Network/worker code never calls LVGL.
 
-## Home Assistant - 1.3.0
+## Home Assistant transport and state models
 
 `home_assistant.cpp` owns the **only Home Assistant network worker**.
 
@@ -50,7 +50,7 @@ config/area_registry/list
 extract_from_target(area)
         |
         v
-filter: light / switch / fan / cover / scene / media_player
+filter configured light / switch / fan / cover / scene / media / climate / status entities
         |
         v
 subscribe_entities(filtered IDs)
@@ -99,6 +99,13 @@ UI refresh
 
 The UI does not optimistically change device state. It waits for Home
 Assistant's state subscription to confirm the resulting state.
+
+Modules consume UI-neutral view models from `ui_state_model.*` and the
+feature-specific state-model files. Home Assistant transport owns entity
+snapshots, JSON, subscriptions, and service requests; LVGL modules own layout
+and interaction only. Climate follows the same boundary: its bounded sidecar
+stores mode lists for at most four configured devices so large option arrays
+are not duplicated across the whole 160-entity cache.
 
 The existing one-second REST inter-request spacing remains in force. WebSocket
 processing and REST service calls therefore share the same worker rather than

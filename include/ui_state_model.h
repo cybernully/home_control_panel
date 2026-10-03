@@ -113,6 +113,55 @@ struct WeatherViewModel {
 
 bool ui_state_model_snapshot_weather(WeatherViewModel &weather);
 
+struct ClimateTabViewModel {
+    char entity_id[96];
+    char label[PANEL_CLIMATE_LABEL_LEN];
+    bool available;
+};
+
+struct ClimateViewModel {
+    uint8_t tab_count;
+    uint8_t selected_index;
+    ClimateTabViewModel tabs[PANEL_MAX_CLIMATE_DEVICES];
+    char entity_id[96];
+    char name[64];
+    char hvac_mode[HA_CLIMATE_OPTION_LEN];
+    char hvac_action[HA_CLIMATE_OPTION_LEN];
+    char fan_mode[HA_CLIMATE_OPTION_LEN];
+    char preset_mode[HA_CLIMATE_OPTION_LEN];
+    char temperature_unit[12];
+    float current_temperature;
+    float target_temperature;
+    float target_low;
+    float target_high;
+    float min_temperature;
+    float max_temperature;
+    float target_step;
+    float humidity;
+    bool configured;
+    bool available;
+    bool command_ready;
+    bool has_current_temperature;
+    bool has_target_temperature;
+    bool has_target_range;
+    bool has_humidity;
+    bool show_humidity;
+    bool show_fan;
+    bool show_presets;
+    uint8_t hvac_mode_count;
+    uint8_t fan_mode_count;
+    uint8_t preset_count;
+    char hvac_modes[HA_MAX_CLIMATE_MODES][HA_CLIMATE_OPTION_LEN];
+    char fan_modes[HA_MAX_CLIMATE_FAN_MODES][HA_CLIMATE_OPTION_LEN];
+    char presets[HA_MAX_CLIMATE_PRESETS][HA_CLIMATE_OPTION_LEN];
+};
+
+bool ui_state_model_snapshot_climate(uint8_t selected_index, ClimateViewModel &climate);
+bool ui_state_model_climate_adjust_target(const ClimateViewModel &climate, int direction);
+bool ui_state_model_climate_set_hvac_mode(const ClimateViewModel &climate, const char *mode);
+bool ui_state_model_climate_set_fan_mode(const ClimateViewModel &climate, const char *mode);
+bool ui_state_model_climate_set_preset(const ClimateViewModel &climate, const char *preset);
+
 struct SecurityDeviceViewModel {
     char entity_id[96];
     char title[PANEL_SECURITY_LABEL_LEN];
@@ -145,8 +194,10 @@ struct SecurityViewModel {
     bool arm_night;
     bool arm_vacation;
     uint8_t device_count;
+    uint8_t dynamic_device_count;
     uint8_t abnormal_count;
     SecurityDeviceViewModel devices[PANEL_MAX_SECURITY_DEVICES];
+    SecurityDeviceViewModel dynamic_devices[PANEL_MAX_SECURITY_DYNAMIC_DEVICES];
 };
 
 bool ui_state_model_snapshot_security(SecurityViewModel &security);

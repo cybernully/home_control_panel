@@ -185,6 +185,15 @@ void handle_get_config() {
     doc["calendar_entity_id"] = cfg.calendar_entity_id;
     doc["calendar_week_starts_monday"] = cfg.calendar_week_starts_monday;
     doc["calendar_days"] = cfg.calendar_days;
+    doc["climate_show_humidity"] = cfg.climate_show_humidity;
+    doc["climate_show_fan"] = cfg.climate_show_fan;
+    doc["climate_show_presets"] = cfg.climate_show_presets;
+    JsonArray climate_devices = doc["climate_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.climate_device_count; ++i) {
+        JsonObject item = climate_devices.add<JsonObject>();
+        item["entity_id"] = cfg.climate_devices[i].entity_id;
+        item["label"] = cfg.climate_devices[i].label;
+    }
     doc["alarm_entity_id"] = cfg.alarm_entity_id;
     doc["security_show_abnormal_summary"] = cfg.security_show_abnormal_summary;
     doc["security_confirm_arming"] = cfg.security_confirm_arming;
@@ -197,6 +206,19 @@ void handle_get_config() {
     for (uint8_t i = 0; i < cfg.security_device_count; ++i) {
         const PanelSecurityDevice &source = cfg.security_devices[i];
         JsonObject item = security_devices.add<JsonObject>();
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["abnormal_states"] = source.abnormal_states;
+        item["normal_label"] = source.normal_label;
+        item["abnormal_label"] = source.abnormal_label;
+        item["color"] = source.color;
+        item["reverse_abnormal"] = source.reverse_abnormal;
+    }
+    JsonArray security_dynamic_devices = doc["security_dynamic_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.security_dynamic_device_count; ++i) {
+        const PanelSecurityDevice &source = cfg.security_dynamic_devices[i];
+        JsonObject item = security_dynamic_devices.add<JsonObject>();
         item["entity_id"] = source.entity_id;
         item["label"] = source.label;
         item["icon"] = source.icon;
@@ -588,6 +610,15 @@ void handle_save_config() {
         send_error(400, "Calendar days shown must be 1, 3, or 7."); return;
     }
     next.calendar_days = static_cast<uint8_t>(calendar_days);
+    next.climate_show_humidity = g_server.arg("climate_show_humidity") != "0";
+    next.climate_show_fan = g_server.arg("climate_show_fan") != "0";
+    next.climate_show_presets = g_server.arg("climate_show_presets") != "0";
+    String climate_error;
+    if (g_server.hasArg("climate_devices") &&
+        !config_service_parse_climate_devices(g_server.arg("climate_devices"), next,
+                                              climate_error)) {
+        send_error(400, climate_error.c_str()); return;
+    }
     String alarm_entity = g_server.arg("alarm_entity_id"); alarm_entity.trim(); alarm_entity.toLowerCase();
     if (!alarm_entity.isEmpty() && !alarm_entity.startsWith("alarm_control_panel.")) {
         send_error(400, "Alarmo selection must be an alarm_control_panel.* Home Assistant entity."); return;
@@ -608,6 +639,14 @@ void handle_save_config() {
     String security_error;
     if (g_server.hasArg("security_devices") &&
         !config_service_parse_security_devices(g_server.arg("security_devices"), next, security_error)) {
+        send_error(400, security_error.c_str()); return;
+    }
+    if (g_server.hasArg("security_dynamic_devices") &&
+        !config_service_parse_security_dynamic_devices(g_server.arg("security_dynamic_devices"),
+                                                       next, security_error)) {
+        send_error(400, security_error.c_str()); return;
+    }
+    if (!config_service_validate_security_device_uniqueness(next, security_error)) {
         send_error(400, security_error.c_str()); return;
     }
     String widgets_error;

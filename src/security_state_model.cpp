@@ -88,6 +88,26 @@ void describe_alarm(SecurityViewModel &out) {
         copy_text(out.state_detail, sizeof(out.state_detail), "Alarmo reported an unrecognized state");
     }
 }
+
+bool snapshot_device(const PanelSecurityDevice &source, SecurityDeviceViewModel &device) {
+    copy_text(device.entity_id, sizeof(device.entity_id), source.entity_id);
+    copy_text(device.title, sizeof(device.title), source.label);
+    copy_text(device.icon, sizeof(device.icon), source.icon);
+    copy_text(device.color, sizeof(device.color), source.color);
+    HomeAssistantEntitySnapshot entity = {};
+    const bool found = home_assistant_get_entity(source.entity_id, entity);
+    device.available = found && entity.available;
+    copy_text(device.raw_state, sizeof(device.raw_state), found ? entity.state : "unavailable");
+    const bool listed = csv_contains(source.abnormal_states, entity.state);
+    device.abnormal = !device.available || (source.reverse_abnormal ? !listed : listed);
+    if (!device.available) copy_text(device.state_text, sizeof(device.state_text), "Unavailable");
+    else if (device.abnormal && source.abnormal_label[0])
+        copy_text(device.state_text, sizeof(device.state_text), source.abnormal_label);
+    else if (!device.abnormal && source.normal_label[0])
+        copy_text(device.state_text, sizeof(device.state_text), source.normal_label);
+    else copy_text(device.state_text, sizeof(device.state_text), entity.state);
+    return device.abnormal;
+}
 }
 
 bool ui_state_model_security_state_is_abnormal(const char *state,
@@ -126,32 +146,19 @@ bool ui_state_model_snapshot_security(SecurityViewModel &out) {
     out.device_count = cfg.security_device_count > PANEL_MAX_SECURITY_DEVICES ?
         PANEL_MAX_SECURITY_DEVICES : cfg.security_device_count;
     for (uint8_t i = 0; i < out.device_count; ++i) {
-        const PanelSecurityDevice &source = cfg.security_devices[i];
-        SecurityDeviceViewModel &device = out.devices[i];
-        copy_text(device.entity_id, sizeof(device.entity_id), source.entity_id);
-        copy_text(device.title, sizeof(device.title), source.label);
-        copy_text(device.icon, sizeof(device.icon), source.icon);
-        copy_text(device.color, sizeof(device.color), source.color);
-        HomeAssistantEntitySnapshot entity = {};
-        const bool found = home_assistant_get_entity(source.entity_id, entity);
-        device.available = found && entity.available;
-        copy_text(device.raw_state, sizeof(device.raw_state), found ? entity.state : "unavailable");
-        device.abnormal = !device.available ||
-            ui_state_model_security_state_is_abnormal(entity.state, source.abnormal_states,
-                                                       source.reverse_abnormal);
-        if (!device.available) copy_text(device.state_text, sizeof(device.state_text), "Unavailable");
-        else if (device.abnormal && source.abnormal_label[0])
-            copy_text(device.state_text, sizeof(device.state_text), source.abnormal_label);
-        else if (!device.abnormal && source.normal_label[0])
-            copy_text(device.state_text, sizeof(device.state_text), source.normal_label);
-        else copy_text(device.state_text, sizeof(device.state_text), entity.state);
-        if (device.abnormal) ++out.abnormal_count;
+        if (snapshot_device(cfg.security_devices[i], out.devices[i])) ++out.abnormal_count;
     }
+    out.dynamic_device_count =
+        cfg.security_dynamic_device_count > PANEL_MAX_SECURITY_DYNAMIC_DEVICES ?
+        PANEL_MAX_SECURITY_DYNAMIC_DEVICES : cfg.security_dynamic_device_count;
+    for (uint8_t i = 0; i < out.dynamic_device_count; ++i)
+        if (snapshot_device(cfg.security_dynamic_devices[i], out.dynamic_devices[i]))
+            ++out.abnormal_count;
 
-    if (!out.device_count)
-        copy_text(out.abnormal_summary, sizeof(out.abnormal_summary), "No monitored devices configured");
+    if (!out.device_count && !out.dynamic_device_count)
+        copy_text(out.abnormal_summary, sizeof(out.abnormal_summary), "No security devices configured");
     else if (!out.abnormal_count)
-        copy_text(out.abnormal_summary, sizeof(out.abnormal_summary), "All monitored devices are normal");
+        copy_text(out.abnormal_summary, sizeof(out.abnormal_summary), "All security devices are normal");
     else
         snprintf(out.abnormal_summary, sizeof(out.abnormal_summary), "%u device%s need%s attention",
                  static_cast<unsigned>(out.abnormal_count), out.abnormal_count == 1 ? "" : "s",

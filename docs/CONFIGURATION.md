@@ -4,7 +4,7 @@ Room panel example:
 
 ```json
 {
-  "schema": 2,
+  "schema": 9,
   "device_id": "living-room-panel",
   "display_name": "Living Room",
   "profile": "room",
@@ -47,10 +47,40 @@ Supported live area entities in 1.3.0 are:
 
 Media players are live in 1.3.0, including transport, volume, sources, artwork,
 and browse-media shortcuts when the integration exposes them. Security is live
-in 1.9.0 through Alarmo's standard `alarm_control_panel` entity and services.
-Climate remains a preview module.
+in 1.9.1 through Alarmo's standard `alarm_control_panel` entity and services.
+Climate is live in 1.9.2 through standard Home Assistant `climate` entities and
+services.
 
-## Alarmo security (1.9.0)
+## Climate tab (1.9.2)
+
+Choose and order up to four `climate.*` entities in Web Admin. The first item is
+selected when the tab opens; the panel renders selector buttons for the rest.
+Optional controls hide automatically when the selected entity does not report
+the corresponding Home Assistant capability.
+
+```json
+"climate_devices": [
+  {"entity_id": "climate.office", "label": "Office"},
+  {"entity_id": "climate.bedroom", "label": "Bedroom"}
+],
+"climate_show_humidity": true,
+"climate_show_fan": true,
+"climate_show_presets": true
+```
+
+The panel reads live `current_temperature`, `temperature` or
+`target_temp_low`/`target_temp_high`, `min_temp`, `max_temp`, `target_temp_step`,
+`hvac_modes`, `hvac_action`, `fan_modes`, and `preset_modes` attributes. It sends
+`climate.set_temperature`, `climate.set_hvac_mode`, `climate.set_fan_mode`, and
+`climate.set_preset_mode` through the existing Home Assistant worker. No climate
+state is changed optimistically in the UI.
+
+Dimmable `switch.*` entities are capability-driven: when Home Assistant reports
+a brightness attribute, Room renders the same slider used by a dimmable light.
+The resulting brightness command still targets the `switch` domain, so no entity
+renaming or helper light is required.
+
+## Alarmo security (1.9.1)
 
 Choose the Alarmo `alarm_control_panel` entity and monitored devices in Web
 Admin. The PIN is never stored in `panel.json`; disarming always opens the local
@@ -87,12 +117,27 @@ worker.
     "color": "yellow",
     "reverse_abnormal": true
   }
+],
+"security_dynamic_devices": [
+  {
+    "entity_id": "binary_sensor.back_gate",
+    "label": "Back gate",
+    "icon": "door",
+    "abnormal_states": "on",
+    "normal_label": "Closed",
+    "abnormal_label": "Open",
+    "color": "yellow",
+    "reverse_abnormal": false
+  }
 ]
 ```
 
 `reverse_abnormal` means the listed states are healthy and every other live
 state is abnormal. An unavailable or missing configured device is always shown
 as abnormal so communication failures cannot look like an all-clear condition.
+Entries in `security_devices` receive persistent cards. Entries in
+`security_dynamic_devices` are evaluated continuously but use no card space
+while normal; they appear only in Dynamic Attention when abnormal.
 
 ## Media shortcuts
 

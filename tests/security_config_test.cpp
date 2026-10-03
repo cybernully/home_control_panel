@@ -13,18 +13,31 @@ int main() {
     assert(config.security_device_count == 2);
     assert(strcmp(config.security_devices[0].entity_id, "binary_sensor.front_door") == 0);
     assert(config.security_devices[1].reverse_abnormal);
+    assert(config_service_parse_security_dynamic_devices(
+        R"([{"entity_id":"binary_sensor.back_gate","label":"Back gate","icon":"door","abnormal_states":"on","normal_label":"Closed","abnormal_label":"Open","color":"yellow","reverse_abnormal":false}])",
+        config, error));
+    assert(config.security_dynamic_device_count == 1);
+    assert(strcmp(config.security_dynamic_devices[0].entity_id,
+                  "binary_sensor.back_gate") == 0);
+    assert(config_service_validate_security_device_uniqueness(config, error));
 
     const PanelConfig before = config;
     for (const char *bad : {
              R"([{"entity_id":"front_door","label":"Door","icon":"door","abnormal_states":"on","color":"red"}])",
              R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"temperature","abnormal_states":"on","color":"red"}])",
              R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"door","abnormal_states":"","color":"red"}])",
+             R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"door","abnormal_states":"on,open,opening,unlocked,jammed,detected,problem,unsafe,smoke,heat,wet,not_home","color":"red"}])",
              R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"door","abnormal_states":"on","color":"green"}])",
              R"([{"entity_id":"binary_sensor.door","label":"Door","icon":"door","abnormal_states":"on","color":"red"},{"entity_id":"binary_sensor.door","label":"Again","icon":"door","abnormal_states":"on","color":"red"}])"}) {
         assert(!config_service_parse_security_devices(bad, config, error));
         assert(memcmp(&config, &before, sizeof(config)) == 0);
     }
+    assert(config_service_parse_security_dynamic_devices(
+        R"([{"entity_id":"binary_sensor.front_door","label":"Duplicate","icon":"door","abnormal_states":"on","color":"red"}])",
+        config, error));
+    assert(!config_service_validate_security_device_uniqueness(config, error));
+    config = before;
     assert(config_service_parse_security_devices("[]", config, error));
     assert(config.security_device_count == 0);
-    std::cout << "Security configuration parser tests passed.\n";
+    std::cout << "Security monitored/dynamic configuration parser tests passed.\n";
 }

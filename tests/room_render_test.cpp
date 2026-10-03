@@ -78,7 +78,7 @@ int main() {
     status_slot(2,"entity","timer.office_energy_saver_countdown","Energy Timer","timer","active,paused","","","cyan");
     status_slot(3,"controls","","Room Controls","shield","","","","green");
     entity("light.desk","Desk — warm","light","on");entity("light.ceiling","Ceiling","light","off");
-    entity("fan.ceiling","Ceiling fan with an intentionally long upstairs office name","fan","on");entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entity("cover.window","Window shades","cover","open");
+    entity("fan.ceiling","Ceiling fan with an intentionally long upstairs office name","fan","on");entity("switch.fan","Desk fan","switch","on");entity("switch.lamp","Desk lamp","switch","off");entities[count-1].supports_brightness=true;entities[count-1].brightness_pct=35;entity("cover.window","Window shades","cover","open");
     entity("scene.focus","Focus","scene","scening");entity("light.offline","Reading lamp","light","unavailable",false);
     entity("switch.hidden","Hidden control","switch","on");
     entity("sensor.office_temperature","Office temperature","sensor","72");snprintf(entities[count-1].unit_of_measurement,sizeof(entities[count-1].unit_of_measurement),"°F");
@@ -121,6 +121,12 @@ int main() {
     lv_obj_send_event(slider,LV_EVENT_PRESS_LOST,nullptr);
     lv_obj_send_event(slider,LV_EVENT_RELEASED,nullptr);
     assert(brightness_calls==1); // Lost touch never sends a brightness action.
+    auto *switch_lamp=lv_obj_get_parent(find(sheet,"Desk lamp"));
+    auto *switch_slider=find_slider(switch_lamp);assert(switch_slider);
+    lv_obj_send_event(switch_slider,LV_EVENT_PRESSED,nullptr);
+    lv_slider_set_value(switch_slider,70,LV_ANIM_OFF);
+    lv_obj_send_event(switch_slider,LV_EVENT_RELEASED,nullptr);
+    assert(brightness_calls==2&&target=="switch.lamp");
     click(root,"Next");shot(".test-build/room-lights-page2.ppm");assert(find(root,"2 / 2"));
     click(root,"Close");click(root,"Devices");assert(!find(root,"Hidden control"));
     auto *popup_high=find(sheet,"High");assert(popup_high);

@@ -1,13 +1,25 @@
 # Home Control Panel
 
-**Version 1.9.0**
+**Version 1.9.2**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
 
-## Alarmo Security 1.9.0
+## Live Climate and dimmable switches 1.9.2
+
+Climate is now a complete live Home Assistant experience instead of a preview.
+Web Admin can select and order up to four `climate.*` entities and independently
+show humidity, fan-mode, and preset controls. The panel follows each entity's
+reported current temperature, target or target range, setpoint step and limits,
+HVAC modes, fan modes, presets, action, availability, and temperature unit.
+Commands use Home Assistant's standard climate services and wait for subscribed
+state to confirm the result. Dimmable `switch.*` entities now use the same
+per-device brightness slider as lights while retaining their actual switch
+service domain. See the [1.9.2 release notes](docs/RELEASE_1.9.2.md).
+
+## Dynamic Alarmo Security 1.9.1
 
 Security is now a live, configurable Alarmo experience. Select an
 `alarm_control_panel` in Web Admin, choose the Home/Away/Night/Vacation modes
@@ -15,9 +27,10 @@ shown on the panel, and monitor up to eight Home Assistant entities with custom
 icons, labels, severity colors, abnormal-state lists, and optional reversed
 logic. The panel can arm with confirmation or an optional PIN and always uses
 an on-screen keypad to disarm. PINs are sent through the existing Home Assistant
-worker and are never persisted. A dynamic attention card lists abnormal and
-unavailable devices while the individual status cards remain visible below it.
-See the [1.9.0 release notes](docs/RELEASE_1.9.0.md).
+worker and are never persisted. Persistent monitored devices retain individual
+cards, while a second collection of dynamic devices stays hidden until abnormal
+and then appears only in the attention summary. See the
+[1.9.1 release notes](docs/RELEASE_1.9.1.md).
 
 ## Intent-matched Navigation Icons 1.8.2
 
@@ -195,8 +208,9 @@ configured Home Assistant area:
 - never changes media state optimistically: the screen waits for the subscribed
   Home Assistant state update after commands.
 
-The 1.4 Room page refines the existing room/light/scene bindings. Climate and security remain
-preview-only until their later roadmap release.
+The Room page refines the room/light/scene bindings. Security is live through
+Alarmo, and Climate is live through configured Home Assistant `climate.*`
+entities.
 
 ## Home Assistant configuration
 

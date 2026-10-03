@@ -32,6 +32,12 @@ static lv_obj_t *find_nth(lv_obj_t *root, const char *text, unsigned &remaining)
 static lv_obj_t *find(lv_obj_t *root, const char *text, unsigned occurrence = 0) {
     return find_nth(root, text, occurrence);
 }
+static lv_obj_t *find_containing(lv_obj_t *root, const char *text) {
+    if (lv_obj_check_type(root, &lv_label_class) && strstr(lv_label_get_text(root), text)) return root;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(root); ++i)
+        if (auto *result = find_containing(lv_obj_get_child(root, i), text)) return result;
+    return nullptr;
+}
 static void click_label(lv_obj_t *root, const char *text, unsigned occurrence = 0) {
     lv_obj_t *label = find(root, text, occurrence); assert(label);
     lv_obj_send_event(lv_obj_get_parent(label), LV_EVENT_CLICKED, nullptr);
@@ -58,8 +64,8 @@ int main() {
     snprintf(security.alarm_state, sizeof(security.alarm_state), "disarmed");
     snprintf(security.state_label, sizeof(security.state_label), "DISARMED");
     snprintf(security.state_detail, sizeof(security.state_detail), "Ready to arm");
-    snprintf(security.abnormal_summary, sizeof(security.abnormal_summary), "1 device needs attention");
-    security.device_count = 4; security.abnormal_count = 1;
+    snprintf(security.abnormal_summary, sizeof(security.abnormal_summary), "2 devices need attention");
+    security.device_count = 4; security.dynamic_device_count = 1; security.abnormal_count = 2;
     const char *names[] = {"Front door", "Garage", "Alarm network", "Smoke / CO"};
     const char *states[] = {"Open", "Closed", "Online", "Normal"};
     const char *icons[] = {"door", "garage", "power", "alert"};
@@ -73,10 +79,19 @@ int main() {
         device.available = true;
         device.abnormal = i == 0;
     }
+    auto &dynamic = security.dynamic_devices[0];
+    snprintf(dynamic.entity_id, sizeof(dynamic.entity_id), "binary_sensor.back_gate");
+    snprintf(dynamic.title, sizeof(dynamic.title), "Back gate");
+    snprintf(dynamic.state_text, sizeof(dynamic.state_text), "Open");
+    snprintf(dynamic.icon, sizeof(dynamic.icon), "door");
+    snprintf(dynamic.color, sizeof(dynamic.color), "yellow");
+    dynamic.available = dynamic.abnormal = true;
 
     SecurityModule module; auto *root = lv_screen_active(); module.create(root); lv_obj_update_layout(root);
     assert(find(root, "Security") && find(root, "DISARMED") && find(root, "Attention needed"));
     assert(find(root, "Front door") && find(root, "Open") && find(root, "Alarm network"));
+    assert(find_containing(root, "Back gate - Open"));
+    assert(!find(root, "Back gate"));  // dynamic devices never receive persistent cards
     shot(".test-build/security-disarmed.ppm");
 
     click_label(root, "Away");

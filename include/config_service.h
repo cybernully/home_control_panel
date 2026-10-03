@@ -85,6 +85,11 @@ struct PanelCalendarSource {
     char color[12];
 };
 
+struct PanelClimateDevice {
+    char entity_id[96];
+    char label[PANEL_CLIMATE_LABEL_LEN];
+};
+
 // Security devices are presentation-only state sources. abnormal_states is a
 // comma-separated list compared case-insensitively with the live HA state.
 // reverse_abnormal flips that result for devices whose healthy state is the
@@ -138,11 +143,20 @@ struct PanelConfig {
     bool calendar_week_starts_monday;
     // Number of consecutive days rendered by the Calendar tab: 1, 3, or 7.
     uint8_t calendar_days;
+    PanelClimateDevice climate_devices[PANEL_MAX_CLIMATE_DEVICES];
+    uint8_t climate_device_count;
+    bool climate_show_humidity;
+    bool climate_show_fan;
+    bool climate_show_presets;
     // Alarmo exposes a standard alarm_control_panel entity and services. The
     // PIN is intentionally never persisted; it is entered on the panel keypad.
     char alarm_entity_id[96];
     PanelSecurityDevice security_devices[PANEL_MAX_SECURITY_DEVICES];
     uint8_t security_device_count;
+    // Dynamic devices share the same rule model but appear only in the
+    // attention summary while abnormal; they never consume a persistent card.
+    PanelSecurityDevice security_dynamic_devices[PANEL_MAX_SECURITY_DYNAMIC_DEVICES];
+    uint8_t security_dynamic_device_count;
     bool security_show_abnormal_summary;
     bool security_confirm_arming;
     bool security_code_to_arm;
@@ -179,6 +193,9 @@ bool config_service_parse_overview_widgets(const String &json, PanelConfig &conf
 bool config_service_parse_overview_quick_actions(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_overview_items(const String &json, PanelConfig &config, String &error);
 bool config_service_parse_security_devices(const String &json, PanelConfig &config, String &error);
+bool config_service_parse_climate_devices(const String &json, PanelConfig &config, String &error);
+bool config_service_parse_security_dynamic_devices(const String &json, PanelConfig &config, String &error);
+bool config_service_validate_security_device_uniqueness(const PanelConfig &config, String &error);
 void config_service_set_overview_defaults(PanelConfig &config);
 void config_service_set_overview_quick_action_defaults(PanelConfig &config);
 void config_service_set_overview_item_defaults(PanelConfig &config);

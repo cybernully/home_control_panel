@@ -127,7 +127,8 @@ void build_control(RoomControlViewModel &out, const PanelRoomControl &pref,
                             strcmp(entity->state, "opening") == 0);
     out.favorite = pref.placement == 1;
     if (entity) {
-        out.supports_level = (out.kind == UiControlKind::Light && entity->supports_brightness) ||
+        out.supports_level = ((out.kind == UiControlKind::Light || out.kind == UiControlKind::Switch) &&
+                              entity->supports_brightness) ||
                              (out.kind == UiControlKind::Fan && entity->supports_fan_speed);
         out.level_pct = out.kind == UiControlKind::Fan ? entity->fan_speed_pct : entity->brightness_pct;
     }
@@ -304,7 +305,7 @@ bool ui_state_model_set_level(const RoomControlViewModel &control, uint8_t level
     if (!control.available || !control.supports_level || !control.entity_id[0]) return false;
     HomeAssistantEntitySnapshot current = {};
     if (!home_assistant_get_room_entity(control.entity_id, current) || !current.available) return false;
-    return control.kind == UiControlKind::Fan
+    return strcmp(current.domain, "fan") == 0
                ? home_assistant_queue_fan_speed(control.entity_id, level_pct)
                : home_assistant_queue_light_brightness(control.entity_id, level_pct);
 }

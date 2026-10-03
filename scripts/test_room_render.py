@@ -13,8 +13,9 @@ overview = '--overview' in sys.argv
 weather = '--weather' in sys.argv
 calendar = '--calendar' in sys.argv
 security = '--security' in sys.argv
-fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/overview_render_test.cpp' if overview else 'tests/weather_render_test.cpp' if weather else 'tests/calendar_render_test.cpp' if calendar else 'tests/security_render_test.cpp' if security else 'tests/room_render_test.cpp'
-executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/overview_render_test.exe' if overview else '.test-build/weather_render_test.exe' if weather else '.test-build/calendar_render_test.exe' if calendar else '.test-build/security_render_test.exe' if security else '.test-build/room_render_test.exe'
+climate = '--climate' in sys.argv
+fixture = 'tests/media_render_test.cpp' if media else 'tests/header_render_test.cpp' if header else 'tests/overview_render_test.cpp' if overview else 'tests/weather_render_test.cpp' if weather else 'tests/calendar_render_test.cpp' if calendar else 'tests/security_render_test.cpp' if security else 'tests/climate_render_test.cpp' if climate else 'tests/room_render_test.cpp'
+executable = '.test-build/media_render_test.exe' if media else '.test-build/header_render_test.exe' if header else '.test-build/overview_render_test.exe' if overview else '.test-build/weather_render_test.exe' if weather else '.test-build/calendar_render_test.exe' if calendar else '.test-build/security_render_test.exe' if security else '.test-build/climate_render_test.exe' if climate else '.test-build/room_render_test.exe'
 args=['-O0','-Itests/host','-Iinclude','-Isrc/modules',f'-I{lvgl}',*flags,
       fixture]
 if media:
@@ -29,6 +30,8 @@ elif calendar:
     args += ['src/modules/calendar_module.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 elif security:
     args += ['src/modules/security_module.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
+elif climate:
+    args += ['src/modules/climate_module.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 else:
     args += ['src/modules/room_module.cpp','src/ui_state_model.cpp','src/ui_card.cpp','src/ui_theme.cpp','src/ha_icons_font.c']
 args += ['-x','c']

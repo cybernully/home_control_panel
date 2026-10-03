@@ -72,7 +72,7 @@ void SecurityModule::create(lv_obj_t *parent) {
 
     lv_obj_t *devices_heading = label(parent, "Monitored devices", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(devices_heading, 24, 326);
-    feedback_ = label(parent, "Configure up to eight devices in Web Admin", &lv_font_montserrat_14, MUTED);
+    feedback_ = label(parent, "Persistent cards; dynamic devices appear above only when abnormal", &lv_font_montserrat_14, MUTED);
     lv_obj_set_pos(feedback_, 300, 331);
     lv_obj_set_width(feedback_, 956);
     lv_obj_set_style_text_align(feedback_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
@@ -181,12 +181,21 @@ void SecurityModule::update() {
         char details[384] = {};
         snprintf(details, sizeof(details), "%s", view_.abnormal_summary);
         uint8_t listed = 0;
-        for (uint8_t i = 0; i < view_.device_count && listed < 4; ++i) {
-            if (!view_.devices[i].abnormal) continue;
+        auto append_attention = [&](const SecurityDeviceViewModel &device) {
+            if (!device.abnormal || listed >= 4) return;
             const size_t used = strlen(details);
             snprintf(details + used, sizeof(details) - used, "\n%s - %s",
-                     view_.devices[i].title, view_.devices[i].state_text);
+                     device.title, device.state_text);
             ++listed;
+        };
+        for (uint8_t i = 0; i < view_.device_count; ++i)
+            append_attention(view_.devices[i]);
+        for (uint8_t i = 0; i < view_.dynamic_device_count; ++i)
+            append_attention(view_.dynamic_devices[i]);
+        if (view_.abnormal_count > listed) {
+            const size_t used = strlen(details);
+            snprintf(details + used, sizeof(details) - used, "\n+%u more",
+                     static_cast<unsigned>(view_.abnormal_count - listed));
         }
         safe_text(summary_detail_, details);
     } else {

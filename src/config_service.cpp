@@ -51,6 +51,9 @@ void set_base_defaults(PanelConfig &cfg) {
     cfg.weather_header_enabled = false;
     cfg.calendar_week_starts_monday = true;
     cfg.calendar_days = 7;
+    cfg.climate_show_humidity = true;
+    cfg.climate_show_fan = true;
+    cfg.climate_show_presets = true;
     cfg.security_show_abnormal_summary = true;
     cfg.security_confirm_arming = true;
     cfg.security_code_to_arm = false;
@@ -73,7 +76,7 @@ bool save_internal(const PanelConfig &cfg) {
     File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 7;
+    doc["schema"] = 9;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -97,6 +100,15 @@ bool save_internal(const PanelConfig &cfg) {
         item["label"] = cfg.calendars[i].label;
         item["color"] = cfg.calendars[i].color;
     }
+    doc["climate_show_humidity"] = cfg.climate_show_humidity;
+    doc["climate_show_fan"] = cfg.climate_show_fan;
+    doc["climate_show_presets"] = cfg.climate_show_presets;
+    JsonArray climate_devices = doc["climate_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.climate_device_count; ++i) {
+        JsonObject item = climate_devices.add<JsonObject>();
+        item["entity_id"] = cfg.climate_devices[i].entity_id;
+        item["label"] = cfg.climate_devices[i].label;
+    }
     doc["alarm_entity_id"] = cfg.alarm_entity_id;
     doc["security_show_abnormal_summary"] = cfg.security_show_abnormal_summary;
     doc["security_confirm_arming"] = cfg.security_confirm_arming;
@@ -109,6 +121,19 @@ bool save_internal(const PanelConfig &cfg) {
     for (uint8_t i = 0; i < cfg.security_device_count; ++i) {
         const PanelSecurityDevice &source = cfg.security_devices[i];
         JsonObject item = security_devices.add<JsonObject>();
+        item["entity_id"] = source.entity_id;
+        item["label"] = source.label;
+        item["icon"] = source.icon;
+        item["abnormal_states"] = source.abnormal_states;
+        item["normal_label"] = source.normal_label;
+        item["abnormal_label"] = source.abnormal_label;
+        item["color"] = source.color;
+        item["reverse_abnormal"] = source.reverse_abnormal;
+    }
+    JsonArray security_dynamic_devices = doc["security_dynamic_devices"].to<JsonArray>();
+    for (uint8_t i = 0; i < cfg.security_dynamic_device_count; ++i) {
+        const PanelSecurityDevice &source = cfg.security_dynamic_devices[i];
+        JsonObject item = security_dynamic_devices.add<JsonObject>();
         item["entity_id"] = source.entity_id;
         item["label"] = source.label;
         item["icon"] = source.icon;
@@ -291,6 +316,15 @@ bool config_service_begin() {
         copy_text(loaded.calendars[0].color, sizeof(loaded.calendars[0].color), "cyan");
     }
     if (loaded.calendar_count) copy_text(loaded.calendar_entity_id, sizeof(loaded.calendar_entity_id), loaded.calendars[0].entity_id);
+    loaded.climate_show_humidity = doc["climate_show_humidity"] | true;
+    loaded.climate_show_fan = doc["climate_show_fan"] | true;
+    loaded.climate_show_presets = doc["climate_show_presets"] | true;
+    if (!doc["climate_devices"].isNull()) {
+        String json, error;
+        serializeJson(doc["climate_devices"], json);
+        if (!config_service_parse_climate_devices(json, loaded, error))
+            Serial0.printf("[Config] Invalid Climate devices: %s\n", error.c_str());
+    }
     const char *alarm_entity = doc["alarm_entity_id"] | "";
     if (strncmp(alarm_entity, "alarm_control_panel.", 20) == 0)
         copy_text(loaded.alarm_entity_id, sizeof(loaded.alarm_entity_id), alarm_entity);
@@ -309,6 +343,20 @@ bool config_service_begin() {
         serializeJson(doc["security_devices"], json);
         if (!config_service_parse_security_devices(json, loaded, error))
             Serial0.printf("[Config] Invalid security devices: %s\n", error.c_str());
+    }
+    if (!doc["security_dynamic_devices"].isNull()) {
+        String json, error;
+        serializeJson(doc["security_dynamic_devices"], json);
+        if (!config_service_parse_security_dynamic_devices(json, loaded, error))
+            Serial0.printf("[Config] Invalid dynamic security devices: %s\n", error.c_str());
+    }
+    {
+        String security_error;
+        if (!config_service_validate_security_device_uniqueness(loaded, security_error)) {
+            Serial0.printf("[Config] Invalid Security device overlap: %s\n", security_error.c_str());
+            loaded.security_dynamic_device_count = 0;
+            memset(loaded.security_dynamic_devices, 0, sizeof(loaded.security_dynamic_devices));
+        }
     }
     if (loaded.screen_timeout_seconds > 3600U) loaded.screen_timeout_seconds = APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
 
@@ -430,6 +478,8 @@ bool config_service_save(const PanelConfig &config) {
         clean.media_player_count = PANEL_MAX_MEDIA_PLAYERS;
     }
     if (clean.calendar_count > PANEL_MAX_CALENDARS) clean.calendar_count = PANEL_MAX_CALENDARS;
+    if (clean.climate_device_count > PANEL_MAX_CLIMATE_DEVICES)
+        clean.climate_device_count = PANEL_MAX_CLIMATE_DEVICES;
     if (clean.calendar_days != 1 && clean.calendar_days != 3 && clean.calendar_days != 7)
         clean.calendar_days = 7;
     clean.calendar_entity_id[0] = '\0';
@@ -437,6 +487,10 @@ bool config_service_save(const PanelConfig &config) {
         copy_text(clean.calendar_entity_id, sizeof(clean.calendar_entity_id), clean.calendars[0].entity_id);
     if (clean.security_device_count > PANEL_MAX_SECURITY_DEVICES)
         clean.security_device_count = PANEL_MAX_SECURITY_DEVICES;
+    if (clean.security_dynamic_device_count > PANEL_MAX_SECURITY_DYNAMIC_DEVICES)
+        clean.security_dynamic_device_count = PANEL_MAX_SECURITY_DYNAMIC_DEVICES;
+    String security_error;
+    if (!config_service_validate_security_device_uniqueness(clean, security_error)) return false;
     if (clean.alarm_entity_id[0] && strncmp(clean.alarm_entity_id, "alarm_control_panel.", 20) != 0)
         return false;
     if (!clean.security_arm_home && !clean.security_arm_away &&

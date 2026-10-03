@@ -7,7 +7,7 @@
 #include <iostream>
 
 static PanelConfig config = {};
-static HomeAssistantEntitySnapshot entities[4] = {};
+static HomeAssistantEntitySnapshot entities[8] = {};
 static size_t entity_count = 0;
 static bool ready = true;
 static char queued_mode[16] = {};
@@ -71,17 +71,38 @@ int main() {
     snprintf(garage.icon, sizeof(garage.icon), "garage");
     snprintf(garage.abnormal_states, sizeof(garage.abnormal_states), "open,opening");
     snprintf(garage.color, sizeof(garage.color), "red");
+    config.security_dynamic_device_count = 2;
+    auto &back_gate = config.security_dynamic_devices[0];
+    snprintf(back_gate.entity_id, sizeof(back_gate.entity_id), "binary_sensor.back_gate");
+    snprintf(back_gate.label, sizeof(back_gate.label), "Back gate");
+    snprintf(back_gate.icon, sizeof(back_gate.icon), "door");
+    snprintf(back_gate.abnormal_states, sizeof(back_gate.abnormal_states), "on");
+    snprintf(back_gate.normal_label, sizeof(back_gate.normal_label), "Closed");
+    snprintf(back_gate.abnormal_label, sizeof(back_gate.abnormal_label), "Open");
+    snprintf(back_gate.color, sizeof(back_gate.color), "yellow");
+    auto &window = config.security_dynamic_devices[1];
+    snprintf(window.entity_id, sizeof(window.entity_id), "binary_sensor.basement_window");
+    snprintf(window.label, sizeof(window.label), "Basement window");
+    snprintf(window.icon, sizeof(window.icon), "window");
+    snprintf(window.abnormal_states, sizeof(window.abnormal_states), "on");
+    snprintf(window.normal_label, sizeof(window.normal_label), "Closed");
+    snprintf(window.abnormal_label, sizeof(window.abnormal_label), "Open");
+    snprintf(window.color, sizeof(window.color), "red");
 
     entity(0, "alarm_control_panel.alarmo", "Home Alarm", "alarm_control_panel", "disarmed");
     entity(1, "binary_sensor.front_door", "Front door", "binary_sensor", "on");
     entity(2, "binary_sensor.alarm_network", "Alarm network", "binary_sensor", "on");
-    entity_count = 3;
+    entity(3, "binary_sensor.back_gate", "Back gate", "binary_sensor", "on");
+    entity(4, "binary_sensor.basement_window", "Basement window", "binary_sensor", "off");
+    entity_count = 5;
 
     SecurityViewModel view = {};
     assert(ui_state_model_snapshot_security(view));
     assert(view.available && strcmp(view.state_label, "DISARMED") == 0);
-    assert(view.abnormal_count == 2);  // open door + missing/unavailable garage
+    assert(view.abnormal_count == 3);  // door + missing garage + attention-only gate
     assert(view.devices[0].abnormal && !view.devices[1].abnormal && view.devices[2].abnormal);
+    assert(view.dynamic_device_count == 2);
+    assert(view.dynamic_devices[0].abnormal && !view.dynamic_devices[1].abnormal);
     assert(ui_state_model_security_action(view, "away", ""));
     assert(strcmp(queued_mode, "away") == 0 && queued_code[0] == '\0');
     assert(!ui_state_model_security_action(view, "disarm", "1234"));

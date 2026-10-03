@@ -71,6 +71,35 @@ struct HaEntityModel {
     char media_sources[HA_MAX_MEDIA_SOURCES][HA_MEDIA_SOURCE_NAME_LEN];
 };
 
+// Climate attributes are comparatively large and only needed for the small
+// configured Climate collection. Keep them in a bounded sidecar rather than
+// multiplying mode arrays across the 160-entity discovery cache.
+struct HaClimateModel {
+    char entity_id[96];
+    char hvac_action[HA_CLIMATE_OPTION_LEN];
+    char fan_mode[HA_CLIMATE_OPTION_LEN];
+    char preset_mode[HA_CLIMATE_OPTION_LEN];
+    char temperature_unit[12];
+    float current_temperature;
+    float target_temperature;
+    float target_low;
+    float target_high;
+    float min_temperature;
+    float max_temperature;
+    float target_step;
+    float humidity;
+    bool has_current_temperature;
+    bool has_target_temperature;
+    bool has_target_range;
+    bool has_humidity;
+    uint8_t hvac_mode_count;
+    uint8_t fan_mode_count;
+    uint8_t preset_count;
+    char hvac_modes[HA_MAX_CLIMATE_MODES][HA_CLIMATE_OPTION_LEN];
+    char fan_modes[HA_MAX_CLIMATE_FAN_MODES][HA_CLIMATE_OPTION_LEN];
+    char presets[HA_MAX_CLIMATE_PRESETS][HA_CLIMATE_OPTION_LEN];
+};
+
 enum class HaActionType : uint8_t {
     Toggle,
     AreaBrightness,
@@ -88,6 +117,10 @@ enum class HaActionType : uint8_t {
     MediaSource,
     MediaFavorite,
     AlarmControl,
+    ClimateTemperature,
+    ClimateHvacMode,
+    ClimateFanMode,
+    ClimatePreset,
 };
 
 struct HaAction {
@@ -97,6 +130,8 @@ struct HaAction {
     char aux[HA_MEDIA_CONTENT_TYPE_LEN];
     uint8_t value;
     bool flag;
+    float number;
+    float number2;
 };
 
 struct HaEndpoint {
@@ -120,6 +155,7 @@ HomeAssistantDiscoveryStatus g_discovery = {};
 
 HaEntityModel *g_entities = nullptr;
 size_t g_entity_count = 0;
+HaClimateModel g_climates[PANEL_MAX_CLIMATE_DEVICES] = {};
 
 bool g_ws_started = false;
 bool g_ws_authenticated = false;
@@ -127,8 +163,8 @@ bool g_health_requested = false;
 bool g_health_in_progress = false;
 bool g_discovery_requested = false;
 bool g_full_discovery_requested = false;
-// The web editor's whole-home picker deliberately uses the REST states
-// endpoint.  It must remain usable while the live WSS subscription is
+// The web editor's whole-home picker deliberately uses a compact REST template
+// response. It must remain usable while the live WSS subscription is
 // reconnecting, and the browser never receives the Home Assistant token.
 bool g_rest_discovery_requested = false;
 bool g_reconnect_requested = false;
@@ -402,6 +438,48 @@ HaEntityModel *find_entity_worker(const char *entity_id) {
     return nullptr;
 }
 
+bool is_configured_climate(const char *entity_id) {
+    if (!entity_id || !entity_id[0]) return false;
+    const PanelConfig &cfg = config_service_get();
+    for (uint8_t i = 0; i < cfg.climate_device_count; ++i)
+        if (strcmp(cfg.climate_devices[i].entity_id, entity_id) == 0) return true;
+    return false;
+}
+
+HaClimateModel *find_climate_locked(const char *entity_id, bool create) {
+    for (HaClimateModel &climate : g_climates)
+        if (climate.entity_id[0] && strcmp(climate.entity_id, entity_id) == 0) return &climate;
+    if (!create || !is_configured_climate(entity_id)) return nullptr;
+    for (HaClimateModel &climate : g_climates) {
+        if (climate.entity_id[0]) continue;
+        memset(&climate, 0, sizeof(climate));
+        copy_text(climate.entity_id, sizeof(climate.entity_id), entity_id);
+        // Leave limits unset until Home Assistant reports them. The state
+        // model selects safe Fahrenheit/Celsius fallbacks from temperature_unit.
+        climate.min_temperature = 0.0f;
+        climate.max_temperature = 0.0f;
+        climate.target_step = 0.5f;
+        return &climate;
+    }
+    return nullptr;
+}
+
+template <size_t N>
+void copy_climate_options(JsonArrayConst source,
+                          char (&destination)[N][HA_CLIMATE_OPTION_LEN],
+                          uint8_t &count) {
+    if (source.isNull()) return;
+    count = 0;
+    memset(destination, 0, sizeof(destination));
+    for (JsonVariantConst item : source) {
+        if (count >= N) break;
+        const char *value = item.as<const char *>();
+        if (!value || !value[0]) continue;
+        copy_text(destination[count], HA_CLIMATE_OPTION_LEN, value);
+        ++count;
+    }
+}
+
 void update_discovery_counts_locked() {
     g_discovery.entity_count = static_cast<uint16_t>(g_entity_count);
 }
@@ -482,6 +560,53 @@ void apply_attributes_locked(HaEntityModel &model, JsonObjectConst attrs) {
         if (!attrs["finishes_at"].isNull()) {
             int64_t finish = 0;
             model.timer_finishes_at_epoch = parse_timer_finish(attrs["finishes_at"] | "", finish) ? finish : 0;
+        }
+    }
+
+    if (strcmp(model.domain, "climate") == 0) {
+        HaClimateModel *climate = find_climate_locked(model.entity_id, true);
+        if (climate) {
+            if (!attrs["current_temperature"].isNull()) {
+                climate->current_temperature = attrs["current_temperature"].as<float>();
+                climate->has_current_temperature = true;
+            }
+            if (!attrs["temperature"].isNull()) {
+                climate->target_temperature = attrs["temperature"].as<float>();
+                climate->has_target_temperature = true;
+            }
+            if (!attrs["target_temp_low"].isNull()) {
+                climate->target_low = attrs["target_temp_low"].as<float>();
+                climate->has_target_range = true;
+            }
+            if (!attrs["target_temp_high"].isNull()) {
+                climate->target_high = attrs["target_temp_high"].as<float>();
+                climate->has_target_range = true;
+            }
+            if (!attrs["min_temp"].isNull()) climate->min_temperature = attrs["min_temp"].as<float>();
+            if (!attrs["max_temp"].isNull()) climate->max_temperature = attrs["max_temp"].as<float>();
+            if (!attrs["target_temp_step"].isNull()) {
+                const float step = attrs["target_temp_step"].as<float>();
+                if (step > 0.0f && step <= 10.0f) climate->target_step = step;
+            }
+            if (!attrs["current_humidity"].isNull()) {
+                climate->humidity = attrs["current_humidity"].as<float>();
+                climate->has_humidity = true;
+            }
+            const char *unit = attrs["temperature_unit"] | "";
+            if (unit[0]) copy_text(climate->temperature_unit,
+                                   sizeof(climate->temperature_unit), unit);
+            const char *action = attrs["hvac_action"] | "";
+            if (action[0]) copy_text(climate->hvac_action, sizeof(climate->hvac_action), action);
+            const char *fan_mode = attrs["fan_mode"] | "";
+            if (fan_mode[0]) copy_text(climate->fan_mode, sizeof(climate->fan_mode), fan_mode);
+            const char *preset = attrs["preset_mode"] | "";
+            if (preset[0]) copy_text(climate->preset_mode, sizeof(climate->preset_mode), preset);
+            copy_climate_options(attrs["hvac_modes"].as<JsonArrayConst>(),
+                                 climate->hvac_modes, climate->hvac_mode_count);
+            copy_climate_options(attrs["fan_modes"].as<JsonArrayConst>(),
+                                 climate->fan_modes, climate->fan_mode_count);
+            copy_climate_options(attrs["preset_modes"].as<JsonArrayConst>(),
+                                 climate->presets, climate->preset_count);
         }
     }
 
@@ -593,6 +718,7 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
 
         JsonArrayConst removed_attrs = removals["a"].as<JsonArrayConst>();
         if (!removed_attrs.isNull()) {
+            HaClimateModel *climate = find_climate_locked(entity_id, false);
             for (JsonVariantConst item : removed_attrs) {
                 const char *key = item.as<const char *>();
                 if (!key) continue;
@@ -636,6 +762,30 @@ void apply_diff_worker(const char *entity_id, JsonObjectConst diff) {
                     memset(model->media_sources, 0, sizeof(model->media_sources));
                 } else if (strcmp(key, "entity_picture") == 0) {
                     model->entity_picture[0] = '\0';
+                } else if (climate && strcmp(key, "current_temperature") == 0) {
+                    climate->has_current_temperature = false;
+                } else if (climate && strcmp(key, "temperature") == 0) {
+                    climate->has_target_temperature = false;
+                } else if (climate && (strcmp(key, "target_temp_low") == 0 ||
+                                       strcmp(key, "target_temp_high") == 0)) {
+                    climate->has_target_range = false;
+                } else if (climate && strcmp(key, "current_humidity") == 0) {
+                    climate->has_humidity = false;
+                } else if (climate && strcmp(key, "hvac_action") == 0) {
+                    climate->hvac_action[0] = '\0';
+                } else if (climate && strcmp(key, "fan_mode") == 0) {
+                    climate->fan_mode[0] = '\0';
+                } else if (climate && strcmp(key, "preset_mode") == 0) {
+                    climate->preset_mode[0] = '\0';
+                } else if (climate && strcmp(key, "hvac_modes") == 0) {
+                    climate->hvac_mode_count = 0;
+                    memset(climate->hvac_modes, 0, sizeof(climate->hvac_modes));
+                } else if (climate && strcmp(key, "fan_modes") == 0) {
+                    climate->fan_mode_count = 0;
+                    memset(climate->fan_modes, 0, sizeof(climate->fan_modes));
+                } else if (climate && strcmp(key, "preset_modes") == 0) {
+                    climate->preset_count = 0;
+                    memset(climate->presets, 0, sizeof(climate->presets));
                 }
             }
         }
@@ -826,8 +976,12 @@ bool is_layout_entity(const char *entity_id) {
     for (uint8_t i = 0; i < cfg.calendar_count; ++i)
         if (strcmp(cfg.calendars[i].entity_id, entity_id) == 0) return true;
     if (cfg.alarm_entity_id[0] && strcmp(cfg.alarm_entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.climate_device_count; ++i)
+        if (strcmp(cfg.climate_devices[i].entity_id, entity_id) == 0) return true;
     for (uint8_t i = 0; i < cfg.security_device_count; ++i)
         if (strcmp(cfg.security_devices[i].entity_id, entity_id) == 0) return true;
+    for (uint8_t i = 0; i < cfg.security_dynamic_device_count; ++i)
+        if (strcmp(cfg.security_dynamic_devices[i].entity_id, entity_id) == 0) return true;
     const char *dot = strchr(entity_id, '.');
     const size_t domain_len = dot ? static_cast<size_t>(dot - entity_id) : 0;
     for (uint8_t i = 0; i < cfg.overview_widget_count; ++i) {
@@ -842,6 +996,7 @@ void populate_configured_layout_entities_worker() {
     const PanelConfig &cfg = config_service_get();
     portENTER_CRITICAL(&g_mux);
     g_entity_count = 0;
+    memset(g_climates, 0, sizeof(g_climates));
     g_calendar_cache.last_update_ms = 0;
     g_calendar_cache.available = false;
     g_calendar_cache.event_count = 0;
@@ -890,8 +1045,12 @@ void populate_configured_layout_entities_worker() {
     add_entity(cfg.weather_entity_id);
     for (uint8_t i = 0; i < cfg.calendar_count; ++i) add_entity(cfg.calendars[i].entity_id, true);
     add_entity(cfg.alarm_entity_id);
+    for (uint8_t i = 0; i < cfg.climate_device_count; ++i)
+        add_entity(cfg.climate_devices[i].entity_id, true);
     for (uint8_t i = 0; i < cfg.security_device_count; ++i)
         add_entity(cfg.security_devices[i].entity_id, true);
+    for (uint8_t i = 0; i < cfg.security_dynamic_device_count; ++i)
+        add_entity(cfg.security_dynamic_devices[i].entity_id, true);
 
     portENTER_CRITICAL(&g_mux);
     g_discovery.area_found = true;
@@ -2102,6 +2261,10 @@ bool action_is_idempotent(const HaAction &action) {
         case HaActionType::MediaMute:
         case HaActionType::MediaSource:
         case HaActionType::AlarmControl:
+        case HaActionType::ClimateTemperature:
+        case HaActionType::ClimateHvacMode:
+        case HaActionType::ClimateFanMode:
+        case HaActionType::ClimatePreset:
             return true;
         case HaActionType::MediaPlayPause:
         case HaActionType::MediaPrevious:
@@ -2173,14 +2336,17 @@ void process_action_worker(const HaAction &action) {
         snprintf(description, sizeof(description), "%s %s", model->name, service);
     } else if (action.type == HaActionType::LightBrightness) {
         HaEntityModel *model = find_entity_worker(action.entity_id);
-        if (!model || !model->available || strcmp(model->domain, "light") != 0 || !model->supports_brightness) {
-            record_action_result("Light no longer available", -103); return;
+        const bool brightness_domain = model &&
+            (strcmp(model->domain, "light") == 0 || strcmp(model->domain, "switch") == 0);
+        if (!model || !model->available || !brightness_domain || !model->supports_brightness) {
+            record_action_result("Dimmer no longer available", -103); return;
         }
         JsonDocument doc;
         doc["entity_id"] = model->entity_id;
         if (action.value) doc["brightness_pct"] = action.value;
         String body; serializeJson(doc, body);
-        code = call_service_with_recovery(action, "light", action.value ? "turn_on" : "turn_off",
+        code = call_service_with_recovery(action, model->domain,
+                                          action.value ? "turn_on" : "turn_off",
                                           body, retried);
         snprintf(description, sizeof(description), "%s brightness", model->name);
     } else if (action.type == HaActionType::FanSpeed) {
@@ -2236,6 +2402,38 @@ void process_action_worker(const HaAction &action) {
         String body;
         serializeJson(doc, body);
         code = call_service_with_recovery(action, "alarm_control_panel", service, body, retried);
+        snprintf(description, sizeof(description), "%s %s", model->name, service);
+    } else if (action.type == HaActionType::ClimateTemperature ||
+               action.type == HaActionType::ClimateHvacMode ||
+               action.type == HaActionType::ClimateFanMode ||
+               action.type == HaActionType::ClimatePreset) {
+        HaEntityModel *model = find_entity_worker(action.entity_id);
+        if (!model || strcmp(model->domain, "climate") != 0 || !model->available) {
+            record_action_result("Climate device no longer available", -103);
+            return;
+        }
+        JsonDocument doc;
+        doc["entity_id"] = model->entity_id;
+        const char *service = nullptr;
+        if (action.type == HaActionType::ClimateTemperature) {
+            service = "set_temperature";
+            if (action.flag) {
+                doc["target_temp_low"] = action.number;
+                doc["target_temp_high"] = action.number2;
+            } else doc["temperature"] = action.number;
+        } else if (action.type == HaActionType::ClimateHvacMode) {
+            service = "set_hvac_mode";
+            doc["hvac_mode"] = action.aux;
+        } else if (action.type == HaActionType::ClimateFanMode) {
+            service = "set_fan_mode";
+            doc["fan_mode"] = action.aux;
+        } else {
+            service = "set_preset_mode";
+            doc["preset_mode"] = action.aux;
+        }
+        String body;
+        serializeJson(doc, body);
+        code = call_service_with_recovery(action, "climate", service, body, retried);
         snprintf(description, sizeof(description), "%s %s", model->name, service);
     } else {
         HaEntityModel *model = find_entity_worker(action.entity_id);
@@ -3203,7 +3401,8 @@ size_t home_assistant_get_layout_entities(HomeAssistantEntitySnapshot *out, size
 }
 
 bool home_assistant_queue_light_brightness(const char *entity_id, uint8_t brightness_pct) {
-    if (!entity_id || strncmp(entity_id, "light.", 6) != 0) return false;
+    if (!entity_id || (strncmp(entity_id, "light.", 6) != 0 &&
+                       strncmp(entity_id, "switch.", 7) != 0)) return false;
     HaAction action = {};
     action.type = HaActionType::LightBrightness;
     copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
@@ -3218,6 +3417,42 @@ bool home_assistant_queue_fan_speed(const char *entity_id, uint8_t percentage) {
     copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
     action.value = constrain(static_cast<int>(percentage), 0, 100);
     return queue_action(action);
+}
+
+bool home_assistant_queue_climate_temperature(const char *entity_id, float temperature,
+                                              float target_low, float target_high,
+                                              bool use_range) {
+    if (!entity_id || strncmp(entity_id, "climate.", 8) != 0) return false;
+    HaAction action = {};
+    action.type = HaActionType::ClimateTemperature;
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    action.number = temperature;
+    action.number2 = target_high;
+    action.flag = use_range;
+    if (use_range) action.number = target_low;
+    return queue_action(action);
+}
+
+bool queue_climate_option(const char *entity_id, const char *option, HaActionType type) {
+    if (!entity_id || strncmp(entity_id, "climate.", 8) != 0 || !option || !option[0])
+        return false;
+    HaAction action = {};
+    action.type = type;
+    copy_text(action.entity_id, sizeof(action.entity_id), entity_id);
+    copy_text(action.aux, sizeof(action.aux), option);
+    return queue_action(action);
+}
+
+bool home_assistant_queue_climate_hvac_mode(const char *entity_id, const char *mode) {
+    return queue_climate_option(entity_id, mode, HaActionType::ClimateHvacMode);
+}
+
+bool home_assistant_queue_climate_fan_mode(const char *entity_id, const char *mode) {
+    return queue_climate_option(entity_id, mode, HaActionType::ClimateFanMode);
+}
+
+bool home_assistant_queue_climate_preset(const char *entity_id, const char *preset) {
+    return queue_climate_option(entity_id, preset, HaActionType::ClimatePreset);
 }
 
 bool home_assistant_queue_alarm(const char *entity_id, const char *mode, const char *code) {
@@ -3255,6 +3490,48 @@ bool home_assistant_get_entity(const char *entity_id, HomeAssistantEntitySnapsho
     for (size_t i = 0; i < g_entity_count; ++i) {
         if (strcmp(entity_id, g_entities[i].entity_id) == 0) {
             snapshot_entity(g_entities[i], out); found = true; break;
+        }
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return found;
+}
+
+bool home_assistant_get_climate(const char *entity_id, HomeAssistantClimateSnapshot &out) {
+    memset(&out, 0, sizeof(out));
+    if (!entity_id || !g_entities) return false;
+    bool found = false;
+    portENTER_CRITICAL(&g_mux);
+    HaEntityModel *entity = find_entity_worker(entity_id);
+    if (entity && strcmp(entity->domain, "climate") == 0) {
+        found = true;
+        copy_text(out.entity_id, sizeof(out.entity_id), entity->entity_id);
+        copy_text(out.name, sizeof(out.name), entity->name);
+        copy_text(out.hvac_mode, sizeof(out.hvac_mode), entity->state);
+        out.available = entity->available;
+        HaClimateModel *climate = find_climate_locked(entity_id, false);
+        if (climate) {
+            copy_text(out.hvac_action, sizeof(out.hvac_action), climate->hvac_action);
+            copy_text(out.fan_mode, sizeof(out.fan_mode), climate->fan_mode);
+            copy_text(out.preset_mode, sizeof(out.preset_mode), climate->preset_mode);
+            copy_text(out.temperature_unit, sizeof(out.temperature_unit), climate->temperature_unit);
+            out.current_temperature = climate->current_temperature;
+            out.target_temperature = climate->target_temperature;
+            out.target_low = climate->target_low;
+            out.target_high = climate->target_high;
+            out.min_temperature = climate->min_temperature;
+            out.max_temperature = climate->max_temperature;
+            out.target_step = climate->target_step;
+            out.humidity = climate->humidity;
+            out.has_current_temperature = climate->has_current_temperature;
+            out.has_target_temperature = climate->has_target_temperature;
+            out.has_target_range = climate->has_target_range;
+            out.has_humidity = climate->has_humidity;
+            out.hvac_mode_count = climate->hvac_mode_count;
+            out.fan_mode_count = climate->fan_mode_count;
+            out.preset_count = climate->preset_count;
+            memcpy(out.hvac_modes, climate->hvac_modes, sizeof(out.hvac_modes));
+            memcpy(out.fan_modes, climate->fan_modes, sizeof(out.fan_modes));
+            memcpy(out.presets, climate->presets, sizeof(out.presets));
         }
     }
     portEXIT_CRITICAL(&g_mux);

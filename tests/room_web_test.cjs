@@ -74,6 +74,19 @@ for(const feature of ["Alarmo security", "alarm_entity_id", "security_devices",
   assert(source.includes(feature),`missing v1.9.0 Security configuration: ${feature}`);
 assert(source.includes("p.set('security_devices',JSON.stringify(securityDevices))"),
   'Security device entries must be serialized as complete objects');
+for(const feature of ["Dynamic attention devices", "securityDynamicDevices",
+                     "security_dynamic_devices", "addSecurityDynamicDevice",
+                     "attention-only devices reuse the rule model"])
+  assert(source.includes(feature),`missing v1.9.1 dynamic Security feature: ${feature}`);
+assert(source.includes("o.body.set('security_dynamic_devices',JSON.stringify(securityDynamicDevices))"),
+  'Dynamic Security device entries must be serialized as complete objects');
+for(const feature of ["Climate tab", "climateDevices", "climate_devices",
+                     "climate_show_humidity", "climate_show_fan", "climate_show_presets",
+                     "function renderClimateAdmin", "function addClimateDevice",
+                     "capability-driven panel controls"])
+  assert(source.includes(feature),`missing v1.9.2 Climate configuration: ${feature}`);
+assert(source.includes("o.body.set('climate_devices',JSON.stringify(climateDevices))"),
+  'Climate devices must be serialized as complete ordered objects');
 assert.equal((source.match(/>Reboot</g)||[]).length,1,'Reboot must have one visible Web Admin action');
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
