@@ -1,11 +1,17 @@
 # Home Control Panel
 
-**Version 1.8.1**
+**Version 1.8.2**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Intent-matched Navigation Icons 1.8.2
+
+The persistent bottom navigation now uses distinct dashboard, room, media,
+thermostat, security, weather, and calendar glyphs instead of reusing unrelated
+device-state icons. See the [1.8.2 release notes](docs/RELEASE_1.8.2.md).
 
 ## Configurable Calendar Ranges 1.8.1
 

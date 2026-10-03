@@ -72,19 +72,20 @@ bool board_take_touch_activity(){return false;}
 bool board_display_awake(){return true;}
 void board_set_display_awake(bool,uint8_t){}
 class Placeholder : public PanelModule {
-    const char *name_;
+    const char *id_;
+    const char *title_;
 public:
-    explicit Placeholder(const char *name):name_(name){}
-    const char *id() const override{return name_;}
-    const char *title() const override{return name_;}
+    Placeholder(const char *id,const char *title):id_(id),title_(title){}
+    const char *id() const override{return id_;}
+    const char *title() const override{return title_;}
     void create(lv_obj_t *) override{}
     void update() override{}
 };
 static RoomModule room;
-static Placeholder overview("Overview"),media("Media"),climate("Climate"),security("Security"),settings("settings");
-static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&settings};
-size_t module_registry_count(){return 6;}
-PanelModule *module_registry_at(size_t i){return i<6?modules[i]:nullptr;}
+static Placeholder overview("overview","Overview"),media("media","Media"),climate("climate","Climate"),security("security","Security"),weather("weather","Weather"),calendar("calendar","Calendar"),settings("settings","Settings");
+static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&weather,&calendar,&settings};
+size_t module_registry_count(){return 8;}
+PanelModule *module_registry_at(size_t i){return i<8?modules[i]:nullptr;}
 // Include the implementation to inspect battery geometry in this host-only harness.
 #include "../src/ui_shell.cpp"
 static unsigned char full_buffer[1280*800*4];
@@ -110,7 +111,7 @@ int main(){
     assert(g_clock && lv_label_get_text(g_clock)[0]);
     assert(strcmp(lv_label_get_text(g_header_title),"Home Panel")==0);
     assert(!lv_obj_check_type(lv_obj_get_parent(g_header_title),&lv_button_class));
-    assert(g_nav_buttons[5]==nullptr);
+    assert(g_nav_buttons[7]==nullptr);
     assert(strcmp(lv_label_get_text(g_comm_label),"Connected")==0);
     assert(lv_obj_has_flag(g_weather_header,LV_OBJ_FLAG_HIDDEN));
     snprintf(config.weather_entity_id,sizeof(config.weather_entity_id),"weather.home");
@@ -142,7 +143,14 @@ int main(){
     assert(settings_text.y1>settings_icon.y2);
     auto *footer=lv_obj_get_parent(g_nav_buttons[0]);
     assert(lv_obj_get_style_border_width(footer,LV_PART_MAIN)==0);
-    for(size_t i=0;i<5;++i)assert(lv_obj_get_style_border_width(g_nav_buttons[i],LV_PART_MAIN)==0);
+    for(size_t i=0;i<7;++i)assert(lv_obj_get_style_border_width(g_nav_buttons[i],LV_PART_MAIN)==0);
+    assert(navigation_glyph("overview")==0xF0A1D);
+    assert(navigation_glyph("room")==0xF156D);
+    assert(navigation_glyph("media")==0xF0387);
+    assert(navigation_glyph("climate")==0xF0393);
+    assert(navigation_glyph("security")==0xF0CCB);
+    assert(navigation_glyph("weather")==0xF0595);
+    assert(navigation_glyph("calendar")==0xF0E18);
     for(int percent : {100,20,10,1,0}){
         battery_percent=percent;ui_shell_refresh_header();lv_obj_update_layout(lv_screen_active());
         lv_obj_get_coords(g_battery_fill,&fill);
@@ -160,8 +168,8 @@ int main(){
     snprintf(config.display_name,sizeof(config.display_name),"A deliberately long panel name — upstairs");
     snprintf(config.area_id,sizeof(config.area_id),"A very long area name to check header bounds and alignment");
     ui_shell_refresh_header();full_shot(".test-build/header-long-title.ppm");
-    lv_obj_send_event(g_settings_button,LV_EVENT_CLICKED,nullptr);assert(g_active_index==5);
-    puts("Header renders passed: separate communication state, right-aligned icon columns, centered captions, unboxed navigation, battery bounds and offline states.");
+    lv_obj_send_event(g_settings_button,LV_EVENT_CLICKED,nullptr);assert(g_active_index==7);
+    puts("Header renders passed: intent-matched navigation icons, separate communication state, right-aligned icon columns, centered captions, unboxed navigation, battery bounds and offline states.");
 }
 
 

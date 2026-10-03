@@ -14,7 +14,7 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
 missing=[p for p in required if not(root/p).exists()]
@@ -29,7 +29,7 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.8.1"' in app
+assert '#define APP_VERSION "1.8.2"' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
@@ -112,5 +112,8 @@ for feature in ["HOURLY FORECAST", "MULTI-DAY FORECAST", "weather_layout", "ui_s
 calendar=(root/"src/modules/calendar_module.cpp").read_text()
 for feature in ["select_today", "period_offset_", "selected_day_", "EVENT DETAILS", "detail_body_", "ui_state_model_snapshot_calendar"]:
     assert feature in calendar
-print("Home Control Panel v1.8.1 structure validation passed.")
+shell=(root/"src/ui_shell.cpp").read_text()
+for feature in ["navigation_glyph", "0xF0A1D", "0xF156D", "0xF0387", "0xF0393", "0xF0CCB", "0xF0595", "0xF0E18"]:
+    assert feature in shell
+print("Home Control Panel v1.8.2 structure validation passed.")
 

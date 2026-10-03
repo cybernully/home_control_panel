@@ -28,6 +28,18 @@ uint32_t g_manual_status_until = 0;
 uint32_t g_last_action_seen_ms = 0;
 void update_header();
 void show_module(size_t index);
+
+uint32_t navigation_glyph(const char *module_id) {
+    if (!module_id) return 0xF0A1D;                              // dashboard outline
+    if (strcmp(module_id, "room") == 0) return 0xF156D;          // sofa outline
+    if (strcmp(module_id, "media") == 0) return 0xF0387;         // music note
+    if (strcmp(module_id, "climate") == 0) return 0xF0393;       // thermostat
+    if (strcmp(module_id, "security") == 0) return 0xF0CCB;      // shield home outline
+    if (strcmp(module_id, "weather") == 0) return 0xF0595;       // partly cloudy
+    if (strcmp(module_id, "calendar") == 0) return 0xF0E18;      // calendar month outline
+    if (strcmp(module_id, "overview") == 0) return 0xF0A1D;      // dashboard outline
+    return 0xF0A1D;
+}
 void style_box(lv_obj_t *o,uint32_t bg,int radius=0,int border=0){lv_obj_set_style_bg_color(o,lv_color_hex(bg),LV_PART_MAIN);lv_obj_set_style_bg_opa(o,LV_OPA_COVER,LV_PART_MAIN);lv_obj_set_style_radius(o,radius,LV_PART_MAIN);lv_obj_set_style_border_width(o,border,LV_PART_MAIN);if(border)lv_obj_set_style_border_color(o,lv_color_hex(BORDER),LV_PART_MAIN);lv_obj_set_style_pad_all(o,0,LV_PART_MAIN);lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE);}
 void style_nav_button(lv_obj_t *o, bool active) {
     style_box(o, active ? ACCENT : BG, active ? 14 : 0, 0);
@@ -356,13 +368,7 @@ void ui_shell_begin() {
     for (size_t i = 0; i < count; ++i) {
         PanelModule *module = module_registry_at(i);
         if (!module || strcmp(module->id(), "settings") == 0) continue;
-        uint32_t glyph = 0xF0425;
-        if (strcmp(module->id(), "room") == 0) glyph = 0xF0335;
-        else if (strcmp(module->id(), "media") == 0) glyph = 0xF03D8;
-        else if (strcmp(module->id(), "climate") == 0) glyph = 0xF0210;
-        else if (strcmp(module->id(), "security") == 0) glyph = 0xF0902;
-        else if (strcmp(module->id(), "weather") == 0) glyph = 0xF0595;
-        else if (strcmp(module->id(), "calendar") == 0) glyph = 0xF00AC;
+        const uint32_t glyph = navigation_glyph(module->id());
         g_nav_buttons[i] = lv_button_create(footer);
         lv_obj_set_size(g_nav_buttons[i], button_w, 64);
         lv_obj_set_pos(g_nav_buttons[i], x, 7);
