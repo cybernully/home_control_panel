@@ -68,6 +68,18 @@ void set_glyph(lv_obj_t *label, uint32_t codepoint) {
     lv_label_set_text(label, utf8);
 }
 
+uint32_t module_glyph(const char *module_id) {
+    if (!module_id) return 0xF0A1D;
+    if (strcmp(module_id, "room") == 0) return 0xF156D;
+    if (strcmp(module_id, "media") == 0) return 0xF0387;
+    if (strcmp(module_id, "climate") == 0) return 0xF0393;
+    if (strcmp(module_id, "security") == 0) return 0xF0CCB;
+    if (strcmp(module_id, "weather") == 0) return 0xF0595;
+    if (strcmp(module_id, "calendar") == 0) return 0xF0E18;
+    if (strcmp(module_id, "settings") == 0) return 0xF1064;
+    return 0xF0A1D;
+}
+
 uint32_t status_glyph(const char *configured_icon, const char *entity_id,
                       const char *title, bool active) {
     const char *icon = configured_icon && configured_icon[0] ? configured_icon : "auto";

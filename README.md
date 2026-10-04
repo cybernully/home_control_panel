@@ -1,11 +1,30 @@
 # Home Control Panel
 
-**Version 1.9.6**
+**Version 2.0.1**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## Uniform panel headers 2.0.1
+
+Every panel screen now uses a matching page icon, title, and subtitle layout.
+Page icons share the navigation glyphs, while the persistent top bar uses one
+caption font, baseline, and icon alignment for weather, status, connection,
+Wi-Fi, battery, and Settings. See the [2.0.1 release notes](docs/RELEASE_2.0.1.md).
+
+## Web maintenance and OTA 2.0.0
+
+Web Admin now provides authenticated configuration download and restore plus
+firmware OTA uploads. Restores are validated into a separate configuration and
+saved through an atomic temporary/rollback-file swap before the panel reboots.
+Firmware images are size checked, written to the inactive OTA partition, and
+verified before activation. Backups intentionally exclude the Home Assistant
+URL and long-lived access token stored in NVS; restoring on the same panel keeps
+those credentials intact. The unused Web Admin Settings page has been removed,
+while the actual Settings tab on the physical panel remains configurable. See
+the [2.0.0 release notes](docs/RELEASE_2.0.0.md).
 
 ## Expanded attention monitoring and ordered Room favorites 1.9.6
 

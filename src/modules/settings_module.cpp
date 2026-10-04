@@ -34,7 +34,7 @@ uint8_t used_percent(size_t used, size_t total) {
 
 void SettingsModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Settings", "Panel controls, capacity, and connection diagnostics");
+    module_ui::title(parent, id(), "Settings", "Panel controls, capacity, and connection diagnostics");
 
     const PanelConfig &cfg = config_service_get();
 

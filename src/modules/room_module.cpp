@@ -59,7 +59,7 @@ lv_obj_t *section_heading(lv_obj_t *parent, const char *value, int y) {
 void RoomModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
     ui_state_model_snapshot_room(room_, controls_, PANEL_MAX_ROOM_CONTROLS, control_count_);
-    module_ui::title(parent, "Rooms", "Favorites, quick access, and live status for the selected room");
+    module_ui::title(parent, id(), "Rooms", "Favorites, quick access, and live status for the selected room");
 
     lv_obj_t *room_status = card(parent, 24, PAGE_CONTENT_TOP, 1232, 78);
     lv_obj_set_style_radius(room_status, 14, LV_PART_MAIN);

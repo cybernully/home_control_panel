@@ -68,7 +68,7 @@ void CalendarModule::create(lv_obj_t *parent) {
     lv_obj_set_style_pad_all(parent, 0, LV_PART_MAIN);
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
-    module_ui::title(parent, "Calendar", "Your selected calendars and schedule at a glance");
+    module_ui::title(parent, id(), "Calendar", "Your selected calendars and schedule at a glance");
     week_label_ = label(parent, "Loading week...", &lv_font_montserrat_18, TEXT);
     lv_obj_set_pos(week_label_, 24, 94); lv_obj_set_width(week_label_, 580);
     status_ = label(parent, "", &lv_font_montserrat_12, MUTED);

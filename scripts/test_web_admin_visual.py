@@ -27,7 +27,7 @@ roomRows=[
 ];
 setTimeout(()=>{
  renderRoom();renderCandidates();nav();tab('rooms');
- $('title').textContent='Home Panel';$('ver').textContent='v1.9.6';$('connection').textContent='192.168.1.42 · Home Assistant connected';
+ $('title').textContent='Home Panel';$('ver').textContent='v2.0.0';$('connection').textContent='192.168.1.42 · Home Assistant connected';
  $('filter').value='office ceiling fan';$('candidate_type').value='all';renderCandidates();
  $('scan_state').textContent='Search for office ceiling fan found 2 matching entities.';
  $('config_submit_guard').disabled=false;$('header_save').disabled=false;
@@ -41,13 +41,19 @@ html = re.sub(r"loadWeatherV193\(\)\.catch\([^\n]+", "", html)
 
 build = root / ".test-build"
 build.mkdir(exist_ok=True)
-preview = build / "web-admin-v196.html"
-screenshot = build / "web-admin-v196.png"
+preview = build / "web-admin-v200.html"
+screenshot = build / "web-admin-v200.png"
 preview.write_text(html, encoding="utf-8")
-security_preview = build / "web-admin-v196-security.html"
-security_screenshot = build / "web-admin-v196-security.png"
+security_preview = build / "web-admin-v200-security.html"
+security_screenshot = build / "web-admin-v200-security.png"
 security_preview.write_text(
     html.replace("nav();tab('rooms');", "nav();tab('security');renderSecurity();"),
+    encoding="utf-8",
+)
+admin_preview = build / "web-admin-v200-administration.html"
+admin_screenshot = build / "web-admin-v200-administration.png"
+admin_preview.write_text(
+    html.replace("nav();tab('rooms');", "nav();renderModules();tab('administration');"),
     encoding="utf-8",
 )
 
@@ -67,5 +73,10 @@ subprocess.run([
     str(edge), "--headless=new", "--disable-gpu", "--hide-scrollbars",
     "--window-size=1440,1800", f"--screenshot={security_screenshot}", security_preview.as_uri()
 ], check=True)
+subprocess.run([
+    str(edge), "--headless=new", "--disable-gpu", "--hide-scrollbars",
+    "--window-size=1440,2200", f"--screenshot={admin_screenshot}", admin_preview.as_uri()
+], check=True)
 print(screenshot)
 print(security_screenshot)
+print(admin_screenshot)

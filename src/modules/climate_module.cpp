@@ -55,7 +55,7 @@ uint32_t mode_color(const char *mode) {
 
 void ClimateModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Climate", "Live thermostats, comfort and HVAC controls");
+    module_ui::title(parent, id(), "Climate", "Live thermostats, comfort and HVAC controls");
 
     for (uint8_t i = 0; i < PANEL_MAX_CLIMATE_DEVICES; ++i) {
         tabs_[i] = button(parent, "Thermostat", 24 + i * 307, PAGE_CONTENT_TOP, 295, 46, CARD_ALT);

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "ui_theme.h"
+#include "ha_icons_font.h"
 
 namespace module_ui {
 constexpr uint32_t BG = ui_theme::BG;
@@ -39,12 +40,22 @@ inline lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font
     return o;
 }
 
-inline lv_obj_t *title(lv_obj_t *parent, const char *heading, const char *subtitle) {
+inline lv_obj_t *title(lv_obj_t *parent, const char *module_id, const char *heading,
+                       const char *subtitle, int width = 1232) {
+    lv_obj_t *icon = label(parent, "", &ha_icons_font, ui_theme::CYAN);
+    ui_theme::set_glyph(icon, ui_theme::module_glyph(module_id));
+    lv_obj_set_pos(icon, 24, 13);
+    lv_obj_set_size(icon, 38, ha_icons_font.line_height);
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_t *h = label(parent, heading, &lv_font_montserrat_28, TEXT);
-    lv_obj_set_pos(h, 24, PAGE_TITLE_Y);
+    lv_obj_set_pos(h, 74, PAGE_TITLE_Y);
+    lv_obj_set_width(h, width - 50);
+    lv_label_set_long_mode(h, LV_LABEL_LONG_DOT);
     if (subtitle && subtitle[0]) {
         lv_obj_t *s = label(parent, subtitle, &lv_font_montserrat_14, MUTED);
-        lv_obj_set_pos(s, 24, PAGE_SUBTITLE_Y);
+        lv_obj_set_pos(s, 74, PAGE_SUBTITLE_Y);
+        lv_obj_set_width(s, width - 50);
+        lv_label_set_long_mode(s, LV_LABEL_LONG_DOT);
     }
     return h;
 }

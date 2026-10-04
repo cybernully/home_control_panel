@@ -184,6 +184,8 @@ struct PanelConfig {
 bool config_service_begin();
 const PanelConfig &config_service_get();
 bool config_service_save(const PanelConfig &config);
+bool config_service_export_json(String &output);
+bool config_service_restore_json(const String &json, String &error);
 void config_service_set_profile_defaults(PanelConfig &config);
 bool config_service_module_enabled(const char *module_id);
 bool config_service_parse_modules_csv(const String &csv, PanelConfig &config);

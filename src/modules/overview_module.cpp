@@ -35,7 +35,7 @@ void safe_text(lv_obj_t *target, const char *value) {
 
 void OverviewModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Overview", "Whole-home status, controls, and quick actions");
+    module_ui::title(parent, id(), "Overview", "Whole-home status, controls, and quick actions");
     feedback_ = label(parent, "Live status from Home Assistant", &lv_font_montserrat_12, MUTED);
     lv_obj_set_pos(feedback_, 700, 54);
     lv_obj_set_width(feedback_, 556);

@@ -12,6 +12,7 @@ static size_t count = 0;
 static std::string target;
 static int toggles=0, brightness_calls=0;
 static bool weather_available=false;
+static bool ha_ready=true;
 const PanelConfig &config_service_get() { return config; }
 size_t home_assistant_get_room_entities(HomeAssistantEntitySnapshot *out,size_t capacity) {
     size_t n = count < capacity ? count : capacity;
@@ -27,7 +28,7 @@ bool home_assistant_get_room_entity(const char *id, HomeAssistantEntitySnapshot 
 void home_assistant_get_discovery_status(HomeAssistantDiscoveryStatus &out) {
     out={};snprintf(out.area_name,sizeof(out.area_name),"Office — upstairs");
     snprintf(out.message,sizeof(out.message),"Connected to Home Assistant");
-    out.websocket_authenticated=true;out.discovery_complete=true;
+    out.websocket_authenticated=ha_ready;out.discovery_complete=ha_ready;
 }
 void home_assistant_get_status(HomeAssistantStatus &out) { out={};out.configured=true;out.connected=true;out.authenticated=true; }
 bool home_assistant_get_weather(const char *, HomeAssistantWeatherSnapshot &out) { out={};out.available=weather_available;out.has_temperature=weather_available;out.temperature=72;return weather_available; }
@@ -63,6 +64,7 @@ static void pref(const char *id,const char *label,int placement) {
 
 #include "battery_service.h"
 #include "ui_shell.h"
+#include "module_ui.h"
 static bool battery_valid=true, connected=true;
 static uint8_t battery_percent=78;
 bool battery_service_get_status(BatteryStatus &out) { out={};out.valid=battery_valid;out.percent=battery_percent;return battery_valid; }
@@ -78,7 +80,7 @@ public:
     Placeholder(const char *id,const char *title):id_(id),title_(title){}
     const char *id() const override{return id_;}
     const char *title() const override{return title_;}
-    void create(lv_obj_t *) override{}
+    void create(lv_obj_t *parent) override{module_ui::title(parent,id_,title_,"Panel status and controls");}
     void update() override{}
 };
 static RoomModule room;
@@ -118,6 +120,35 @@ int main(){
     config.weather_header_enabled=true;weather_available=true;ui_shell_refresh_header();
     assert(!lv_obj_has_flag(g_weather_header,LV_OBJ_FLAG_HIDDEN));
     assert(strcmp(lv_label_get_text(g_weather_header_label),"72\xC2\xB0")==0);
+    lv_obj_update_layout(lv_screen_active());
+    const lv_obj_t *captions[] = {g_weather_header_label, g_status_label, g_comm_label, g_wifi, g_battery_label, g_settings_label};
+    for (const auto *caption : captions) {
+        assert(lv_obj_get_style_text_font(caption, LV_PART_MAIN) == &lv_font_montserrat_14);
+        assert(lv_obj_get_y(caption) == HEADER_CAPTION_Y);
+        assert(lv_obj_get_style_text_align(caption, LV_PART_MAIN) == LV_TEXT_ALIGN_CENTER);
+        assert(lv_obj_get_height(caption) == lv_font_montserrat_14.line_height);
+    }
+    const lv_obj_t *icons[] = {g_weather_header_icon, g_status_dot, g_comm_icon, g_settings_icon};
+    for (const auto *icon : icons) {
+        assert(lv_obj_get_style_text_font(icon, LV_PART_MAIN) == &ha_icons_font);
+        assert(lv_obj_get_y(icon) == HEADER_ICON_Y);
+        assert(lv_obj_get_height(icon) == ha_icons_font.line_height);
+    }
+    full_shot(".test-build/header-weather.ppm");
+    std::string header_pixels(reinterpret_cast<char *>(full_buffer), 1280 * HEADER_H * 4);
+    for (size_t i = 0; i < module_registry_count(); ++i) {
+        show_module(i);
+        lv_refr_now(nullptr);
+        assert(header_pixels == std::string(reinterpret_cast<char *>(full_buffer), 1280 * HEADER_H * 4));
+        auto *heading = find(g_pages[i], i == 1 ? "Rooms" : modules[i]->title());
+        assert(heading);
+        assert(lv_obj_get_x(heading) == 74 && lv_obj_get_y(heading) == module_ui::PAGE_TITLE_Y);
+        assert(lv_obj_get_style_text_font(heading, LV_PART_MAIN) == &lv_font_montserrat_28);
+        auto *page_icon = lv_obj_get_child(g_pages[i], 0);
+        assert(lv_obj_get_style_text_font(page_icon, LV_PART_MAIN) == &ha_icons_font);
+        assert(lv_obj_get_x(page_icon) == 24 && lv_obj_get_y(page_icon) == 13);
+    }
+    show_module(1);
     lv_obj_send_event(g_comm_button,LV_EVENT_CLICKED,nullptr);
     assert(!lv_obj_has_flag(g_status_overlay,LV_OBJ_FLAG_HIDDEN));
     assert(lv_label_get_text(g_status_message)[0]);
@@ -141,6 +172,9 @@ int main(){
     lv_obj_get_coords(g_settings_icon,&settings_icon);lv_obj_get_coords(g_settings_label,&settings_text);
     assert(abs((settings_icon.x1+settings_icon.x2)-(settings_text.x1+settings_text.x2))<=2);
     assert(settings_text.y1>settings_icon.y2);
+    assert(text.y1 == status_text.y1 && text.y1 == comm_text.y1 && text.y1 == wifi_text.y1 && text.y1 == settings_text.y1);
+    assert(abs((body.y1+body.y2)-(comm_icon.y1+comm_icon.y2))<=2);
+    assert(abs((wifi_last.y1+wifi_last.y2)-(comm_icon.y1+comm_icon.y2))<=2);
     auto *footer=lv_obj_get_parent(g_nav_buttons[0]);
     assert(lv_obj_get_style_border_width(footer,LV_PART_MAIN)==0);
     for(size_t i=0;i<7;++i){
@@ -155,6 +189,11 @@ int main(){
     assert(navigation_glyph("security")==0xF0CCB);
     assert(navigation_glyph("weather")==0xF0595);
     assert(navigation_glyph("calendar")==0xF0E18);
+    assert(navigation_glyph("settings")==0xF1064);
+    ha_ready=false;ui_shell_refresh_header();lv_obj_update_layout(lv_screen_active());
+    assert(strcmp(lv_label_get_text(g_comm_label),"Syncing")==0);
+    full_shot(".test-build/header-syncing.ppm");
+    ha_ready=true;ui_shell_refresh_header();
     for(int percent : {100,20,10,1,0}){
         battery_percent=percent;ui_shell_refresh_header();lv_obj_update_layout(lv_screen_active());
         lv_obj_get_coords(g_battery_fill,&fill);
@@ -173,7 +212,7 @@ int main(){
     snprintf(config.area_id,sizeof(config.area_id),"A very long area name to check header bounds and alignment");
     ui_shell_refresh_header();full_shot(".test-build/header-long-title.ppm");
     lv_obj_send_event(g_settings_button,LV_EVENT_CLICKED,nullptr);assert(g_active_index==7);
-    puts("Header renders passed: intent-matched navigation icons, separate communication state, right-aligned icon columns, centered captions, unboxed navigation, battery bounds and offline states.");
+    puts("Header renders passed: uniform caption fonts/baselines and icon rows, identical persistent header on all eight screens, matching page/navigation icons, battery bounds and connected/syncing/offline states.");
 }
 
 

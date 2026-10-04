@@ -23,6 +23,16 @@ for(const feature of ["v1.9.6: larger dynamic-attention collection", "securityDy
                      "function decorateRoomFavoriteOrdering", "Favorite ${position+1}",
                      "Move favorite ${entry.item.name||entry.item.entity_id} earlier"])
   assert(source.includes(feature),`missing v1.9.6 ordering/capacity feature: ${feature}`);
+for(const feature of ["v2.0.0: authenticated backup/restore", "Backup, restore, and firmware",
+                     "function downloadConfigBackup", "function restoreConfigBackup",
+                     "function installFirmwareUpdate", "/api/config/backup",
+                     "/api/config/restore", "/api/firmware", "firmware_progress",
+                     "correct 2624 or 2635", "reconnectAfterMaintenance"])
+  assert(source.includes(feature),`missing v2.0.0 maintenance feature: ${feature}`);
+assert(source.includes("known=['overview','room','media','calendar','weather','climate','security']"),
+  'Web Admin navigation must omit the placeholder Settings page');
+assert(source.includes("$('settings')?.remove()"),
+  'the unused Web Admin Settings page must be removed from the DOM');
 const embeddedScript=source.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert(embeddedScript,'embedded Web Admin script must be present');
 assert.doesNotThrow(()=>new Function(embeddedScript),'embedded Web Admin JavaScript must parse');
@@ -123,4 +133,4 @@ assert.equal((source.match(/>Reboot</g)||[]).length,1,'Reboot must have one visi
 assert(!source.includes('https://cdn.'),'the management UI must not require a public CDN');
 assert(source.indexOf("function esc(s)")<source.indexOf('function renderCandidates()'),
        'escape helper must be defined before entity HTML rendering');
-console.log('Web layout manager tests passed: professional responsive layout, 16 dynamic attention devices, scoped Room favorite ordering, entity search, and safe rendering hooks.');
+console.log('Web layout manager tests passed: v2 maintenance, Settings-page removal, responsive layout, scoped Room favorites, and safe rendering hooks.');

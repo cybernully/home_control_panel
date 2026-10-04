@@ -73,10 +73,11 @@ void set_base_defaults(PanelConfig &cfg) {
 
 bool save_internal(const PanelConfig &cfg) {
     if (!g_mounted) return false;
-    File f = SPIFFS.open(PANEL_CONFIG_PATH, FILE_WRITE);
+    SPIFFS.remove(PANEL_CONFIG_TEMP_PATH);
+    File f = SPIFFS.open(PANEL_CONFIG_TEMP_PATH, FILE_WRITE);
     if (!f) return false;
     JsonDocument doc;
-    doc["schema"] = 10;
+    doc["schema"] = PANEL_CONFIG_SCHEMA;
     doc["device_id"] = cfg.device_id;
     doc["display_name"] = cfg.display_name;
     doc["profile"] = cfg.profile;
@@ -228,9 +229,31 @@ bool save_internal(const PanelConfig &cfg) {
         item["span"] = source.span;
         item["confirm"] = source.confirm;
     }
+    const size_t expected = measureJsonPretty(doc);
     const size_t written = serializeJsonPretty(doc, f);
     f.close();
-    return written > 0;
+    if (!written || written != expected) {
+        SPIFFS.remove(PANEL_CONFIG_TEMP_PATH);
+        return false;
+    }
+
+    // Keep the last complete file until the new one has been written and
+    // renamed. A power loss can therefore leave either panel.json or panel.bak,
+    // never only a partially serialized configuration.
+    const bool had_current = SPIFFS.exists(PANEL_CONFIG_PATH);
+    SPIFFS.remove(PANEL_CONFIG_ROLLBACK_PATH);
+    if (had_current &&
+        !SPIFFS.rename(PANEL_CONFIG_PATH, PANEL_CONFIG_ROLLBACK_PATH)) {
+        SPIFFS.remove(PANEL_CONFIG_TEMP_PATH);
+        return false;
+    }
+    if (!SPIFFS.rename(PANEL_CONFIG_TEMP_PATH, PANEL_CONFIG_PATH)) {
+        if (had_current) SPIFFS.rename(PANEL_CONFIG_ROLLBACK_PATH, PANEL_CONFIG_PATH);
+        SPIFFS.remove(PANEL_CONFIG_TEMP_PATH);
+        return false;
+    }
+    SPIFFS.remove(PANEL_CONFIG_ROLLBACK_PATH);
+    return true;
 }
 }
 
@@ -253,6 +276,12 @@ bool config_service_begin() {
     set_base_defaults(g_config);
     g_mounted = SPIFFS.begin(true);
     if (!g_mounted) { Serial0.println("[Config] SPIFFS mount failed"); return false; }
+    if (!SPIFFS.exists(PANEL_CONFIG_PATH) &&
+        SPIFFS.exists(PANEL_CONFIG_ROLLBACK_PATH)) {
+        Serial0.println("[Config] Recovering the last complete configuration");
+        SPIFFS.rename(PANEL_CONFIG_ROLLBACK_PATH, PANEL_CONFIG_PATH);
+    }
+    SPIFFS.remove(PANEL_CONFIG_TEMP_PATH);
     if (!SPIFFS.exists(PANEL_CONFIG_PATH)) {
         Serial0.println("[Config] panel.json not found; creating defaults");
         return save_internal(g_config);
@@ -449,6 +478,7 @@ bool config_service_begin() {
                   PANEL_MEDIA_ENTITY_ID_LEN, id);
     }
     g_config = loaded;
+    SPIFFS.remove(PANEL_CONFIG_ROLLBACK_PATH);
     Serial0.printf("[Config] %s profile=%s modules=%u media_shortcuts=%u media_favorites=%u\n",
                    g_config.device_id, g_config.profile,
                    static_cast<unsigned>(g_config.module_count),
@@ -458,6 +488,281 @@ bool config_service_begin() {
 }
 
 const PanelConfig &config_service_get() { return g_config; }
+
+bool config_service_export_json(String &output) {
+    output = "";
+    if (!g_mounted || !SPIFFS.exists(PANEL_CONFIG_PATH)) return false;
+    File file = SPIFFS.open(PANEL_CONFIG_PATH, FILE_READ);
+    if (!file || file.size() == 0 || file.size() > WEB_CONFIG_BACKUP_MAX_BYTES) {
+        if (file) file.close();
+        return false;
+    }
+    output.reserve(file.size() + 1);
+    output = file.readString();
+    const size_t expected = file.size();
+    file.close();
+    return output.length() == expected;
+}
+
+bool config_service_restore_json(const String &json, String &error) {
+    error = "";
+    if (json.isEmpty() || json.length() > WEB_CONFIG_BACKUP_MAX_BYTES) {
+        error = "Configuration backup is empty or exceeds 64 KB.";
+        return false;
+    }
+    JsonDocument doc;
+    const DeserializationError parse_error = deserializeJson(doc, json);
+    if (parse_error || !doc.is<JsonObject>()) {
+        error = String("Configuration backup is not valid JSON: ") + parse_error.c_str();
+        return false;
+    }
+    if (!doc["schema"].is<int>() || doc["schema"].as<int>() != PANEL_CONFIG_SCHEMA) {
+        error = "Configuration backup uses an unsupported schema.";
+        return false;
+    }
+
+    std::unique_ptr<PanelConfig> restored_storage(new (std::nothrow) PanelConfig{});
+    if (!restored_storage) {
+        error = "Insufficient memory to validate the configuration backup.";
+        return false;
+    }
+    PanelConfig &restored = *restored_storage;
+    set_base_defaults(restored);
+
+    const char *device_id = doc["device_id"] | "";
+    const char *display_name = doc["display_name"] | "";
+    const char *profile = doc["profile"] | "";
+    if (!device_id[0] || strlen(device_id) >= sizeof(restored.device_id) ||
+        !display_name[0] || strlen(display_name) >= sizeof(restored.display_name)) {
+        error = "Backup device ID or display name is missing or too long.";
+        return false;
+    }
+    if (strcmp(profile, "calendar") != 0 && strcmp(profile, "room") != 0 &&
+        strcmp(profile, "whole_home") != 0 && strcmp(profile, "custom") != 0) {
+        error = "Backup contains an invalid panel profile.";
+        return false;
+    }
+    copy_text(restored.device_id, sizeof(restored.device_id), device_id);
+    copy_text(restored.display_name, sizeof(restored.display_name), display_name);
+    copy_text(restored.profile, sizeof(restored.profile), profile);
+    restored.area_id[0] = '\0';
+    restored.backlight = static_cast<uint8_t>(constrain(doc["backlight"] | APP_DEFAULT_BACKLIGHT, 10, 100));
+    restored.dark_mode = doc["dark_mode"] | true;
+    restored.screen_timeout_seconds = doc["screen_timeout_seconds"] | APP_DEFAULT_SCREEN_TIMEOUT_SECONDS;
+    if (restored.screen_timeout_seconds > 3600U) {
+        error = "Backup screen timeout must be between 0 and 3600 seconds.";
+        return false;
+    }
+    restored.explicit_layout = doc["explicit_layout"] | false;
+
+    JsonArray modules = doc["modules"].as<JsonArray>();
+    if (modules.isNull() || modules.size() == 0 || modules.size() > PANEL_MAX_MODULES) {
+        error = "Backup must contain 1 to 8 panel modules.";
+        return false;
+    }
+    restored.module_count = 0;
+    memset(restored.modules, 0, sizeof(restored.modules));
+    for (JsonVariant item : modules) {
+        if (!item.is<const char *>() || !valid_module_id(item.as<const char *>())) {
+            error = "Backup contains an invalid panel module.";
+            return false;
+        }
+        const uint8_t before = restored.module_count;
+        add_module(restored, item.as<const char *>());
+        if (restored.module_count != before + 1) {
+            error = "Backup contains a duplicate panel module.";
+            return false;
+        }
+    }
+
+    auto restore_entity = [&](const char *key, const char *prefix,
+                              char *target, size_t target_size) -> bool {
+        const char *value = doc[key] | "";
+        if (strlen(value) >= target_size ||
+            (value[0] && strncmp(value, prefix, strlen(prefix)) != 0)) {
+            error = String("Backup contains an invalid ") + key + ".";
+            return false;
+        }
+        copy_text(target, target_size, value);
+        return true;
+    };
+    if (!restore_entity("weather_entity_id", "weather.", restored.weather_entity_id,
+                        sizeof(restored.weather_entity_id)) ||
+        !restore_entity("weather_hourly_entity_id", "weather.", restored.weather_hourly_entity_id,
+                        sizeof(restored.weather_hourly_entity_id)) ||
+        !restore_entity("weather_daily_entity_id", "weather.", restored.weather_daily_entity_id,
+                        sizeof(restored.weather_daily_entity_id))) return false;
+    const char *weather_layout = doc["weather_layout"] | "balanced";
+    if (strcmp(weather_layout, "balanced") != 0 &&
+        strcmp(weather_layout, "current_focus") != 0 &&
+        strcmp(weather_layout, "forecast_focus") != 0) {
+        error = "Backup contains an invalid Weather layout.";
+        return false;
+    }
+    copy_text(restored.weather_layout, sizeof(restored.weather_layout), weather_layout);
+    restored.weather_show_current = doc["weather_show_current"] | true;
+    restored.weather_show_hourly = doc["weather_show_hourly"] | true;
+    restored.weather_show_daily = doc["weather_show_daily"] | true;
+    restored.weather_header_enabled = doc["weather_header_enabled"] | false;
+    if (!restored.weather_show_current && !restored.weather_show_hourly &&
+        !restored.weather_show_daily) {
+        error = "Backup must enable at least one Weather section.";
+        return false;
+    }
+
+    JsonArray calendars = doc["calendars"].as<JsonArray>();
+    if (calendars.isNull() || calendars.size() > PANEL_MAX_CALENDARS) {
+        error = "Backup calendars must be an array of at most six items.";
+        return false;
+    }
+    restored.calendar_count = 0;
+    memset(restored.calendars, 0, sizeof(restored.calendars));
+    for (JsonObject item : calendars) {
+        const char *entity_id = item["entity_id"] | "";
+        const char *label = item["label"] | "";
+        const char *color = item["color"] | "cyan";
+        if (strncmp(entity_id, "calendar.", 9) != 0 ||
+            strlen(entity_id) >= sizeof(restored.calendars[0].entity_id) ||
+            !label[0] || strlen(label) >= sizeof(restored.calendars[0].label) ||
+            strlen(color) >= sizeof(restored.calendars[0].color)) {
+            error = "Backup contains an invalid calendar source.";
+            return false;
+        }
+        PanelCalendarSource &out = restored.calendars[restored.calendar_count++];
+        copy_text(out.entity_id, sizeof(out.entity_id), entity_id);
+        copy_text(out.label, sizeof(out.label), label);
+        copy_text(out.color, sizeof(out.color), color);
+    }
+    restored.calendar_week_starts_monday = doc["calendar_week_starts_monday"] | true;
+    restored.calendar_days = doc["calendar_days"] | 7;
+    if (restored.calendar_days != 1 && restored.calendar_days != 3 && restored.calendar_days != 7) {
+        error = "Backup Calendar view must contain 1, 3, or 7 days.";
+        return false;
+    }
+    restored.calendar_entity_id[0] = '\0';
+    if (restored.calendar_count)
+        copy_text(restored.calendar_entity_id, sizeof(restored.calendar_entity_id),
+                  restored.calendars[0].entity_id);
+
+    String collection;
+    auto parse_collection = [&](const char *key,
+                                bool (*parser)(const String &, PanelConfig &, String &)) -> bool {
+        if (!doc[key].is<JsonArray>()) {
+            error = String("Backup ") + key + " must be an array.";
+            return false;
+        }
+        collection = "";
+        serializeJson(doc[key], collection);
+        return parser(collection, restored, error);
+    };
+    if (!parse_collection("climate_devices", config_service_parse_climate_devices)) return false;
+    restored.climate_show_humidity = doc["climate_show_humidity"] | true;
+    restored.climate_show_fan = doc["climate_show_fan"] | true;
+    restored.climate_show_presets = doc["climate_show_presets"] | true;
+
+    const char *alarm_entity = doc["alarm_entity_id"] | "";
+    if (alarm_entity[0] && (strncmp(alarm_entity, "alarm_control_panel.", 20) != 0 ||
+                            strlen(alarm_entity) >= sizeof(restored.alarm_entity_id))) {
+        error = "Backup contains an invalid Alarmo entity.";
+        return false;
+    }
+    copy_text(restored.alarm_entity_id, sizeof(restored.alarm_entity_id), alarm_entity);
+    restored.security_show_abnormal_summary = doc["security_show_abnormal_summary"] | true;
+    restored.security_confirm_arming = doc["security_confirm_arming"] | true;
+    restored.security_code_to_arm = doc["security_code_to_arm"] | false;
+    restored.security_arm_home = doc["security_arm_home"] | true;
+    restored.security_arm_away = doc["security_arm_away"] | true;
+    restored.security_arm_night = doc["security_arm_night"] | true;
+    restored.security_arm_vacation = doc["security_arm_vacation"] | false;
+    if (!restored.security_arm_home && !restored.security_arm_away &&
+        !restored.security_arm_night && !restored.security_arm_vacation) {
+        error = "Backup must enable at least one Security arming mode.";
+        return false;
+    }
+    if (!parse_collection("security_devices", config_service_parse_security_devices) ||
+        !parse_collection("security_dynamic_devices", config_service_parse_security_dynamic_devices) ||
+        !config_service_validate_security_device_uniqueness(restored, error)) return false;
+
+    auto restore_media = [&](const char *key, PanelMediaShortcut *target,
+                             uint8_t &count, size_t capacity) -> bool {
+        JsonArray items = doc[key].as<JsonArray>();
+        if (items.isNull() || items.size() > capacity) {
+            error = String("Backup ") + key + " exceeds its supported capacity.";
+            return false;
+        }
+        count = 0;
+        memset(target, 0, sizeof(PanelMediaShortcut) * capacity);
+        for (JsonObject item : items) {
+            const char *label = item["label"] | "";
+            const char *icon = item["icon"] | "music";
+            const char *entity_id = item["entity_id"] | "";
+            const char *content_id = item["media_content_id"] | "";
+            const char *content_type = item["media_content_type"] | "";
+            if (!label[0] || strlen(label) >= sizeof(target[0].label) ||
+                !icon[0] || strlen(icon) >= sizeof(target[0].icon) ||
+                strncmp(entity_id, "media_player.", 13) != 0 ||
+                strlen(entity_id) >= sizeof(target[0].entity_id) ||
+                !content_id[0] || strlen(content_id) >= sizeof(target[0].media_content_id) ||
+                !content_type[0] || strlen(content_type) >= sizeof(target[0].media_content_type)) {
+                error = String("Backup contains an invalid ") + key + " item.";
+                return false;
+            }
+            PanelMediaShortcut &out = target[count++];
+            copy_text(out.label, sizeof(out.label), label);
+            copy_text(out.icon, sizeof(out.icon), icon);
+            copy_text(out.entity_id, sizeof(out.entity_id), entity_id);
+            copy_text(out.media_content_id, sizeof(out.media_content_id), content_id);
+            copy_text(out.media_content_type, sizeof(out.media_content_type), content_type);
+        }
+        return true;
+    };
+    if (!restore_media("media_shortcuts", restored.media_shortcuts,
+                       restored.media_shortcut_count, PANEL_MAX_MEDIA_SHORTCUTS) ||
+        !restore_media("media_favorites", restored.media_favorites,
+                       restored.media_favorite_count, PANEL_MAX_MEDIA_FAVORITES)) return false;
+
+    if (!parse_collection("room_controls", config_service_parse_room_controls) ||
+        !parse_collection("rooms", config_service_parse_rooms) ||
+        !parse_collection("overview_widgets", config_service_parse_overview_widgets) ||
+        !parse_collection("overview_quick_actions", config_service_parse_overview_quick_actions) ||
+        !parse_collection("overview_items", config_service_parse_overview_items)) return false;
+    for (uint8_t i = 0; i < restored.room_control_count; ++i) {
+        if (restored.room_controls[i].room_index >= restored.room_count) {
+            error = "Backup assigns a Room control to a missing panel room.";
+            return false;
+        }
+    }
+
+    JsonArray players = doc["media_players"].as<JsonArray>();
+    if (players.isNull() || players.size() > PANEL_MAX_MEDIA_PLAYERS) {
+        error = "Backup media players must be an array of at most six items.";
+        return false;
+    }
+    restored.media_player_count = 0;
+    memset(restored.media_players, 0, sizeof(restored.media_players));
+    for (JsonVariant item : players) {
+        const char *entity_id = item | "";
+        if (strncmp(entity_id, "media_player.", 13) != 0 ||
+            strlen(entity_id) >= PANEL_MEDIA_ENTITY_ID_LEN) {
+            error = "Backup contains an invalid media player entity.";
+            return false;
+        }
+        for (uint8_t i = 0; i < restored.media_player_count; ++i) {
+            if (strcmp(restored.media_players[i], entity_id) == 0) {
+                error = "Backup contains a duplicate media player.";
+                return false;
+            }
+        }
+        copy_text(restored.media_players[restored.media_player_count++],
+                  PANEL_MEDIA_ENTITY_ID_LEN, entity_id);
+    }
+
+    if (!config_service_save(restored)) {
+        error = "Validated backup could not be written to panel storage.";
+        return false;
+    }
+    return true;
+}
 
 bool config_service_save(const PanelConfig &config) {
     std::unique_ptr<PanelConfig> clean_storage(new (std::nothrow) PanelConfig(config));

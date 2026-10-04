@@ -157,6 +157,27 @@ while normal; they appear only in Dynamic Attention when abnormal. Up to eight
 persistent monitored devices and sixteen dynamic attention devices may be
 configured.
 
+## Backup, restore, and firmware updates
+
+Web Admin's Administration page provides three authenticated maintenance
+actions:
+
+- **Download configuration** exports the current `panel.json` layout and device
+  selections. Home Assistant URL and token are intentionally excluded because
+  they are stored separately in NVS.
+- **Validate and restore** accepts a JSON backup up to 64 KB using configuration
+  schema 10. Every collection and cross-reference is validated before the
+  current configuration is replaced. The panel reboots after a successful
+  restore and preserves its existing Home Assistant credentials.
+- **Install firmware** accepts the main P4 `firmware.bin` image up to the 6 MB
+  application-partition limit. Select the build matching the panel's 2624 or
+  2635 hardware. The upload is written to the inactive OTA partition and must
+  pass the ESP32 image checks before the panel reboots.
+
+Configuration writes use `/panel.tmp` and `/panel.bak` to preserve the last
+complete file until the new configuration is fully serialized and renamed.
+Do not remove power during a firmware upload or the reboot that follows it.
+
 ## Media shortcuts
 
 Version 1.7.0 supports up to six persistent one-touch media actions. They

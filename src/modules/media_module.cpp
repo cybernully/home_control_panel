@@ -179,7 +179,7 @@ bool MediaModule::allocate_work_buffers() {
 void MediaModule::create(lv_obj_t *parent) {
     const bool buffers_ready = allocate_work_buffers();
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Media", "Now playing, shortcuts, and favorites");
+    module_ui::title(parent, id(), "Media", "Now playing, shortcuts, and favorites", 808);
 
     const char *menus[] = {"Players", "Sources", "Favorites"};
     const char *menu_icons[] = {LV_SYMBOL_AUDIO, LV_SYMBOL_LIST, LV_SYMBOL_OK};

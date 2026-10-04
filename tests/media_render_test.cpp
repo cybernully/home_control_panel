@@ -46,19 +46,20 @@ bool board_take_touch_activity(){return false;}
 bool board_display_awake(){return true;}
 void board_set_display_awake(bool,uint8_t){}
 class Placeholder : public PanelModule {
+    const char *id_;
     const char *name_;
 public:
-    explicit Placeholder(const char *name):name_(name){}
-    const char *id() const override{return name_;}
+    Placeholder(const char *id,const char *name):id_(id),name_(name){}
+    const char *id() const override{return id_;}
     const char *title() const override{return name_;}
     void create(lv_obj_t *) override{}
     void update() override{}
 };
 static MediaModule media;
-static Placeholder overview("Overview"),room("Room"),climate("Climate"),security("Security"),settings("settings");
-static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&settings};
-size_t module_registry_count(){return 6;}
-PanelModule *module_registry_at(size_t i){return i<6?modules[i]:nullptr;}
+static Placeholder overview("overview","Overview"),room("room","Rooms"),climate("climate","Climate"),security("security","Security"),weather("weather","Weather"),calendar("calendar","Calendar"),settings("settings","Settings");
+static PanelModule *modules[]={&overview,&room,&media,&climate,&security,&weather,&calendar,&settings};
+size_t module_registry_count(){return 8;}
+PanelModule *module_registry_at(size_t i){return i<8?modules[i]:nullptr;}
 #include "../src/ui_shell.cpp"
 static unsigned char pixels[1280*800*4];
 static void flush(lv_display_t *display,const lv_area_t *,uint8_t *){lv_display_flush_ready(display);}

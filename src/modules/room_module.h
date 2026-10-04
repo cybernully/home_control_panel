@@ -7,7 +7,7 @@
 class RoomModule final : public PanelModule {
 public:
     const char *id() const override { return "room"; }
-    const char *title() const override { return "Room"; }
+    const char *title() const override { return "Rooms"; }
     void create(lv_obj_t *parent) override;
     void update() override;
     void on_deactivate() override;

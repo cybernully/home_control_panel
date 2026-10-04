@@ -35,7 +35,10 @@ upgrade firmware: that would replace its saved panel settings.
 
 Run the render script with `--header` to exercise the actual UI shell alongside
 the Room module and produce full-screen header previews. The fixture checks
-battery center alignment, fill bounds and clearing stale/empty readings.
+battery center alignment, fill bounds and clearing stale/empty readings,
+matching caption fonts/baselines and icon rows, connected/syncing/offline
+states, and pixel-identical persistent headers while switching all eight
+screens. It also checks the shared page-heading layout and icon mapping.
 
 Run with `--media` to render the real Media module and UI shell with an offline
 four-player fixture. Checks cover playback/shortcut/source/browse targeting,

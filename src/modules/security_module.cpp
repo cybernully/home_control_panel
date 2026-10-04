@@ -28,7 +28,7 @@ bool is_disarmed(const SecurityViewModel &view) {
 
 void SecurityModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Security", "Alarmo protection and monitored-device status");
+    module_ui::title(parent, id(), "Security", "Alarmo protection and monitored-device status");
 
     alarm_card_ = card(parent, 24, PAGE_CONTENT_TOP, 720, 236);
     alarm_icon_ = label(alarm_card_, "", &ha_icons_font, SUCCESS);

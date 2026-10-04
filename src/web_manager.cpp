@@ -12,6 +12,7 @@
 
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <string.h>
@@ -23,6 +24,12 @@ bool g_routes_registered = false;
 bool g_mdns_started = false;
 uint32_t g_last_mdns_attempt_ms = 0;
 uint32_t g_reboot_at_ms = 0;
+bool g_ota_authorized = false;
+bool g_ota_started = false;
+bool g_ota_success = false;
+bool g_ota_failed = false;
+size_t g_ota_written = 0;
+char g_ota_error[128] = {};
 
 #if 0 // Replaced by the tabbed 1.5.0 editor in include/web_ui.h.
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
@@ -781,6 +788,135 @@ void handle_ha_test() {
     send_json(doc);
 }
 
+void handle_config_backup() {
+    if (!ensure_auth()) return;
+    String backup;
+    if (!config_service_export_json(backup)) {
+        send_error(500, "Could not read the current panel configuration.");
+        return;
+    }
+    String safe_device = config_service_get().device_id;
+    for (size_t i = 0; i < safe_device.length(); ++i) {
+        const char c = safe_device[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_')) safe_device.setCharAt(i, '_');
+    }
+    const String filename = "home-panel-" + safe_device + "-v" APP_VERSION "-config.json";
+    g_server.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    g_server.sendHeader("Cache-Control", "no-store");
+    g_server.send(200, "application/json", backup);
+}
+
+void handle_config_restore() {
+    if (!ensure_auth()) return;
+    if (g_ota_started && !g_ota_success && !g_ota_failed) {
+        send_error(409, "A firmware update is already in progress.");
+        return;
+    }
+    const String &payload = g_server.arg("plain");
+    String error;
+    if (!config_service_restore_json(payload, error)) {
+        send_error(400, error.c_str());
+        return;
+    }
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["rebooting"] = true;
+    doc["message"] = "Configuration restored and validated. Rebooting to apply it.";
+    send_json(doc);
+    g_reboot_at_ms = millis() + 1200;
+}
+
+void set_ota_error(const char *message) {
+    g_ota_failed = true;
+    snprintf(g_ota_error, sizeof(g_ota_error), "%s", message ? message : "Firmware update failed.");
+}
+
+void handle_firmware_upload() {
+    HTTPUpload &upload = g_server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        g_ota_authorized = g_server.authenticate(WEB_MANAGER_USER, WEB_MANAGER_PASSWORD);
+        g_ota_started = false;
+        g_ota_success = false;
+        g_ota_failed = false;
+        g_ota_written = 0;
+        g_ota_error[0] = '\0';
+        if (!g_ota_authorized) return;
+        String filename = upload.filename;
+        filename.toLowerCase();
+        if (!filename.endsWith(".bin")) {
+            set_ota_error("Firmware file must use the .bin extension.");
+            return;
+        }
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+            char message[96];
+            snprintf(message, sizeof(message), "Could not open the inactive firmware partition (error %u).",
+                     static_cast<unsigned>(Update.getError()));
+            set_ota_error(message);
+            return;
+        }
+        g_ota_started = true;
+        Serial0.printf("[Web] OTA upload started: %s\n", upload.filename.c_str());
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!g_ota_authorized || !g_ota_started || g_ota_failed) return;
+        if (g_ota_written + upload.currentSize > WEB_OTA_MAX_BYTES) {
+            Update.abort();
+            set_ota_error("Firmware image exceeds the 6 MB application partition.");
+            return;
+        }
+        const size_t written = Update.write(upload.buf, upload.currentSize);
+        if (written != upload.currentSize) {
+            char message[96];
+            snprintf(message, sizeof(message), "Firmware write failed after %u bytes (error %u).",
+                     static_cast<unsigned>(g_ota_written),
+                     static_cast<unsigned>(Update.getError()));
+            Update.abort();
+            set_ota_error(message);
+            return;
+        }
+        g_ota_written += written;
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (!g_ota_authorized || !g_ota_started || g_ota_failed) return;
+        if (!g_ota_written) {
+            Update.abort();
+            set_ota_error("Firmware image was empty.");
+            return;
+        }
+        if (!Update.end(true)) {
+            char message[96];
+            snprintf(message, sizeof(message), "Firmware validation failed (error %u).",
+                     static_cast<unsigned>(Update.getError()));
+            set_ota_error(message);
+            return;
+        }
+        g_ota_success = true;
+        Serial0.printf("[Web] OTA image accepted: %u bytes\n",
+                       static_cast<unsigned>(g_ota_written));
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        if (g_ota_started && !g_ota_success) Update.abort();
+        set_ota_error("Firmware upload was canceled before completion.");
+    }
+}
+
+void handle_firmware_complete() {
+    if (!ensure_auth()) return;
+    if (!g_ota_authorized) {
+        send_error(401, "Authentication is required for firmware updates.");
+        return;
+    }
+    if (!g_ota_success) {
+        send_error(400, g_ota_error[0] ? g_ota_error : "Firmware upload did not complete.");
+        return;
+    }
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["rebooting"] = true;
+    doc["bytes"] = g_ota_written;
+    doc["message"] = "Firmware verified in the inactive partition. Rebooting into the update.";
+    send_json(doc);
+    g_reboot_at_ms = millis() + 1500;
+}
+
 void handle_reboot() {
     if (!ensure_auth()) return;
     JsonDocument doc;
@@ -803,6 +939,10 @@ void register_routes() {
     g_server.on("/api/ha/discover", HTTP_POST, handle_ha_discover);
     g_server.on("/api/config", HTTP_GET, handle_get_config);
     g_server.on("/api/config", HTTP_POST, handle_save_config);
+    g_server.on("/api/config/backup", HTTP_GET, handle_config_backup);
+    g_server.on("/api/config/restore", HTTP_POST, handle_config_restore);
+    g_server.on("/api/firmware", HTTP_POST, handle_firmware_complete,
+                handle_firmware_upload);
     g_server.on("/api/ha/test", HTTP_POST, handle_ha_test);
     g_server.on("/api/reboot", HTTP_POST, handle_reboot);
     g_server.onNotFound([]() {

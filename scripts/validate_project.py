@@ -15,7 +15,7 @@ required=[
     "docs/RELEASE_1.3.0.md","docs/RELEASE_1.3.2.md","docs/RELEASE_1.3.3.md",
     "docs/RELEASE_1.3.4.md","docs/RELEASE_1.3.5.md","docs/RELEASE_1.3.6.md",
     "docs/RELEASE_1.3.7.md","docs/RELEASE_1.3.8.md","docs/RELEASE_1.3.9.md",
-    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "docs/RELEASE_1.9.0.md", "docs/RELEASE_1.9.1.md", "docs/RELEASE_1.9.2.md", "docs/RELEASE_1.9.3.md", "docs/RELEASE_1.9.4.md", "docs/RELEASE_1.9.5.md", "docs/RELEASE_1.9.6.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
+    "docs/RELEASE_1.3.10.md", "docs/RELEASE_1.4.0.md", "docs/RELEASE_1.4.1.md", "docs/RELEASE_1.4.2.md", "docs/RELEASE_1.4.3.md", "docs/RELEASE_1.4.4.md", "docs/RELEASE_1.5.0.md", "docs/RELEASE_1.5.2.md", "docs/RELEASE_1.5.3.md", "docs/RELEASE_1.6.0.md", "docs/RELEASE_1.6.1.md", "docs/RELEASE_1.6.2.md", "docs/RELEASE_1.6.3.md", "docs/RELEASE_1.6.4.md", "docs/RELEASE_1.6.5.md", "docs/RELEASE_1.6.6.md", "docs/RELEASE_1.7.0.md", "docs/RELEASE_1.7.1.md", "docs/RELEASE_1.7.2.md", "docs/RELEASE_1.8.0.md", "docs/RELEASE_1.8.1.md", "docs/RELEASE_1.8.2.md", "docs/RELEASE_1.9.0.md", "docs/RELEASE_1.9.1.md", "docs/RELEASE_1.9.2.md", "docs/RELEASE_1.9.3.md", "docs/RELEASE_1.9.4.md", "docs/RELEASE_1.9.5.md", "docs/RELEASE_1.9.6.md", "docs/RELEASE_2.0.0.md", "include/display_text.h", "include/web_ui.h", "include/ui_state_model.h", "include/ui_card.h", "include/ui_theme.h", "src/room_config.cpp", "src/overview_config.cpp",
     "include/home_assistant_capabilities.h",
     "lib/stb/stb_image.h","lib/stb/README.md"
 ]
@@ -32,7 +32,11 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "1.9.6"' in app
+assert '#define APP_VERSION "2.0.1"' in app
+assert '#define PANEL_CONFIG_TEMP_PATH "/panel.tmp"' in app
+assert '#define PANEL_CONFIG_ROLLBACK_PATH "/panel.bak"' in app
+assert '#define WEB_CONFIG_BACKUP_MAX_BYTES (64U * 1024U)' in app
+assert '#define WEB_OTA_MAX_BYTES 0x600000U' in app
 assert '#define PANEL_ROOM_STATUS_SLOTS 4' in app
 assert '#define APP_LOOP_TASK_STACK_BYTES (16U * 1024U)' in app
 assert '#define PANEL_MAX_MEDIA_SHORTCUTS 6' in app
@@ -95,6 +99,10 @@ assert 'doc["explicit_layout"]' in config and 'doc["media_players"]' in config
 assert 'doc["overview_widgets"]' in config and 'doc["overview_items"]' in config
 assert 'doc["security_devices"]' in config and 'doc["security_dynamic_devices"]' in config and 'doc["alarm_entity_id"]' in config
 assert 'doc["climate_devices"]' in config and 'doc["climate_show_humidity"]' in config
+for feature in ["config_service_export_json", "config_service_restore_json",
+                "PANEL_CONFIG_TEMP_PATH", "PANEL_CONFIG_ROLLBACK_PATH",
+                "Validated backup could not be written", "SPIFFS.rename"]:
+    assert feature in config
 web=(root/"src/web_manager.cpp").read_text()
 for feature in ["shortcut_label_", "shortcut_entity_", "shortcut_id_",
                 "shortcut_type_", "favorite_label_", "favorite_entity_", "parse_media_shortcuts", "parse_media_favorites"]:
@@ -103,6 +111,11 @@ for feature in ["handle_ha_entities", "handle_ha_discover", "parse_media_players
     assert feature in web
 for feature in ['g_server.arg("q")', 'g_server.arg("domain")',
                 "home_assistant_request_entity_search(query.c_str(), domain.c_str())"]:
+    assert feature in web
+for feature in ["handle_config_backup", "handle_config_restore", "handle_firmware_upload",
+                "handle_firmware_complete", 'g_server.on("/api/config/backup"',
+                'g_server.on("/api/config/restore"', 'g_server.on("/api/firmware"',
+                "Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)", "Update.end(true)"]:
     assert feature in web
 web_ui=(root/"include/web_ui.h").read_text()
 for feature in ["Panel display manager", "Find and add controls", "Media experience", "Administration", "Search Home Assistant"]:
@@ -126,6 +139,11 @@ for feature in ["v1.9.5 Web Admin design system", "Sync devices", "roomSearchCha
 for feature in ["v1.9.6: larger dynamic-attention collection", "securityDynamicLimit=16",
                 "reorderRoomFavorite", "decorateRoomFavoriteOrdering"]:
     assert feature in web_ui
+for feature in ["v2.0.0: authenticated backup/restore", "downloadConfigBackup",
+                "restoreConfigBackup", "installFirmwareUpdate", "firmware_progress",
+                "correct 2624 or 2635", "$('settings')?.remove()"]:
+    assert feature in web_ui
+assert "known=['overview','room','media','calendar','weather','climate','security']" in web_ui
 assert "home_assistant_request_full_discovery" in ha and "is_layout_entity" in ha
 settings=(root/"src/modules/settings_module.cpp").read_text()
 for feature in ['#include "network_service.h"', '#include "runtime_stats.h"',
@@ -148,8 +166,11 @@ calendar=(root/"src/modules/calendar_module.cpp").read_text()
 for feature in ["select_today", "period_offset_", "selected_day_", "EVENT DETAILS", "detail_body_", "ui_state_model_snapshot_calendar"]:
     assert feature in calendar
 shell=(root/"src/ui_shell.cpp").read_text()
-for feature in ["navigation_glyph", "0xF0A1D", "0xF156D", "0xF0387", "0xF0393", "0xF0CCB", "0xF0595", "0xF0E18"]:
+for feature in ["navigation_glyph", "ui_theme::module_glyph", "header_caption", "header_icon"]:
     assert feature in shell
+theme=(root/"src/ui_theme.cpp").read_text()
+for feature in ["module_glyph", "0xF0A1D", "0xF156D", "0xF0387", "0xF0393", "0xF0CCB", "0xF0595", "0xF0E18", "0xF1064"]:
+    assert feature in theme
 security=(root/"src/modules/security_module.cpp").read_text()
 for feature in ["Alarmo protection", "DYNAMIC ATTENTION", "Enter code to", "ui_state_model_security_action"]:
     assert feature in security
@@ -172,7 +193,7 @@ headers = {
 }
 for filename, (header, content_geometry) in headers.items():
     source = (root / "src/modules" / filename).read_text()
-    assert "module_ui::title(parent, " + header + ")" in source
+    assert "module_ui::title(parent, id(), " + header in source
     assert content_geometry in source
 room_state=(root/"src/ui_state_model.cpp").read_text()
 for feature in ['strcmp(pref.device_type, "dimmable") == 0',
@@ -181,5 +202,6 @@ for feature in ['strcmp(pref.device_type, "dimmable") == 0',
 for feature in ["Dimmable light (brightness slider)",
                 "Dimmable light forces a brightness slider"]:
     assert feature in web_ui
-print("Home Control Panel v1.9.6 structure validation passed.")
+assert (root / "docs/RELEASE_2.0.1.md").exists()
+print("Home Control Panel v2.0.1 structure validation passed.")
 

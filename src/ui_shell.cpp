@@ -16,6 +16,7 @@
 
 namespace {
 constexpr int SCREEN_W=1280,SCREEN_H=800,HEADER_H=96,FOOTER_H=78,PAGE_Y=HEADER_H,PAGE_H=SCREEN_H-HEADER_H-FOOTER_H;
+constexpr int HEADER_ICON_Y = 9, HEADER_CAPTION_Y = 54;
 constexpr uint32_t BG=ui_theme::BG,PANEL=ui_theme::SURFACE,TEXT=ui_theme::TEXT,MUTED=ui_theme::MUTED,ACCENT=ui_theme::ACCENT,BORDER=ui_theme::BORDER,SUCCESS=ui_theme::SUCCESS,WARN=ui_theme::WARN,BAD=ui_theme::DANGER;
 lv_obj_t *g_screen=nullptr,*g_header_title=nullptr,*g_clock=nullptr,*g_wifi=nullptr,*g_battery_label=nullptr,*g_battery_body=nullptr,*g_battery_fill=nullptr,*g_battery_tip=nullptr,*g_settings_button=nullptr,*g_settings_icon=nullptr,*g_settings_label=nullptr;
 lv_obj_t *g_weather_header=nullptr,*g_weather_header_icon=nullptr,*g_weather_header_label=nullptr,*g_weather_header_divider=nullptr;
@@ -30,15 +31,7 @@ void update_header();
 void show_module(size_t index);
 
 uint32_t navigation_glyph(const char *module_id) {
-    if (!module_id) return 0xF0A1D;                              // dashboard outline
-    if (strcmp(module_id, "room") == 0) return 0xF156D;          // sofa outline
-    if (strcmp(module_id, "media") == 0) return 0xF0387;         // music note
-    if (strcmp(module_id, "climate") == 0) return 0xF0393;       // thermostat
-    if (strcmp(module_id, "security") == 0) return 0xF0CCB;      // shield home outline
-    if (strcmp(module_id, "weather") == 0) return 0xF0595;       // partly cloudy
-    if (strcmp(module_id, "calendar") == 0) return 0xF0E18;      // calendar month outline
-    if (strcmp(module_id, "overview") == 0) return 0xF0A1D;      // dashboard outline
-    return 0xF0A1D;
+    return ui_theme::module_glyph(module_id);
 }
 void style_box(lv_obj_t *o,uint32_t bg,int radius=0,int border=0){lv_obj_set_style_bg_color(o,lv_color_hex(bg),LV_PART_MAIN);lv_obj_set_style_bg_opa(o,LV_OPA_COVER,LV_PART_MAIN);lv_obj_set_style_radius(o,radius,LV_PART_MAIN);lv_obj_set_style_border_width(o,border,LV_PART_MAIN);if(border)lv_obj_set_style_border_color(o,lv_color_hex(BORDER),LV_PART_MAIN);lv_obj_set_style_pad_all(o,0,LV_PART_MAIN);lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE);}
 void style_nav_button(lv_obj_t *o, bool active) {
@@ -48,6 +41,22 @@ void style_nav_button(lv_obj_t *o, bool active) {
     lv_obj_set_style_outline_width(o, 0, LV_PART_MAIN);
 }
 lv_obj_t *label(lv_obj_t *p,const char *t,const lv_font_t *f,uint32_t c){lv_obj_t *o=lv_label_create(p);lv_label_set_text(o,t?t:"");lv_obj_set_style_text_font(o,f,LV_PART_MAIN);lv_obj_set_style_text_color(o,lv_color_hex(c),LV_PART_MAIN);return o;}
+lv_obj_t *header_caption(lv_obj_t *parent, const char *text, uint32_t color, int width = 100) {
+    lv_obj_t *caption = label(parent, text, &lv_font_montserrat_14, color);
+    lv_obj_set_pos(caption, 0, HEADER_CAPTION_Y);
+    lv_obj_set_width(caption, width);
+    lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_long_mode(caption, LV_LABEL_LONG_DOT);
+    return caption;
+}
+lv_obj_t *header_icon(lv_obj_t *parent, uint32_t glyph, uint32_t color, int width = 100) {
+    lv_obj_t *icon = label(parent, "", &ha_icons_font, color);
+    ui_theme::set_glyph(icon, glyph);
+    lv_obj_set_pos(icon, 0, HEADER_ICON_Y);
+    lv_obj_set_size(icon, width, ha_icons_font.line_height);
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    return icon;
+}
 void format_time(char *out, size_t out_len, const char *format) {
     if (!out || !out_len) return;
     const time_t now = time(nullptr);
@@ -199,15 +208,8 @@ void create_header() {
     lv_obj_set_pos(g_weather_header, 572, 8);
     lv_obj_set_size(g_weather_header, 144, 80);
     style_box(g_weather_header, 0x071D33, 0, 0);
-    g_weather_header_icon = label(g_weather_header, "", &ha_icons_font, ui_theme::CYAN);
-    ui_theme::set_glyph(g_weather_header_icon, 0xF0595);
-    lv_obj_set_pos(g_weather_header_icon, 0, 9);
-    lv_obj_set_width(g_weather_header_icon, 144);
-    lv_obj_set_style_text_align(g_weather_header_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    g_weather_header_label = label(g_weather_header, "--", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_pos(g_weather_header_label, 0, 51);
-    lv_obj_set_width(g_weather_header_label, 144);
-    lv_obj_set_style_text_align(g_weather_header_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    g_weather_header_icon = header_icon(g_weather_header, ui_theme::module_glyph("weather"), ui_theme::CYAN, 144);
+    g_weather_header_label = header_caption(g_weather_header, "--", TEXT, 144);
     lv_obj_add_flag(g_weather_header, LV_OBJ_FLAG_HIDDEN);
 
     g_status_button = lv_obj_create(header);
@@ -215,28 +217,16 @@ void create_header() {
     lv_obj_set_pos(g_status_button, 724, 8);
     lv_obj_set_size(g_status_button, 100, 80);
     style_box(g_status_button, 0x071D33, 0, 0);
-    g_status_dot = label(g_status_button, "", &ha_icons_font, SUCCESS);
-    lv_obj_set_width(g_status_dot, 100);
-    lv_obj_set_style_text_align(g_status_dot, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_status_dot, 0, 9);
-    g_status_label = label(g_status_button, "Syncing", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_width(g_status_label, 100);
-    lv_obj_set_style_text_align(g_status_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_status_label, 0, 51);
+    g_status_dot = header_icon(g_status_button, 0xF05E0, SUCCESS);
+    g_status_label = header_caption(g_status_button, "All good", SUCCESS);
 
     g_comm_button = lv_obj_create(header);
     lv_obj_add_flag(g_comm_button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_pos(g_comm_button, 832, 8);
     lv_obj_set_size(g_comm_button, 100, 80);
     style_box(g_comm_button, 0x071D33, 0, 0);
-    g_comm_icon = label(g_comm_button, "", &ha_icons_font, WARN);
-    lv_obj_set_width(g_comm_icon, 100);
-    lv_obj_set_style_text_align(g_comm_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_comm_icon, 0, 9);
-    g_comm_label = label(g_comm_button, "Syncing", &lv_font_montserrat_12, WARN);
-    lv_obj_set_width(g_comm_label, 100);
-    lv_obj_set_style_text_align(g_comm_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_comm_label, 0, 51);
+    g_comm_icon = header_icon(g_comm_button, 0xF04E6, WARN);
+    g_comm_label = header_caption(g_comm_button, "Syncing", WARN);
     lv_obj_add_event_cb(g_comm_button, status_button_cb, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t *wifi = lv_obj_create(header);
@@ -246,14 +236,11 @@ void create_header() {
     for (int i = 0; i < 4; ++i) {
         g_signal_bars[i] = lv_obj_create(wifi);
         style_box(g_signal_bars[i], BORDER, 1);
-        const int height = 5 + i * 3;
-        lv_obj_set_size(g_signal_bars[i], 4, height);
-        lv_obj_set_pos(g_signal_bars[i], 37 + i * 7, 36 - height);
+        const int height = 8 + i * 6;
+        lv_obj_set_size(g_signal_bars[i], 6, height);
+        lv_obj_set_pos(g_signal_bars[i], 33 + i * 9, HEADER_ICON_Y + 32 - height);
     }
-    g_wifi = label(wifi, "Offline", &lv_font_montserrat_12, TEXT);
-    lv_obj_set_width(g_wifi, 100);
-    lv_obj_set_style_text_align(g_wifi, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_wifi, 0, 51);
+    g_wifi = header_caption(wifi, "Offline", TEXT);
 
     lv_obj_t *battery = lv_obj_create(header);
     lv_obj_set_pos(battery, 1048, 8);
@@ -262,33 +249,28 @@ void create_header() {
     lv_obj_t *icon = lv_obj_create(battery);
     style_box(icon, 0x071D33);
     lv_obj_set_style_bg_opa(icon, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_size(icon, 42, 24);
-    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 9);
+    lv_obj_set_size(icon, 42, ha_icons_font.line_height);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, HEADER_ICON_Y);
     g_battery_body = lv_obj_create(icon);
     style_box(g_battery_body, 0x071D33, 4, 2);
     lv_obj_set_style_bg_opa(g_battery_body, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_size(g_battery_body, 36, 20);
-    lv_obj_set_pos(g_battery_body, 0, 2);
+    lv_obj_set_pos(g_battery_body, 0, 9);
     g_battery_tip = lv_obj_create(icon);
     style_box(g_battery_tip, MUTED, 1);
     lv_obj_set_size(g_battery_tip, 4, 8);
-    lv_obj_set_pos(g_battery_tip, 37, 8);
+    lv_obj_set_pos(g_battery_tip, 37, 15);
     g_battery_fill = lv_obj_create(icon);
     style_box(g_battery_fill, 0x38BDF8, 1);
     lv_obj_set_size(g_battery_fill, 28, 12);
-    lv_obj_set_pos(g_battery_fill, 4, 6);
+    lv_obj_set_pos(g_battery_fill, 4, 13);
     lv_obj_add_flag(g_battery_fill, LV_OBJ_FLAG_HIDDEN);
-    g_battery_label = label(battery, "--", &lv_font_montserrat_16, TEXT);
-    lv_obj_set_width(g_battery_label, 100);
-    lv_obj_set_style_text_align(g_battery_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(g_battery_label, 0, 48);
+    g_battery_label = header_caption(battery, "--", TEXT);
 
     g_settings_button=lv_obj_create(header);lv_obj_add_flag(g_settings_button,LV_OBJ_FLAG_CLICKABLE);lv_obj_set_pos(g_settings_button,1156,8);lv_obj_set_size(g_settings_button,100,80);
     style_box(g_settings_button,0x071D33,0,0);lv_obj_add_event_cb(g_settings_button,settings_button_cb,LV_EVENT_CLICKED,nullptr);
-    g_settings_icon=label(g_settings_button,"",&ha_icons_font,0xAFC6FF);ui_theme::set_glyph(g_settings_icon,0xF1064);
-    lv_obj_set_width(g_settings_icon,100);lv_obj_set_style_text_align(g_settings_icon,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_icon,0,11);
-    g_settings_label=label(g_settings_button,"Settings",&lv_font_montserrat_12,MUTED);
-    lv_obj_set_width(g_settings_label,100);lv_obj_set_style_text_align(g_settings_label,LV_TEXT_ALIGN_CENTER,LV_PART_MAIN);lv_obj_set_pos(g_settings_label,0,51);
+    g_settings_icon = header_icon(g_settings_button, ui_theme::module_glyph("settings"), MUTED);
+    g_settings_label = header_caption(g_settings_button, "Settings", MUTED);
 
     g_status_overlay = lv_obj_create(g_screen);
     lv_obj_set_size(g_status_overlay, SCREEN_W, SCREEN_H);

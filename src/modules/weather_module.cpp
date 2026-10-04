@@ -40,9 +40,9 @@ lv_obj_t *forecast_card(lv_obj_t *parent, WeatherModule::ForecastSlot &slot) {
 
 void WeatherModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, "Weather", "Current conditions and forecasts from Home Assistant");
-    subtitle_ = label(parent, "Select a weather entity in Web Admin", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_pos(subtitle_, 650, 54);
+    module_ui::title(parent, id(), "Weather", "Current conditions and forecasts from Home Assistant", 610);
+    subtitle_ = label(parent, "Select a weather entity in Web Admin", &lv_font_montserrat_14, MUTED);
+    lv_obj_set_pos(subtitle_, 650, PAGE_SUBTITLE_Y);
     lv_obj_set_width(subtitle_, 606);
     lv_obj_set_style_text_align(subtitle_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_label_set_long_mode(subtitle_, LV_LABEL_LONG_DOT);
