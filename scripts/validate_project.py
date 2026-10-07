@@ -32,7 +32,7 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "2.0.1"' in app
+assert '#define APP_VERSION "2.0.2"' in app
 assert '#define PANEL_CONFIG_TEMP_PATH "/panel.tmp"' in app
 assert '#define PANEL_CONFIG_ROLLBACK_PATH "/panel.bak"' in app
 assert '#define WEB_CONFIG_BACKUP_MAX_BYTES (64U * 1024U)' in app
@@ -115,7 +115,7 @@ for feature in ['g_server.arg("q")', 'g_server.arg("domain")',
 for feature in ["handle_config_backup", "handle_config_restore", "handle_firmware_upload",
                 "handle_firmware_complete", 'g_server.on("/api/config/backup"',
                 'g_server.on("/api/config/restore"', 'g_server.on("/api/firmware"',
-                "Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)", "Update.end(true)"]:
+                "handle_firmware_begin", "handle_firmware_chunk_upload", "handle_firmware_finish"]:
     assert feature in web
 web_ui=(root/"include/web_ui.h").read_text()
 for feature in ["Panel display manager", "Find and add controls", "Media experience", "Administration", "Search Home Assistant"]:
@@ -203,5 +203,13 @@ for feature in ["Dimmable light (brightness slider)",
                 "Dimmable light forces a brightness slider"]:
     assert feature in web_ui
 assert (root / "docs/RELEASE_2.0.1.md").exists()
-print("Home Control Panel v2.0.1 structure validation passed.")
+ota=(root / "src/firmware_update.cpp").read_text()
+for feature in ["Update.begin(legacy ? UPDATE_SIZE_UNKNOWN : size, U_FLASH)",
+                "Update.end(status.expected == 0)", "delay(1)", "firmware_update_expire",
+                "status.written != status.expected"]:
+    assert feature in ota
+for route in ["begin", "chunk", "status", "finish", "abort"]:
+    assert f'/api/firmware/{route}' in web
+assert (root / "docs/RELEASE_2.0.2.md").exists()
+print("Home Control Panel v2.0.2 structure validation passed.")
 

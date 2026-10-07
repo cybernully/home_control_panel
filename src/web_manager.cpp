@@ -6,13 +6,14 @@
 #include "app_config.h"
 #include "battery_service.h"
 #include "config_service.h"
+#include "firmware_update.h"
 #include "home_assistant.h"
 #include "network_service.h"
 #include "web_ui.h"
 
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
-#include <Update.h>
+#include <esp_system.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <string.h>
@@ -24,12 +25,17 @@ bool g_routes_registered = false;
 bool g_mdns_started = false;
 uint32_t g_last_mdns_attempt_ms = 0;
 uint32_t g_reboot_at_ms = 0;
-bool g_ota_authorized = false;
-bool g_ota_started = false;
-bool g_ota_success = false;
-bool g_ota_failed = false;
-size_t g_ota_written = 0;
-char g_ota_error[128] = {};
+char g_boot_id[17] = {};
+char g_ota_session[17] = {};
+struct FirmwareRequest {
+    bool seen = false;
+    bool owned = false;
+    bool complete = false;
+    size_t expected = 0;
+    size_t received = 0;
+    int code = 400;
+    char error[160] = {};
+} g_firmware_request;
 
 #if 0 // Replaced by the tabbed 1.5.0 editor in include/web_ui.h.
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
@@ -142,6 +148,13 @@ void send_error(int code, const char *message) {
     send_json(doc, code);
 }
 
+bool firmware_busy() {
+    const auto &state = firmware_update_status();
+    if (!state.active && !state.verified) return false;
+    send_error(409, "A firmware update is in progress. Wait for it to finish.");
+    return true;
+}
+
 void handle_status() {
     if (!ensure_auth()) return;
     const PanelConfig &cfg = config_service_get();
@@ -153,6 +166,8 @@ void handle_status() {
     JsonDocument doc;
     doc["app"] = APP_NAME;
     doc["version"] = APP_VERSION;
+    doc["boot_id"] = g_boot_id;
+    doc["uptime_ms"] = millis();
     doc["device_id"] = cfg.device_id;
     doc["profile"] = cfg.profile;
     doc["area"] = cfg.area_id;
@@ -549,7 +564,7 @@ bool parse_media_favorites(PanelConfig &config, String &error) {
 }
 
 void handle_save_config() {
-    if (!ensure_auth()) return;
+    if (!ensure_auth() || firmware_busy()) return;
     std::unique_ptr<PanelConfig> next_storage(new (std::nothrow) PanelConfig(config_service_get()));
     if (!next_storage) { send_error(503, "Insufficient memory."); return; }
     PanelConfig &next = *next_storage;
@@ -809,10 +824,7 @@ void handle_config_backup() {
 
 void handle_config_restore() {
     if (!ensure_auth()) return;
-    if (g_ota_started && !g_ota_success && !g_ota_failed) {
-        send_error(409, "A firmware update is already in progress.");
-        return;
-    }
+    if (firmware_busy()) return;
     const String &payload = g_server.arg("plain");
     String error;
     if (!config_service_restore_json(payload, error)) {
@@ -827,98 +839,168 @@ void handle_config_restore() {
     g_reboot_at_ms = millis() + 1200;
 }
 
-void set_ota_error(const char *message) {
-    g_ota_failed = true;
-    snprintf(g_ota_error, sizeof(g_ota_error), "%s", message ? message : "Firmware update failed.");
+// Multipart callbacks never activate an image: activation follows the complete HTTP request.
+void request_error(const char *message, int code = 400) {
+    g_firmware_request.code = code;
+    snprintf(g_firmware_request.error, sizeof(g_firmware_request.error), "%s", message);
+    if (g_firmware_request.owned) firmware_update_abort(g_firmware_request.error);
 }
 
-void handle_firmware_upload() {
-    HTTPUpload &upload = g_server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-        g_ota_authorized = g_server.authenticate(WEB_MANAGER_USER, WEB_MANAGER_PASSWORD);
-        g_ota_started = false;
-        g_ota_success = false;
-        g_ota_failed = false;
-        g_ota_written = 0;
-        g_ota_error[0] = '\0';
-        if (!g_ota_authorized) return;
-        String filename = upload.filename;
-        filename.toLowerCase();
-        if (!filename.endsWith(".bin")) {
-            set_ota_error("Firmware file must use the .bin extension.");
-            return;
-        }
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-            char message[96];
-            snprintf(message, sizeof(message), "Could not open the inactive firmware partition (error %u).",
-                     static_cast<unsigned>(Update.getError()));
-            set_ota_error(message);
-            return;
-        }
-        g_ota_started = true;
-        Serial0.printf("[Web] OTA upload started: %s\n", upload.filename.c_str());
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (!g_ota_authorized || !g_ota_started || g_ota_failed) return;
-        if (g_ota_written + upload.currentSize > WEB_OTA_MAX_BYTES) {
-            Update.abort();
-            set_ota_error("Firmware image exceeds the 6 MB application partition.");
-            return;
-        }
-        const size_t written = Update.write(upload.buf, upload.currentSize);
-        if (written != upload.currentSize) {
-            char message[96];
-            snprintf(message, sizeof(message), "Firmware write failed after %u bytes (error %u).",
-                     static_cast<unsigned>(g_ota_written),
-                     static_cast<unsigned>(Update.getError()));
-            Update.abort();
-            set_ota_error(message);
-            return;
-        }
-        g_ota_written += written;
-    } else if (upload.status == UPLOAD_FILE_END) {
-        if (!g_ota_authorized || !g_ota_started || g_ota_failed) return;
-        if (!g_ota_written) {
-            Update.abort();
-            set_ota_error("Firmware image was empty.");
-            return;
-        }
-        if (!Update.end(true)) {
-            char message[96];
-            snprintf(message, sizeof(message), "Firmware validation failed (error %u).",
-                     static_cast<unsigned>(Update.getError()));
-            set_ota_error(message);
-            return;
-        }
-        g_ota_success = true;
-        Serial0.printf("[Web] OTA image accepted: %u bytes\n",
-                       static_cast<unsigned>(g_ota_written));
-    } else if (upload.status == UPLOAD_FILE_ABORTED) {
-        if (g_ota_started && !g_ota_success) Update.abort();
-        set_ota_error("Firmware upload was canceled before completion.");
+bool read_size_arg(const char *name, size_t &value) {
+    const String text = g_server.arg(name);
+    if (!text.length() || text.length() > 8) return false;
+    value = 0;
+    for (size_t i = 0; i < text.length(); ++i) {
+        if (text[i] < '0' || text[i] > '9') return false;
+        value = value * 10 + (text[i] - '0');
     }
+    return true;
 }
 
-void handle_firmware_complete() {
-    if (!ensure_auth()) return;
-    if (!g_ota_authorized) {
-        send_error(401, "Authentication is required for firmware updates.");
-        return;
-    }
-    if (!g_ota_success) {
-        send_error(400, g_ota_error[0] ? g_ota_error : "Firmware upload did not complete.");
-        return;
-    }
+bool session_matches() {
+    return g_ota_session[0] && g_server.arg("session") == g_ota_session;
+}
+
+void send_firmware_state(bool rebooting = false) {
+    const auto &state = firmware_update_status();
     JsonDocument doc;
     doc["ok"] = true;
-    doc["rebooting"] = true;
-    doc["bytes"] = g_ota_written;
-    doc["message"] = "Firmware verified in the inactive partition. Rebooting into the update.";
+    doc["active"] = state.active;
+    doc["verified"] = state.verified;
+    doc["bytes"] = state.written;
+    doc["expected"] = state.expected;
+    doc["error"] = state.error;
+    doc["session"] = g_ota_session;
+    doc["chunk_bytes"] = WEB_OTA_CHUNK_BYTES;
+    doc["boot_id"] = g_boot_id;
+    doc["version"] = APP_VERSION;
+    doc["rebooting"] = rebooting;
+    if (rebooting) doc["message"] = "Firmware verified. Rebooting into the update.";
+    g_server.sendHeader("Cache-Control", "no-store");
     send_json(doc);
+}
+
+void handle_firmware_begin() {
+    if (!ensure_auth() || firmware_busy()) return;
+    if (g_reboot_at_ms) { send_error(409, "The panel is already rebooting."); return; }
+    size_t size = 0;
+    if (!read_size_arg("size", size) || !size || size > WEB_OTA_MAX_BYTES) {
+        send_error(400, "Firmware must be between 1 byte and 6 MB."); return;
+    }
+    if (!firmware_update_begin(size)) {
+        send_error(400, firmware_update_status().error); return;
+    }
+    snprintf(g_ota_session, sizeof(g_ota_session), "%08lx%08lx",
+             static_cast<unsigned long>(esp_random()), static_cast<unsigned long>(esp_random()));
+    send_firmware_state();
+}
+
+void handle_firmware_status() {
+    if (!ensure_auth()) return;
+    if (!session_matches()) { send_error(409, "Firmware session is no longer available."); return; }
+    send_firmware_state();
+}
+
+void handle_firmware_abort() {
+    if (!ensure_auth()) return;
+    if (!session_matches()) { send_error(409, "Firmware session is no longer available."); return; }
+    firmware_update_abort("Firmware update canceled before activation.");
+    send_firmware_state();
+}
+
+void handle_firmware_finish() {
+    if (!ensure_auth()) return;
+    if (!session_matches()) { send_error(409, "Firmware session is no longer available."); return; }
+    if (!firmware_update_status().verified && !firmware_update_finish()) {
+        send_error(400, firmware_update_status().error); return;
+    }
+    send_firmware_state(true);
     g_reboot_at_ms = millis() + 1500;
 }
 
-void handle_reboot() {
+void handle_firmware_data(bool chunked) {
+    auto &request = g_firmware_request;
+    HTTPUpload &upload = g_server.upload();
+    delay(1); // Also yield while consuming a rejected upload.
+    if (upload.status == UPLOAD_FILE_START) {
+        if (request.seen) { request_error("Only one firmware file is allowed per request."); return; }
+        request = FirmwareRequest{};
+        request.seen = true;
+        if (!g_server.authenticate(WEB_MANAGER_USER, WEB_MANAGER_PASSWORD)) {
+            request_error("Authentication is required for firmware updates.", 401); return;
+        }
+        String filename = upload.filename;
+        filename.toLowerCase();
+        if (!filename.endsWith(".bin")) { request_error("Firmware file must use the .bin extension."); return; }
+        if (chunked) {
+            size_t offset = 0;
+            const auto &state = firmware_update_status();
+            if (!session_matches() || !state.active || state.verified) {
+                request_error("Firmware session is no longer active.", 409); return;
+            }
+            if (!read_size_arg("offset", offset) || offset != state.written) {
+                request_error("Firmware chunk offset does not match acknowledged bytes.", 409); return;
+            }
+            if (!read_size_arg("size", request.expected) || !request.expected ||
+                request.expected > WEB_OTA_CHUNK_BYTES || request.expected > state.expected - state.written ||
+                g_server.clientContentLength() > request.expected + 2048) {
+                request_error("Invalid firmware chunk size."); return;
+            }
+        } else {
+            if (g_reboot_at_ms || firmware_update_status().active || firmware_update_status().verified) {
+                request_error("A firmware update or reboot is already in progress.", 409); return;
+            }
+            g_ota_session[0] = '\0';
+            if (!firmware_update_begin_legacy()) {
+                request_error(firmware_update_status().error); return;
+            }
+        }
+        request.owned = true;
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!request.owned || request.error[0]) return;
+        if (chunked && upload.currentSize > request.expected - request.received) {
+            request_error("Firmware chunk exceeds the declared size."); return;
+        }
+        if (!firmware_update_write(upload.buf, upload.currentSize)) {
+            request_error(firmware_update_status().error); return;
+        }
+        request.received += upload.currentSize;
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (!request.owned || request.error[0]) return;
+        if (!request.received || (chunked && request.received != request.expected)) {
+            request_error("Firmware upload ended before all declared bytes arrived."); return;
+        }
+        request.complete = true;
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        if (request.owned) firmware_update_abort("Firmware upload connection closed before completion.");
+        request = FirmwareRequest{};
+    }
+}
+
+void handle_firmware_upload() { handle_firmware_data(false); }
+void handle_firmware_chunk_upload() { handle_firmware_data(true); }
+
+void complete_firmware_request(bool chunked) {
+    const FirmwareRequest request = g_firmware_request;
+    g_firmware_request = FirmwareRequest{};
     if (!ensure_auth()) return;
+    if (request.error[0]) { send_error(request.code, request.error); return; }
+    if (!request.owned || !request.complete) {
+        if (request.owned) firmware_update_abort("Firmware upload did not complete.");
+        send_error(400, "Firmware upload did not complete."); return;
+    }
+    if (!chunked && !firmware_update_finish()) {
+        send_error(400, firmware_update_status().error); return;
+    }
+    send_firmware_state(!chunked);
+    if (!chunked) g_reboot_at_ms = millis() + 1500;
+}
+
+void handle_firmware_complete() { complete_firmware_request(false); }
+void handle_firmware_chunk_complete() { complete_firmware_request(true); }
+
+void handle_reboot() {
+    if (!ensure_auth() || firmware_busy()) return;
     JsonDocument doc;
     doc["ok"] = true;
     doc["rebooting"] = true;
@@ -941,6 +1023,12 @@ void register_routes() {
     g_server.on("/api/config", HTTP_POST, handle_save_config);
     g_server.on("/api/config/backup", HTTP_GET, handle_config_backup);
     g_server.on("/api/config/restore", HTTP_POST, handle_config_restore);
+    g_server.on("/api/firmware/begin", HTTP_POST, handle_firmware_begin);
+    g_server.on("/api/firmware/status", HTTP_GET, handle_firmware_status);
+    g_server.on("/api/firmware/abort", HTTP_POST, handle_firmware_abort);
+    g_server.on("/api/firmware/finish", HTTP_POST, handle_firmware_finish);
+    g_server.on("/api/firmware/chunk", HTTP_POST, handle_firmware_chunk_complete,
+                handle_firmware_chunk_upload);
     g_server.on("/api/firmware", HTTP_POST, handle_firmware_complete,
                 handle_firmware_upload);
     g_server.on("/api/ha/test", HTTP_POST, handle_ha_test);
@@ -954,6 +1042,8 @@ void register_routes() {
 }  // namespace
 
 void web_manager_begin() {
+    snprintf(g_boot_id, sizeof(g_boot_id), "%08lx%08lx",
+             static_cast<unsigned long>(esp_random()), static_cast<unsigned long>(esp_random()));
     register_routes();
     g_server.begin();
     Serial0.printf("[Web] Management server started on port %u\n",
@@ -961,6 +1051,7 @@ void web_manager_begin() {
 }
 
 void web_manager_loop() {
+    firmware_update_expire(millis());
     if (network_service_connected()) {
         const uint32_t now = millis();
         if (!g_mdns_started &&
@@ -974,6 +1065,12 @@ void web_manager_loop() {
             }
         }
         g_server.handleClient();
+        // Malformed multipart envelopes can bypass both upload completion callbacks.
+        if (g_firmware_request.seen) {
+            if (g_firmware_request.owned)
+                firmware_update_abort("Firmware HTTP request did not complete.");
+            g_firmware_request = FirmwareRequest{};
+        }
     } else if (g_mdns_started) {
         MDNS.end();
         g_mdns_started = false;

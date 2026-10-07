@@ -1,11 +1,23 @@
 # Home Control Panel
 
-**Version 2.0.1**
+**Version 2.0.2**
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
+
+## OTA reliability 2.0.2
+
+Web Admin sends firmware in acknowledged 16 KB chunks, yielding between flash
+writes and returning to the panel loop between requests. Activation follows
+complete-image verification, progress shows bytes received by the panel, and
+reconnect checks confirm a new boot. Interrupted sessions expire automatically.
+The uniform headers from 2.0.1 are retained.
+
+For a panel still running the old OTA handler, use the paced recovery uploader
+or install 2.0.2 once by USB. See [2.0.2 installation and release notes](docs/RELEASE_2.0.2.md)
+and [validation evidence](docs/VALIDATION_2.0.2.md).
 
 ## Uniform panel headers 2.0.1
 

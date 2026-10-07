@@ -1,0 +1,19 @@
+{
+  "version": "2.0.2",
+  "schema": 10,
+  "firmware": [
+    {
+      "target": "2624",
+      "bytes": 3632704,
+      "sha256": "161fece2907da6f8ff77c7bd628f0a147d7c4a426a907a6dec98e5f024ebb132",
+      "file": "firmware-2.0.2-2624.bin"
+    },
+    {
+      "target": "2635",
+      "bytes": 3634416,
+      "sha256": "0cef508bcfc6502edff0368f793ed12ccd851d1fd24362b12ec550cb2f60a53e",
+      "file": "firmware-2.0.2-2635.bin"
+    }
+  ],
+  "device_tested": false
+}
