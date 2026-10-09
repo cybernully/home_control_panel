@@ -65,10 +65,12 @@ const char *shortcut_icon(const char *name) {
     return LV_SYMBOL_AUDIO;
 }
 
-uint32_t media_fingerprint(const HomeAssistantMediaSnapshot &media) {
+uint32_t artwork_fingerprint(const HomeAssistantMediaSnapshot &media) {
     uint32_t hash = 2166136261U;
-    const char *parts[] = {media.entity_id, media.entity_picture, media.title,
-                           media.artist, media.album};
+    // Radio services can update station metadata frequently while keeping the
+    // same cover URL. Only an artwork identity change should trigger another
+    // download and image-widget rebuild.
+    const char *parts[] = {media.entity_id, media.entity_picture};
     for (const char *part : parts) {
         for (const unsigned char *cursor =
                  reinterpret_cast<const unsigned char *>(part);
@@ -82,11 +84,42 @@ uint32_t media_fingerprint(const HomeAssistantMediaSnapshot &media) {
     return hash ? hash : 1U;
 }
 
+uint32_t artwork_content_fingerprint(const uint8_t *data, size_t size) {
+    uint32_t hash = 2166136261U;
+    for (size_t i = 0; data && i < size; ++i) {
+        hash ^= data[i];
+        hash *= 16777619U;
+    }
+    return hash ? hash : 1U;
+}
+
 void set_media_label_text(lv_obj_t *label_obj, const char *text) {
     if (!label_obj) return;
     char normalized[256];
     panel_display_text(normalized, sizeof(normalized), text);
+    if (same_text(lv_label_get_text(label_obj), normalized)) return;
     lv_label_set_text(label_obj, normalized);
+}
+
+void set_media_raw_label_text(lv_obj_t *label_obj, const char *text) {
+    if (!label_obj) return;
+    const char *next = text ? text : "";
+    if (same_text(lv_label_get_text(label_obj), next)) return;
+    lv_label_set_text(label_obj, next);
+}
+
+void set_media_bg_color(lv_obj_t *obj, uint32_t color) {
+    if (!obj) return;
+    const lv_color_t next = lv_color_hex(color);
+    if (lv_color_eq(lv_obj_get_style_bg_color(obj, LV_PART_MAIN), next)) return;
+    lv_obj_set_style_bg_color(obj, next, LV_PART_MAIN);
+}
+
+void set_media_border_color(lv_obj_t *obj, uint32_t color) {
+    if (!obj) return;
+    const lv_color_t next = lv_color_hex(color);
+    if (lv_color_eq(lv_obj_get_style_border_color(obj, LV_PART_MAIN), next)) return;
+    lv_obj_set_style_border_color(obj, next, LV_PART_MAIN);
 }
 
 struct ArtworkDecodeTarget {
@@ -408,6 +441,7 @@ void MediaModule::clear_artwork() {
     lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
     if (artwork_placeholder_) lv_obj_remove_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     artwork_generation_ = 0;
+    artwork_content_fingerprint_ = 0;
 }
 
 bool MediaModule::decode_jpeg_artwork(const HomeAssistantMediaArtworkInfo &info,
@@ -595,14 +629,20 @@ void MediaModule::refresh_artwork() {
 
     if (info.data_size > HA_MEDIA_ARTWORK_MAX_BYTES) return;
 
-    // Drop any decoded/cache references before an old encoded backing buffer can
-    // be released. The image widget is persistent across player/artwork changes.
     const void *old_src = lv_image_get_src(artwork_image_);
-    if (old_src) lv_image_cache_drop(old_src);
-    lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
-    if (artwork_placeholder_) lv_obj_remove_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
 
     if (artwork_capacity_ < info.data_size) {
+        // A larger replacement needs a new backing allocation. If the current
+        // PNG uses this buffer directly, detach it before releasing the old
+        // allocation; ordinary same-sized refreshes keep the current cover up.
+        if (old_src) {
+            lv_image_cache_drop(old_src);
+            lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
+            if (artwork_placeholder_)
+                lv_obj_remove_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
+            artwork_content_fingerprint_ = 0;
+            old_src = nullptr;
+        }
         uint8_t *next = static_cast<uint8_t *>(
             heap_caps_malloc(info.data_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
         if (!next) next = static_cast<uint8_t *>(malloc(info.data_size));
@@ -620,6 +660,17 @@ void MediaModule::refresh_artwork() {
     if (!home_assistant_copy_media_artwork(artwork_buffer_, artwork_capacity_, copied) ||
         copied.generation != info.generation ||
         !same_text(copied.entity_id, selected_entity_id_)) {
+        return;
+    }
+
+    const uint32_t content_fingerprint =
+        artwork_content_fingerprint(artwork_buffer_, copied.data_size);
+    if (artwork_content_fingerprint_ &&
+        content_fingerprint == artwork_content_fingerprint_) {
+        // Some radio integrations rotate proxy URL tokens without changing the
+        // actual image. Keep the displayed cover and avoid a needless redraw.
+        artwork_generation_ = copied.generation;
+        artwork_refresh_pending_ = false;
         return;
     }
 
@@ -659,6 +710,9 @@ void MediaModule::refresh_artwork() {
         set_status("Artwork decoded, but LVGL rejected the image buffer.");
         return;
     }
+    // Keep the current cover visible while the replacement is downloaded and
+    // decoded. Invalidate its cache only once the new source is ready to show.
+    if (old_src) lv_image_cache_drop(old_src);
     lv_image_set_src(artwork_image_, &artwork_dsc_);
     const uint32_t shown_width = artwork_dsc_.header.w;
     const uint32_t shown_height = artwork_dsc_.header.h;
@@ -675,6 +729,7 @@ void MediaModule::refresh_artwork() {
     if (artwork_placeholder_) lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(artwork_image_);
     artwork_generation_ = copied.generation;
+    artwork_content_fingerprint_ = content_fingerprint;
     artwork_refresh_pending_ = false;
     Serial0.printf("[Media] Artwork shown: %s%s, %u bytes, %ux%u, scale=%u/256\n",
                    copied.format == HomeAssistantArtworkFormat::Jpeg ? "JPEG" : "PNG",
@@ -720,8 +775,9 @@ void MediaModule::update() {
                      sizeof(control.favorite.media_content_type),
                      "%s", configured.media_content_type);
             set_media_label_text(control.label, configured.label);
-            lv_label_set_text(control.icon_label,
-                              shortcut_icon(configured.icon[0] ? configured.icon : "music"));
+            set_media_raw_label_text(
+                control.icon_label,
+                shortcut_icon(configured.icon[0] ? configured.icon : "music"));
 
             bool target_available = false;
             for (size_t player = 0; player < count; ++player) {
@@ -735,14 +791,14 @@ void MediaModule::update() {
         } else {
             control.bound = false;
             memset(&control.favorite, 0, sizeof(control.favorite));
-            lv_label_set_text(control.label, "--");
+            set_media_label_text(control.label, "--");
             set_enabled(control.button, false);
             lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
         }
     }
     if (panel_config.media_shortcut_count) lv_obj_add_flag(shortcuts_empty_, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(shortcuts_empty_, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(popup_empty_[0], "No players discovered. Assign a media player to this Home Assistant area.");
+    set_media_label_text(popup_empty_[0], "No players discovered. Assign a media player to this Home Assistant area.");
     if (count) lv_obj_add_flag(popup_empty_[0], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(popup_empty_[0], LV_OBJ_FLAG_HIDDEN);
 
@@ -752,11 +808,11 @@ void MediaModule::update() {
         requested_media_fingerprint_ = 0;
         artwork_refresh_pending_ = false;
         clear_artwork();
-        lv_label_set_text(player_name_, "No players in this room");
-        lv_label_set_text(track_label_, "Nothing playing");
-        lv_label_set_text(artist_label_, "Assign a media player to the configured Home Assistant area.");
-        lv_label_set_text(album_label_, "");
-        lv_label_set_text(state_label_, "Waiting for area discovery");
+        set_media_label_text(player_name_, "No players in this room");
+        set_media_label_text(track_label_, "Nothing playing");
+        set_media_label_text(artist_label_, "Assign a media player to the configured Home Assistant area.");
+        set_media_label_text(album_label_, "");
+        set_media_label_text(state_label_, "Waiting for area discovery");
         set_enabled(play_button_, false);
         set_enabled(prev_button_, false);
         set_enabled(next_button_, false);
@@ -766,17 +822,18 @@ void MediaModule::update() {
         set_enabled(mute_button_, false);
         volume_dragging_ = false;
         volume_entity_id_[0] = 0;
-        lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
-        lv_label_set_text(volume_label_, "--");
-        lv_label_set_text(play_label_, "Play");
-        lv_label_set_text(play_icon_, LV_SYMBOL_PLAY);
-        lv_label_set_text(mute_label_, "Mute");
-        lv_obj_set_style_bg_color(mute_button_, lv_color_hex(CARD_ALT), LV_PART_MAIN);
+        if (lv_slider_get_value(volume_slider_) != 0)
+            lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
+        set_media_label_text(volume_label_, "--");
+        set_media_label_text(play_label_, "Play");
+        set_media_raw_label_text(play_icon_, LV_SYMBOL_PLAY);
+        set_media_label_text(mute_label_, "Mute");
+        set_media_bg_color(mute_button_, CARD_ALT);
         for (auto &p : players_) { p.bound = false; set_enabled(p.button, false); lv_obj_add_flag(p.button, LV_OBJ_FLAG_HIDDEN); }
         for (auto &s : sources_) { s.bound = false; set_enabled(s.button, false); lv_obj_add_flag(s.button, LV_OBJ_FLAG_HIDDEN); }
         for (auto &f : favorites_) { f.bound = false; set_enabled(f.button, false); lv_obj_add_flag(f.button, LV_OBJ_FLAG_HIDDEN); }
         for (int i = 1; i < 3; ++i) {
-            lv_label_set_text(popup_empty_[i], "Choose a player when discovery is complete.");
+            set_media_label_text(popup_empty_[i], "Choose a player when discovery is complete.");
             lv_obj_remove_flag(popup_empty_[i], LV_OBJ_FLAG_HIDDEN);
         }
         set_status("No area media players discovered yet.");
@@ -807,16 +864,14 @@ void MediaModule::update() {
                                      : media_cache_[i].entity_id);
             set_enabled(control.button, media_cache_[i].available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_bg_color(control.button,
-                                      lv_color_hex(i == selected ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
-            lv_obj_set_style_border_color(control.button,
-                                          lv_color_hex(i == selected ? 0x38BDF8 : BORDER), LV_PART_MAIN);
+            set_media_bg_color(control.button, i == selected ? 0x183C50 : CARD_ALT);
+            set_media_border_color(control.button, i == selected ? 0x38BDF8 : BORDER);
         } else {
             control.bound = false;
             control.entity_id[0] = '\0';
             lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             set_enabled(control.button, false);
-            lv_obj_set_style_bg_color(control.button, lv_color_hex(CARD_ALT), LV_PART_MAIN);
+            set_media_bg_color(control.button, CARD_ALT);
         }
     }
 
@@ -832,26 +887,28 @@ void MediaModule::update() {
     set_enabled(play_button_, view.available);
     set_enabled(prev_button_, view.available);
     set_enabled(next_button_, view.available);
-    lv_label_set_text(play_label_, view.playing ? "Pause" : "Play");
-    lv_label_set_text(play_icon_, view.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-    lv_obj_set_style_bg_color(play_button_, lv_color_hex(ACCENT), LV_PART_MAIN);
+    set_media_label_text(play_label_, view.playing ? "Pause" : "Play");
+    set_media_raw_label_text(play_icon_, view.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+    set_media_bg_color(play_button_, ACCENT);
 
     set_enabled(volume_slider_, view.available && view.supports_volume);
     set_enabled(volume_down_button_, view.available && view.supports_volume);
     set_enabled(volume_up_button_, view.available && view.supports_volume);
     if (!view.available || !view.supports_volume) volume_dragging_ = false;
     if (!volume_dragging_) {
-        lv_slider_set_value(volume_slider_, view.available && view.supports_volume ? view.volume_pct : 0, LV_ANIM_OFF);
+        const int32_t slider_value = view.available && view.supports_volume ? view.volume_pct : 0;
+        if (lv_slider_get_value(volume_slider_) != slider_value)
+            lv_slider_set_value(volume_slider_, slider_value, LV_ANIM_OFF);
         char volume[20];
         if (view.available && view.supports_volume) snprintf(volume, sizeof(volume), "%u%%", static_cast<unsigned>(view.volume_pct));
         else snprintf(volume, sizeof(volume), "--");
-        lv_label_set_text(volume_label_, volume);
+        set_media_label_text(volume_label_, volume);
     }
 
     set_enabled(mute_button_, view.available && view.supports_mute);
-    lv_label_set_text(mute_label_, view.muted ? "Unmute" : "Mute");
-    lv_label_set_text(mute_icon_, view.muted ? LV_SYMBOL_VOLUME_MAX : LV_SYMBOL_MUTE);
-    lv_obj_set_style_bg_color(mute_button_, lv_color_hex(view.muted ? ACCENT : CARD_ALT), LV_PART_MAIN);
+    set_media_label_text(mute_label_, view.muted ? "Unmute" : "Mute");
+    set_media_raw_label_text(mute_icon_, view.muted ? LV_SYMBOL_VOLUME_MAX : LV_SYMBOL_MUTE);
+    set_media_bg_color(mute_button_, view.muted ? ACCENT : CARD_ALT);
 
     for (size_t i = 0; i < HA_MAX_MEDIA_SOURCES; ++i) {
         SourceControl &control = sources_[i];
@@ -862,19 +919,19 @@ void MediaModule::update() {
             set_enabled(control.button, active.available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
             const bool selected_source = same_text(active.source, control.source);
-            lv_obj_set_style_bg_color(control.button, lv_color_hex(selected_source ? 0x183C50 : CARD_ALT), LV_PART_MAIN);
-            lv_obj_set_style_border_color(control.button, lv_color_hex(selected_source ? 0x38BDF8 : BORDER), LV_PART_MAIN);
+            set_media_bg_color(control.button, selected_source ? 0x183C50 : CARD_ALT);
+            set_media_border_color(control.button, selected_source ? 0x38BDF8 : BORDER);
         } else {
             control.bound = false;
             control.source[0] = '\0';
             lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(control.label, "--");
+            set_media_label_text(control.label, "--");
             set_enabled(control.button, false);
-            lv_obj_set_style_bg_color(control.button, lv_color_hex(CARD_ALT), LV_PART_MAIN);
+            set_media_bg_color(control.button, CARD_ALT);
         }
     }
 
-    lv_label_set_text(popup_empty_[1], "This player does not expose selectable sources.");
+    set_media_label_text(popup_empty_[1], "This player does not expose selectable sources.");
     if (active.source_count) lv_obj_add_flag(popup_empty_[1], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(popup_empty_[1], LV_OBJ_FLAG_HIDDEN);
 
@@ -902,8 +959,9 @@ void MediaModule::update() {
                     target_available = media_cache_[player].available; break;
                 }
             set_media_label_text(control.label, configured.label);
-            lv_label_set_text(control.icon_label,
-                              shortcut_icon(configured.icon[0] ? configured.icon : "star"));
+            set_media_raw_label_text(
+                control.icon_label,
+                shortcut_icon(configured.icon[0] ? configured.icon : "star"));
             set_enabled(control.button, target_available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
     }
@@ -915,7 +973,7 @@ void MediaModule::update() {
             control.bound = true;
             control.favorite = favorite_cache_[discovered_index];
             set_media_label_text(control.label, control.favorite.title);
-            lv_label_set_text(control.icon_label, LV_SYMBOL_OK);
+            set_media_raw_label_text(control.icon_label, LV_SYMBOL_OK);
             set_enabled(control.button, active.available);
             lv_obj_remove_flag(control.button, LV_OBJ_FLAG_HIDDEN);
     }
@@ -924,19 +982,19 @@ void MediaModule::update() {
         control.bound = false;
         memset(&control.favorite, 0, sizeof(control.favorite));
         lv_obj_add_flag(control.button, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(control.label, favorite_slot == 0 ? "No browse items" : "--");
+        set_media_label_text(control.label, favorite_slot == 0 ? "No browse items" : "--");
         set_enabled(control.button, false);
     }
 
     bool has_favorites = false;
     for (const auto &favorite : favorites_) if (favorite.bound) has_favorites = true;
-    lv_label_set_text(popup_empty_[2], "No browse favorites available. Add saved Browse favorites in the Media section of the web manager.");
+    set_media_label_text(popup_empty_[2], "No browse favorites available. Add saved Browse favorites in the Media section of the web manager.");
     if (has_favorites) lv_obj_add_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(popup_empty_[2], LV_OBJ_FLAG_HIDDEN);
 
     if (active.entity_picture[0]) {
         const bool picture_changed = !same_text(requested_picture_, active.entity_picture);
-        const uint32_t fingerprint = media_fingerprint(active);
+        const uint32_t fingerprint = artwork_fingerprint(active);
         const bool media_changed = requested_media_fingerprint_ != fingerprint;
         if (media_changed) {
             requested_media_fingerprint_ = fingerprint;
@@ -946,8 +1004,7 @@ void MediaModule::update() {
         if (picture_changed) {
             snprintf(requested_picture_, sizeof(requested_picture_), "%s", active.entity_picture);
             artwork_request_ms_ = 0;
-            // Never display a previous track's cover while the new one loads.
-            clear_artwork();
+            artwork_refresh_pending_ = true;
         }
 
         HomeAssistantMediaArtworkInfo cached = {};
@@ -975,7 +1032,13 @@ void MediaModule::update() {
         requested_media_fingerprint_ = 0;
         artwork_request_ms_ = 0;
         artwork_refresh_pending_ = false;
-        clear_artwork();
+        // Radio integrations can briefly omit entity_picture during metadata
+        // updates. Preserve the last cover while playback remains active.
+        if (!active.available || same_text(active.state, "idle") ||
+            same_text(active.state, "off") ||
+            same_text(active.state, "unavailable")) {
+            clear_artwork();
+        }
     }
     refresh_artwork();
 

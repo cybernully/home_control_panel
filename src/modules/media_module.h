@@ -105,6 +105,7 @@ private:
     size_t artwork_pixels_capacity_ = 0;
     JPEGDEC *jpeg_decoder_ = nullptr;
     uint32_t artwork_generation_ = 0;
+    uint32_t artwork_content_fingerprint_ = 0;
     lv_image_dsc_t artwork_dsc_ = {};
 
     void select_player(const char *entity_id);

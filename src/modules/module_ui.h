@@ -89,6 +89,7 @@ inline void set_button(lv_obj_t *button_obj, lv_obj_t *label_obj, bool active,
 
 inline void set_enabled(lv_obj_t *obj, bool enabled) {
     if (!obj) return;
+    if (lv_obj_has_state(obj, LV_STATE_DISABLED) == !enabled) return;
     if (enabled) {
         lv_obj_remove_state(obj, LV_STATE_DISABLED);
         lv_obj_set_style_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
