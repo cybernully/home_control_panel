@@ -187,7 +187,13 @@ uint32_t g_next_ws_id = 1;
 uint32_t g_area_request_id = 0;
 uint32_t g_extract_request_id = 0;
 uint32_t g_entity_registry_request_id = 0;
-uint32_t g_subscribe_request_id = 0;
+// The WebSockets library rejects a single incoming frame above 15 KB. Keep
+// HA's initial subscribe_entities snapshots small by splitting the layout.
+constexpr size_t HA_WS_SUBSCRIBE_BATCH_SIZE = 8;
+constexpr size_t HA_WS_SUBSCRIBE_BATCH_COUNT =
+    (HA_MAX_AREA_ENTITIES + HA_WS_SUBSCRIBE_BATCH_SIZE - 1) / HA_WS_SUBSCRIBE_BATCH_SIZE;
+uint32_t g_subscribe_request_ids[HA_WS_SUBSCRIBE_BATCH_COUNT] = {};
+size_t g_subscribe_request_count = 0;
 uint32_t g_action_request_id = 0;
 uint32_t g_action_started_ms = 0;
 char g_action_description[96] = {};
@@ -832,6 +838,14 @@ bool send_json(JsonDocument &doc) {
     return g_ws.sendTXT(payload);
 }
 
+bool is_subscribe_request_id(uint32_t id) {
+    if (!id) return false;
+    for (size_t i = 0; i < g_subscribe_request_count; ++i) {
+        if (g_subscribe_request_ids[i] == id) return true;
+    }
+    return false;
+}
+
 uint32_t next_ws_id() {
     if (g_next_ws_id == 0) g_next_ws_id = 1;
     return g_next_ws_id++;
@@ -1112,14 +1126,34 @@ void send_subscribe_entities_worker() {
         return;
     }
 
-    JsonDocument doc;
-    g_subscribe_request_id = next_ws_id();
-    doc["id"] = g_subscribe_request_id;
-    doc["type"] = "subscribe_entities";
-    JsonArray ids = doc["entity_ids"].to<JsonArray>();
-    for (size_t i = 0; i < g_entity_count; ++i) ids.add(g_entities[i].entity_id);
+    memset(g_subscribe_request_ids, 0, sizeof(g_subscribe_request_ids));
+    g_subscribe_request_count = 0;
 
-    if (send_json(doc)) {
+    const size_t batch_count = (g_entity_count + HA_WS_SUBSCRIBE_BATCH_SIZE - 1) /
+                               HA_WS_SUBSCRIBE_BATCH_SIZE;
+    for (size_t batch = 0; batch < batch_count; ++batch) {
+        const size_t begin = batch * HA_WS_SUBSCRIBE_BATCH_SIZE;
+        const size_t end = begin + HA_WS_SUBSCRIBE_BATCH_SIZE < g_entity_count
+                               ? begin + HA_WS_SUBSCRIBE_BATCH_SIZE : g_entity_count;
+        JsonDocument doc;
+        const uint32_t request_id = next_ws_id();
+        doc["id"] = request_id;
+        doc["type"] = "subscribe_entities";
+        JsonArray ids = doc["entity_ids"].to<JsonArray>();
+        for (size_t i = begin; i < end; ++i) ids.add(g_entities[i].entity_id);
+
+        if (!send_json(doc)) {
+            set_discovery_message("Could not start live state subscription.");
+            break;
+        }
+
+        g_subscribe_request_ids[g_subscribe_request_count++] = request_id;
+        Serial0.printf("[HA] Started live state subscription batch %u/%u (%u entities)\n",
+                       static_cast<unsigned>(batch + 1), static_cast<unsigned>(batch_count),
+                       static_cast<unsigned>(end - begin));
+    }
+
+    if (g_subscribe_request_count) {
         g_last_entity_subscription_refresh_ms = millis();
         set_discovery_message("Subscribing to live Home Assistant state...");
         const PanelConfig &cfg = config_service_get();
@@ -1127,8 +1161,6 @@ void send_subscribe_entities_worker() {
                                  cfg.weather_hourly_entity_id[0] ? cfg.weather_hourly_entity_id :
                                  cfg.weather_daily_entity_id;
         if (weather_id[0]) home_assistant_request_weather_forecasts(weather_id);
-    } else {
-        set_discovery_message("Could not start live state subscription.");
     }
 }
 
@@ -1619,13 +1651,17 @@ void handle_action_result_worker(JsonDocument &doc) {
 }
 
 void refresh_entity_subscription_worker() {
-    if (!g_ws_authenticated || !g_subscribe_request_id || g_entity_count == 0) return;
+    if (!g_ws_authenticated || !g_subscribe_request_count || g_entity_count == 0) return;
 
-    JsonDocument unsubscribe;
-    unsubscribe["id"] = next_ws_id();
-    unsubscribe["type"] = "unsubscribe_events";
-    unsubscribe["subscription"] = g_subscribe_request_id;
-    send_json(unsubscribe);
+    for (size_t i = 0; i < g_subscribe_request_count; ++i) {
+        JsonDocument unsubscribe;
+        unsubscribe["id"] = next_ws_id();
+        unsubscribe["type"] = "unsubscribe_events";
+        unsubscribe["subscription"] = g_subscribe_request_ids[i];
+        send_json(unsubscribe);
+    }
+    memset(g_subscribe_request_ids, 0, sizeof(g_subscribe_request_ids));
+    g_subscribe_request_count = 0;
     Serial0.println("[HA] Refreshing live entity state subscription after idle interval");
     send_subscribe_entities_worker();
 }
@@ -1641,6 +1677,7 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
     const char *type = doc["type"] | "";
 
     if (strcmp(type, "auth_required") == 0) {
+        Serial0.println("[HA] WebSocket server requested authentication");
         char token[sizeof(g_token)] = {};
         char base_unused[sizeof(g_base_url)] = {};
         credentials_snapshot(base_unused, sizeof(base_unused), token, sizeof(token));
@@ -1653,6 +1690,7 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
     }
 
     if (strcmp(type, "auth_ok") == 0) {
+        Serial0.println("[HA] WebSocket authentication accepted");
         g_ws_authenticated = true;
         portENTER_CRITICAL(&g_mux);
         g_discovery.websocket_authenticated = true;
@@ -1668,6 +1706,9 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
     }
 
     if (strcmp(type, "auth_invalid") == 0) {
+        const char *message = doc["message"] | "";
+        Serial0.printf("[HA] WebSocket authentication rejected%s%s\n",
+                       message[0] ? ": " : "", message);
         g_ws_authenticated = false;
         portENTER_CRITICAL(&g_mux);
         g_discovery.websocket_authenticated = false;
@@ -1687,7 +1728,7 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
             handle_extract_result_worker(doc);
         } else if (id == g_entity_registry_request_id) {
             handle_entity_registry_result_worker(doc);
-        } else if (id == g_subscribe_request_id) {
+        } else if (is_subscribe_request_id(id)) {
             const bool success = doc["success"] | false;
             if (!success) set_discovery_message("Home Assistant rejected live entity subscription.");
         } else if (id == g_media_browse_request_id) {
@@ -1711,20 +1752,31 @@ void handle_ws_text_worker(uint8_t *payload, size_t length) {
 
     if (strcmp(type, "event") == 0) {
         const uint32_t id = doc["id"] | 0U;
-        if (id == g_subscribe_request_id) handle_entity_event_worker(doc);
+        if (is_subscribe_request_id(id)) handle_entity_event_worker(doc);
     }
 }
 
 void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
     switch (type) {
         case WStype_CONNECTED:
+            Serial0.printf("[HA] WebSocket transport connected%s%.*s\n",
+                           length ? ": " : "", static_cast<int>(length),
+                           length ? reinterpret_cast<const char *>(payload) : "");
             portENTER_CRITICAL(&g_mux);
             g_discovery.websocket_connected = true;
             copy_text(g_discovery.message, sizeof(g_discovery.message), "WebSocket connected; authenticating...");
             portEXIT_CRITICAL(&g_mux);
             break;
         case WStype_DISCONNECTED:
+            if (payload && length) {
+                Serial0.printf("[HA] WebSocket transport disconnected: %.*s\n",
+                               static_cast<int>(length), reinterpret_cast<const char *>(payload));
+            } else {
+                Serial0.println("[HA] WebSocket transport disconnected (library provided no close details)");
+            }
             g_ws_authenticated = false;
+            memset(g_subscribe_request_ids, 0, sizeof(g_subscribe_request_ids));
+            g_subscribe_request_count = 0;
             g_weather_hourly_request_id = 0;
             g_weather_daily_request_id = 0;
             g_weather_forecast_started_ms = 0;
@@ -1747,8 +1799,23 @@ void ws_event_worker(WStype_t type, uint8_t *payload, size_t length) {
             g_discovery.websocket_connected = false;
             g_discovery.websocket_authenticated = false;
             g_discovery.discovery_complete = false;
-            copy_text(g_discovery.message, sizeof(g_discovery.message), "WebSocket disconnected; reconnecting...");
+            if (payload && length) {
+                snprintf(g_discovery.message, sizeof(g_discovery.message),
+                         "WebSocket disconnected (%.*s); reconnecting...",
+                         static_cast<int>(length > 64 ? 64 : length),
+                         reinterpret_cast<const char *>(payload));
+            } else {
+                copy_text(g_discovery.message, sizeof(g_discovery.message), "WebSocket disconnected; reconnecting...");
+            }
             portEXIT_CRITICAL(&g_mux);
+            break;
+        case WStype_ERROR:
+            if (payload && length) {
+                Serial0.printf("[HA] WebSocket client error: %.*s\n",
+                               static_cast<int>(length), reinterpret_cast<const char *>(payload));
+            } else {
+                Serial0.println("[HA] WebSocket client error without details");
+            }
             break;
         case WStype_TEXT:
             handle_ws_text_worker(payload, length);

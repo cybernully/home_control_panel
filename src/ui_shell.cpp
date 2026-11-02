@@ -23,12 +23,16 @@ lv_obj_t *g_weather_header=nullptr,*g_weather_header_icon=nullptr,*g_weather_hea
 lv_obj_t *g_status_button=nullptr,*g_status_dot=nullptr,*g_status_label=nullptr,*g_comm_button=nullptr,*g_comm_icon=nullptr,*g_comm_label=nullptr,*g_status_overlay=nullptr,*g_status_message=nullptr,*g_status_time=nullptr;
 lv_obj_t *g_signal_bars[4] = {};
 lv_obj_t *g_pages[PANEL_MAX_MODULES]={},*g_nav_buttons[PANEL_MAX_MODULES]={},*g_nav_icons[PANEL_MAX_MODULES]={},*g_nav_labels[PANEL_MAX_MODULES]={};bool g_created[PANEL_MAX_MODULES]={};size_t g_active_index=0;uint32_t g_last_header_ms=0,g_last_activity_ms=0;
+lv_obj_t *g_remote_overlay=nullptr;
+char g_remote_message[161] = {};
+uint32_t g_remote_message_until_ms = 0;
 char g_last_status[160] = "Starting Home Assistant connection...";
 char g_last_status_time[48] = "Time not synchronized";
 uint32_t g_manual_status_until = 0;
 uint32_t g_last_action_seen_ms = 0;
 void update_header();
 void show_module(size_t index);
+void update_remote_message();
 
 uint32_t navigation_glyph(const char *module_id) {
     return ui_theme::module_glyph(module_id);
@@ -320,6 +324,50 @@ void show_module(size_t index) {
     if (module) { module->on_activate(); module->update(); }
 }
 void nav_cb(lv_event_t *e){const size_t index=reinterpret_cast<size_t>(lv_event_get_user_data(e));show_module(index);}
+void remote_message_dismiss_cb(lv_event_t *) { ui_shell_dismiss_remote_message(); }
+
+void create_remote_message_overlay() {
+    if (g_remote_overlay || !g_screen) return;
+    g_remote_overlay = lv_obj_create(g_screen);
+    lv_obj_set_size(g_remote_overlay, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(g_remote_overlay, 0, 0);
+    style_box(g_remote_overlay, 0x030712);
+    lv_obj_set_style_bg_opa(g_remote_overlay, LV_OPA_80, LV_PART_MAIN);
+
+    lv_obj_t *dialog = lv_obj_create(g_remote_overlay);
+    lv_obj_set_size(dialog, 700, 360);
+    lv_obj_center(dialog);
+    style_box(dialog, PANEL, 24, 1);
+    lv_obj_remove_flag(dialog, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *title = label(dialog, "MESSAGE FROM HOME", &lv_font_montserrat_16, ACCENT);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_set_width(title, 620);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    lv_obj_t *body = label(dialog, g_remote_message, &lv_font_montserrat_24, TEXT);
+    lv_obj_set_width(body, 620);
+    lv_obj_set_height(body, 210);
+    lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 76);
+    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    lv_obj_t *dismiss = lv_button_create(dialog);
+    lv_obj_set_size(dismiss, 190, 54);
+    lv_obj_align(dismiss, LV_ALIGN_BOTTOM_MID, 0, -24);
+    lv_obj_set_style_bg_color(dismiss, lv_color_hex(ACCENT), LV_PART_MAIN);
+    lv_obj_set_style_radius(dismiss, 12, LV_PART_MAIN);
+    lv_obj_add_event_cb(dismiss, remote_message_dismiss_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *dismiss_label = label(dismiss, "Dismiss", &lv_font_montserrat_16, TEXT);
+    lv_obj_center(dismiss_label);
+    lv_obj_move_foreground(g_remote_overlay);
+}
+
+void update_remote_message() {
+    if (g_remote_message[0] && g_remote_message_until_ms &&
+        static_cast<int32_t>(millis() - g_remote_message_until_ms) >= 0)
+        ui_shell_dismiss_remote_message();
+}
 }
 
 void ui_shell_begin() {
@@ -372,12 +420,76 @@ void ui_shell_begin() {
     update_header();
     g_last_activity_ms = millis();
 }
-void ui_shell_loop(){const PanelConfig &cfg=config_service_get();const uint32_t now=millis();if(board_take_touch_activity()){g_last_activity_ms=now;if(!board_display_awake())board_set_display_awake(true,cfg.backlight);}if(board_display_awake()&&cfg.screen_timeout_seconds>0&&now-g_last_activity_ms>=cfg.screen_timeout_seconds*1000UL)board_set_display_awake(false,cfg.backlight);if(now-g_last_header_ms>=1000UL){g_last_header_ms=now;update_header();PanelModule *m=module_registry_at(g_active_index);if(m)m->update();}}
+void ui_shell_loop(){update_remote_message();const PanelConfig &cfg=config_service_get();const uint32_t now=millis();if(board_take_touch_activity()){g_last_activity_ms=now;if(!board_display_awake())board_set_display_awake(true,cfg.backlight);}if(board_display_awake()&&!g_remote_message[0]&&cfg.screen_timeout_seconds>0&&now-g_last_activity_ms>=cfg.screen_timeout_seconds*1000UL)board_set_display_awake(false,cfg.backlight);if(now-g_last_header_ms>=1000UL){g_last_header_ms=now;update_header();PanelModule *m=module_registry_at(g_active_index);if(m)m->update();}}
 void ui_shell_refresh_header(){update_header();}
 void ui_shell_report_status(const char *message) {
     if (!message || !message[0]) return;
     remember_status(message);
     g_manual_status_until = millis() + 5000UL;
     update_header();
+}
+
+bool ui_shell_select_tab(const char *id) {
+    if (!id || !id[0]) return false;
+    for (size_t i = 0; i < module_registry_count(); ++i) {
+        PanelModule *module = module_registry_at(i);
+        if (module && strcmp(module->id(), id) == 0) {
+            show_module(i);
+            const PanelConfig &cfg = config_service_get();
+            board_set_display_awake(true, cfg.backlight);
+            g_last_activity_ms = millis();
+            return true;
+        }
+    }
+    return false;
+}
+
+const char *ui_shell_active_tab_id() {
+    PanelModule *module = module_registry_at(g_active_index);
+    return module ? module->id() : "";
+}
+
+const char *ui_shell_active_tab_title() {
+    PanelModule *module = module_registry_at(g_active_index);
+    return module ? module->title() : "";
+}
+
+void ui_shell_set_remote_message(const char *message, uint32_t duration_ms) {
+    if (!message || !message[0]) return;
+    strncpy(g_remote_message, message, sizeof(g_remote_message) - 1);
+    g_remote_message[sizeof(g_remote_message) - 1] = '\0';
+    g_remote_message_until_ms = duration_ms ? millis() + duration_ms : 0;
+    const PanelConfig &cfg = config_service_get();
+    board_set_display_awake(true, cfg.backlight);
+    g_last_activity_ms = millis();
+    if (!g_remote_overlay) create_remote_message_overlay();
+    else {
+        // The message label is the second child of the dialog (the overlay's
+        // first child is the dialog itself).
+        lv_obj_t *dialog = lv_obj_get_child(g_remote_overlay, 0);
+        lv_obj_t *body = dialog ? lv_obj_get_child(dialog, 1) : nullptr;
+        if (body) lv_label_set_text(body, g_remote_message);
+    }
+    lv_obj_clear_flag(g_remote_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(g_remote_overlay);
+}
+
+void ui_shell_dismiss_remote_message() {
+    g_remote_message[0] = '\0';
+    g_remote_message_until_ms = 0;
+    if (g_remote_overlay) lv_obj_add_flag(g_remote_overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+bool ui_shell_get_remote_message(char *message, size_t capacity, uint32_t *remaining_ms) {
+    update_remote_message();
+    if (remaining_ms) {
+        *remaining_ms = g_remote_message_until_ms
+            ? static_cast<uint32_t>(g_remote_message_until_ms - millis()) : 0;
+    }
+    if (message && capacity) {
+        strncpy(message, g_remote_message, capacity - 1);
+        message[capacity - 1] = '\0';
+    }
+    return g_remote_message[0] != '\0';
 }
 

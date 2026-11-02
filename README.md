@@ -7,6 +7,13 @@ Version 1.3.0 adds live Home Assistant media-player discovery, playback controls
 artwork, sources, and browse-media favorites/playlists while retaining the dual-board
 hardware split established in 1.0.0.
 
+## Remote display control
+
+The authenticated Web Admin API can read the active panel tab, switch to an
+enabled tab, and show a popup message with timed or manual dismissal. Web Admin's
+**Live display** section uses the same endpoints. See the [display API guide](docs/DISPLAY_API.md)
+for request bodies, responses, and error codes.
+
 ## OTA reliability 2.0.2
 
 Web Admin sends firmware in acknowledged 16 KB chunks, yielding between flash

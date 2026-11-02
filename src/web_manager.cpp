@@ -8,7 +8,9 @@
 #include "config_service.h"
 #include "firmware_update.h"
 #include "home_assistant.h"
+#include "module_registry.h"
 #include "network_service.h"
+#include "ui_shell.h"
 #include "web_ui.h"
 
 #include <ArduinoJson.h>
@@ -138,6 +140,7 @@ bool ensure_auth() {
 void send_json(JsonDocument &doc, int code = 200) {
     String payload;
     serializeJson(doc, payload);
+    g_server.sendHeader("Cache-Control", "no-store");
     g_server.send(code, "application/json", payload);
 }
 
@@ -146,6 +149,103 @@ void send_error(int code, const char *message) {
     doc["ok"] = false;
     doc["error"] = message;
     send_json(doc, code);
+}
+
+bool firmware_busy();
+
+void send_display_state(int code = 200) {
+    JsonDocument doc;
+    doc["ok"] = true;
+    JsonObject active = doc["active_tab"].to<JsonObject>();
+    active["id"] = ui_shell_active_tab_id();
+    active["title"] = ui_shell_active_tab_title();
+    JsonArray tabs = doc["tabs"].to<JsonArray>();
+    for (size_t i = 0; i < module_registry_count(); ++i) {
+        PanelModule *module = module_registry_at(i);
+        if (!module) continue;
+        JsonObject tab = tabs.add<JsonObject>();
+        tab["id"] = module->id();
+        tab["title"] = module->title();
+    }
+    char message[161] = {};
+    uint32_t remaining_ms = 0;
+    const bool active_message = ui_shell_get_remote_message(message, sizeof(message), &remaining_ms);
+    JsonObject current_message = doc["message"].to<JsonObject>();
+    current_message["active"] = active_message;
+    current_message["text"] = active_message ? message : "";
+    current_message["dismissible"] = active_message && remaining_ms == 0;
+    current_message["remaining_ms"] = remaining_ms;
+    send_json(doc, code);
+}
+
+bool parse_display_request(JsonDocument &doc) {
+    if (g_server.arg("plain").length() > 512) {
+        send_error(413, "The display request body is too large.");
+        return false;
+    }
+    const DeserializationError error = deserializeJson(doc, g_server.arg("plain"));
+    if (error || !doc.is<JsonObject>()) {
+        send_error(400, "Expected a JSON object in the request body.");
+        return false;
+    }
+    return true;
+}
+
+void handle_get_display() {
+    if (!ensure_auth()) return;
+    send_display_state();
+}
+
+void handle_set_display_tab() {
+    if (!ensure_auth() || firmware_busy()) return;
+    JsonDocument request;
+    if (!parse_display_request(request)) return;
+    JsonVariantConst id_value = request["id"];
+    if (!id_value.is<const char *>()) {
+        send_error(422, "The id field must name an enabled panel tab.");
+        return;
+    }
+    const char *id = id_value.as<const char *>();
+    if (!id[0] || strlen(id) >= PANEL_MODULE_ID_LEN) {
+        send_error(422, "The id field must name an enabled panel tab.");
+        return;
+    }
+    if (!ui_shell_select_tab(id)) {
+        send_error(404, "That panel tab is not enabled.");
+        return;
+    }
+    send_display_state();
+}
+
+void handle_set_display_message() {
+    if (!ensure_auth() || firmware_busy()) return;
+    JsonDocument request;
+    if (!parse_display_request(request)) return;
+    JsonVariantConst text_value = request["text"];
+    JsonVariantConst duration_value = request["duration_ms"];
+    if (!text_value.is<const char *>() || !duration_value.is<uint32_t>()) {
+        send_error(422, "Provide text and duration_ms as JSON fields.");
+        return;
+    }
+    const char *message = text_value.as<const char *>();
+    const size_t length = strlen(message);
+    const uint32_t duration_ms = duration_value.as<uint32_t>();
+    if (!length || length > 160) {
+        send_error(422, "Message text must contain between 1 and 160 UTF-8 bytes.");
+        return;
+    }
+    if (duration_ms != 0 && (duration_ms < 1000 || duration_ms > 86400000UL)) {
+        send_error(422, "duration_ms must be 0 for manual dismissal or between 1000 and 86400000.");
+        return;
+    }
+    ui_shell_set_remote_message(message, duration_ms);
+    send_display_state();
+}
+
+void handle_delete_display_message() {
+    if (!ensure_auth() || firmware_busy()) return;
+    ui_shell_dismiss_remote_message();
+    send_display_state();
 }
 
 bool firmware_busy() {
@@ -1016,6 +1116,10 @@ void register_routes() {
         g_server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
     });
     g_server.on("/api/status", HTTP_GET, handle_status);
+    g_server.on("/api/display", HTTP_GET, handle_get_display);
+    g_server.on("/api/display/tab", HTTP_PUT, handle_set_display_tab);
+    g_server.on("/api/display/message", HTTP_PUT, handle_set_display_message);
+    g_server.on("/api/display/message", HTTP_DELETE, handle_delete_display_message);
     g_server.on("/api/room/entities", HTTP_GET, handle_room_entities);
     g_server.on("/api/ha/entities", HTTP_GET, handle_ha_entities);
     g_server.on("/api/ha/discover", HTTP_POST, handle_ha_discover);
