@@ -5,6 +5,7 @@
 #include "app_config.h"
 #include "board_lvgl.h"
 #include "config_service.h"
+#include "firmware_update.h"
 #include "home_assistant.h"
 #include "module_ui.h"
 #include "network_service.h"
@@ -34,7 +35,7 @@ uint8_t used_percent(size_t used, size_t total) {
 
 void SettingsModule::create(lv_obj_t *parent) {
     box(parent, BG, 0, 0);
-    module_ui::title(parent, id(), "Settings", "Panel controls, capacity, and connection diagnostics");
+    module_ui::title(parent, id(), "Settings", "Display controls, system health, and Home Assistant connection");
 
     const PanelConfig &cfg = config_service_get();
 
@@ -64,36 +65,73 @@ void SettingsModule::create(lv_obj_t *parent) {
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(hint, 18, 128);
 
-    heap_label_ = stat_card(parent, "INTERNAL RAM", 434, PAGE_CONTENT_TOP, 196);
-    psram_label_ = stat_card(parent, "PSRAM", 648, PAGE_CONTENT_TOP, 196);
-    storage_label_ = stat_card(parent, "FLASH STORAGE", 862, PAGE_CONTENT_TOP, 190);
-    cpu_label_ = stat_card(parent, "CPU", 1070, PAGE_CONTENT_TOP, 182);
-    runtime_label_ = stat_card(parent, "UPTIME / NETWORK", 434, 168, 394);
+    heap_label_ = stat_card(parent, "INTERNAL RAM", 430, 174, 196);
+    psram_label_ = stat_card(parent, "PSRAM", 640, 174, 196);
+    storage_label_ = stat_card(parent, "FLASH STORAGE", 850, 174, 196);
+    cpu_label_ = stat_card(parent, "CPU", 1060, 174, 196);
+    runtime_label_ = stat_card(parent, "UPTIME / NETWORK", 24, 264, 390);
 
-    lv_obj_t *identity = card(parent, 846, 168, 406, 78);
+    lv_obj_t *identity = card(parent, 430, PAGE_CONTENT_TOP, 826, 78);
     lv_obj_t *ih = label(identity, "PANEL IDENTITY", &lv_font_montserrat_12, MUTED);
     lv_obj_set_pos(ih, 14, 10);
     identity_label_ = label(identity, "Checking...", &lv_font_montserrat_14, TEXT);
-    lv_obj_set_width(identity_label_, 378);
+    lv_obj_set_width(identity_label_, 798);
     lv_label_set_long_mode(identity_label_, LV_LABEL_LONG_DOT);
     lv_obj_set_pos(identity_label_, 14, 36);
 
-    lv_obj_t *ha = card(parent, 24, 266, 1228, 210);
+    lv_obj_t *system = card(parent, 24, 358, 390, 220);
+    lv_obj_t *system_heading = label(system, "SYSTEM ACTIONS", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(system_heading, 18, 18);
+    lv_obj_t *system_detail = label(system, "Restart the panel to apply navigation changes or after changing panel settings.",
+                                    &lv_font_montserrat_14, TEXT);
+    lv_obj_set_pos(system_detail, 18, 50);
+    lv_obj_set_size(system_detail, 354, 56);
+    lv_label_set_long_mode(system_detail, LV_LABEL_LONG_WRAP);
+    reboot_status_label_ = label(system, "Ready", &lv_font_montserrat_12, MUTED);
+    lv_obj_set_pos(reboot_status_label_, 18, 111);
+    lv_obj_set_width(reboot_status_label_, 354);
+    lv_label_set_long_mode(reboot_status_label_, LV_LABEL_LONG_DOT);
+    lv_obj_t *reboot = button(system, "Restart panel", 18, 148, 354, 54, DANGER);
+    lv_obj_add_event_cb(reboot, reboot_request_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t *ha = card(parent, 430, 264, 826, 314);
     lv_obj_t *hh = label(ha, "Home Assistant", &lv_font_montserrat_20, TEXT);
     lv_obj_set_pos(hh, 18, 18);
 
     ha_label_ = label(ha, "Checking connection...", &lv_font_montserrat_16, MUTED);
-    lv_obj_set_width(ha_label_, 820);
+    lv_obj_set_width(ha_label_, 790);
     lv_label_set_long_mode(ha_label_, LV_LABEL_LONG_DOT);
     lv_obj_set_pos(ha_label_, 18, 58);
 
     discovery_label_ = label(ha, "Discovery not started", &lv_font_montserrat_12, MUTED);
-    lv_obj_set_width(discovery_label_, 900);
+    lv_obj_set_width(discovery_label_, 790);
     lv_label_set_long_mode(discovery_label_, LV_LABEL_LONG_DOT);
-    lv_obj_set_pos(discovery_label_, 18, 98);
+    lv_obj_set_pos(discovery_label_, 18, 104);
 
-    lv_obj_t *rediscover = button(ha, "Rediscover Area", 1000, 132, 206, 54, ACCENT);
+    lv_obj_t *rediscover = button(ha, "Rediscover Area", 18, 236, 206, 54, ACCENT);
     lv_obj_add_event_cb(rediscover, rediscover_cb, LV_EVENT_CLICKED, this);
+
+    reboot_overlay_ = lv_obj_create(parent);
+    lv_obj_set_pos(reboot_overlay_, 0, 0);
+    lv_obj_set_size(reboot_overlay_, 1280, lv_pct(100));
+    box(reboot_overlay_, 0x020A14, 0, 0);
+    lv_obj_set_style_bg_opa(reboot_overlay_, LV_OPA_80, LV_PART_MAIN);
+    lv_obj_add_event_cb(reboot_overlay_, reboot_cancel_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t *dialog = card(reboot_overlay_, 345, 190, 590, 280);
+    lv_obj_remove_flag(dialog, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_t *dialog_title = label(dialog, "Restart panel?", &lv_font_montserrat_28, TEXT);
+    lv_obj_set_pos(dialog_title, 28, 24);
+    lv_obj_t *dialog_detail = label(dialog,
+        "The display will go offline briefly while the panel restarts. Continue?",
+        &lv_font_montserrat_16, MUTED);
+    lv_obj_set_pos(dialog_detail, 28, 82);
+    lv_obj_set_size(dialog_detail, 534, 72);
+    lv_label_set_long_mode(dialog_detail, LV_LABEL_LONG_WRAP);
+    lv_obj_t *cancel = button(dialog, "Cancel", 28, 192, 250, 56, CARD_ALT);
+    lv_obj_t *confirm = button(dialog, "Restart", 312, 192, 250, 56, DANGER);
+    lv_obj_add_event_cb(cancel, reboot_cancel_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(confirm, reboot_confirm_cb, LV_EVENT_CLICKED, this);
+    lv_obj_add_flag(reboot_overlay_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void SettingsModule::backlight_changed_cb(lv_event_t *e) {
@@ -129,7 +167,36 @@ void SettingsModule::rediscover_cb(lv_event_t *e) {
                              : "Could not request discovery; check Home Assistant configuration.");
 }
 
+void SettingsModule::reboot_request_cb(lv_event_t *e) {
+    auto *self = static_cast<SettingsModule *>(lv_event_get_user_data(e));
+    if (!self) return;
+    const FirmwareUpdateStatus &update = firmware_update_status();
+    if (update.active || update.verified) {
+        if (self->reboot_status_label_)
+            lv_label_set_text(self->reboot_status_label_, "Restart is unavailable while a firmware update is finishing.");
+        return;
+    }
+    if (self->reboot_overlay_) lv_obj_remove_flag(self->reboot_overlay_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void SettingsModule::reboot_cancel_cb(lv_event_t *e) {
+    auto *self = static_cast<SettingsModule *>(lv_event_get_user_data(e));
+    if (self && self->reboot_overlay_) lv_obj_add_flag(self->reboot_overlay_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void SettingsModule::reboot_confirm_cb(lv_event_t *) {
+    Serial0.flush();
+    delay(250);
+    ESP.restart();
+}
+
 void SettingsModule::update() {
+    if (reboot_status_label_) {
+        const FirmwareUpdateStatus &firmware = firmware_update_status();
+        lv_label_set_text(reboot_status_label_, firmware.active || firmware.verified
+            ? "Firmware update in progress; restart is unavailable."
+            : "Manual restart is available.");
+    }
     if (identity_label_) {
         const PanelConfig &cfg = config_service_get();
         const String ip = network_service_ip();

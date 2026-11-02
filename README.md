@@ -1,8 +1,8 @@
 # Home Control Panel
 
-**Version 2.0.3**
+**Version 2.0.4**
 
-See the [2.0.3 release notes](docs/RELEASE_2.0.3.md) for the weather icon fix.
+See the [2.0.4 release notes](docs/RELEASE_2.0.4.md) for the Settings redesign and panel reboot control.
 
 ESP32-P4 / LVGL wall-panel firmware for multiple Home Assistant control panels.
 Version 1.3.0 adds live Home Assistant media-player discovery, playback controls,
