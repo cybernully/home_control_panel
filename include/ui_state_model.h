@@ -96,6 +96,7 @@ struct WeatherForecastViewModel {
     char condition[32];
     char temperature[24];
     char detail[32];
+    uint32_t icon_glyph;
 };
 
 struct WeatherViewModel {
@@ -103,6 +104,7 @@ struct WeatherViewModel {
     char condition[32];
     char temperature[24];
     char detail[96];
+    uint32_t icon_glyph;
     bool available;
     bool loading;
     uint8_t hourly_count;

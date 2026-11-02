@@ -196,6 +196,7 @@ void WeatherModule::update() {
     safe_text(current_temperature_, model.temperature);
     safe_text(current_condition_, model.condition);
     safe_text(current_detail_, model.detail);
+    if (model.icon_glyph) ui_theme::set_glyph(current_icon_, model.icon_glyph);
     lv_obj_set_style_text_color(current_icon_, lv_color_hex(found && model.available ? ui_theme::CYAN : MUTED), LV_PART_MAIN);
     safe_text(hourly_status_, model.hourly_count ? "Live" : model.loading ? "Loading..." : "Unavailable");
     safe_text(daily_status_, model.daily_count ? "Live" : model.loading ? "Loading..." : "Unavailable");
@@ -207,6 +208,7 @@ void WeatherModule::update() {
         safe_text(hourly_[i].temperature, model.hourly[i].temperature);
         safe_text(hourly_[i].condition, model.hourly[i].condition);
         safe_text(hourly_[i].detail, model.hourly[i].detail);
+        if (model.hourly[i].icon_glyph) ui_theme::set_glyph(hourly_[i].icon, model.hourly[i].icon_glyph);
     }
     for (uint8_t i = 0; i < HA_MAX_WEATHER_DAILY; ++i) {
         const bool visible = i < model.daily_count;
@@ -216,5 +218,6 @@ void WeatherModule::update() {
         safe_text(daily_[i].temperature, model.daily[i].temperature);
         safe_text(daily_[i].condition, model.daily[i].condition);
         safe_text(daily_[i].detail, model.daily[i].detail);
+        if (model.daily[i].icon_glyph) ui_theme::set_glyph(daily_[i].icon, model.daily[i].icon_glyph);
     }
 }

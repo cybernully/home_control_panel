@@ -9,6 +9,21 @@
 #include <time.h>
 
 namespace {
+uint32_t weather_glyph(const char *condition) {
+    struct ConditionGlyph { const char *state; uint32_t glyph; };
+    // Material Design Icons weather glyphs from the bundled icon font.
+    static const ConditionGlyph glyphs[] = {
+        {"clear-night", 0xF0594}, {"sunny", 0xF0599}, {"partlycloudy", 0xF0595},
+        {"cloudy", 0xF0590}, {"fog", 0xF0591}, {"rainy", 0xF0597},
+        {"pouring", 0xF0596}, {"lightning", 0xF0593}, {"lightning-rainy", 0xF067E},
+        {"snowy", 0xF0598}, {"snowy-rainy", 0xF067F}, {"hail", 0xF0592},
+        {"windy", 0xF059D}, {"windy-variant", 0xF059E}
+    };
+    for (const auto &entry : glyphs)
+        if (condition && strcmp(condition, entry.state) == 0) return entry.glyph;
+    return 0xF0590; // Cloudy is a neutral fallback for unknown conditions.
+}
+
 void copy_text(char *out, size_t out_len, const char *value) {
     if (out && out_len) snprintf(out, out_len, "%s", value ? value : "");
 }
@@ -99,6 +114,7 @@ void build_forecast(WeatherForecastViewModel &out,
     if (hourly) format_hour(out.period, sizeof(out.period), source.datetime);
     else format_day(out.period, sizeof(out.period), source.datetime, index);
     friendly_condition(out.condition, sizeof(out.condition), source.condition);
+    out.icon_glyph = weather_glyph(source.condition);
     if (!hourly && source.has_temperature && source.has_temperature_low)
         snprintf(out.temperature, sizeof(out.temperature), "%.0f\xC2\xB0 / %.0f\xC2\xB0",
                  static_cast<double>(source.temperature), static_cast<double>(source.temperature_low));
@@ -137,6 +153,7 @@ bool ui_state_model_snapshot_weather(WeatherViewModel &weather) {
     copy_text(weather.entity_name, sizeof(weather.entity_name),
               source.name[0] ? source.name : current_id[0] ? current_id : request_id);
     friendly_condition(weather.condition, sizeof(weather.condition), source.condition);
+    weather.icon_glyph = weather_glyph(source.condition);
     format_temp(weather.temperature, sizeof(weather.temperature), source.has_temperature, source.temperature);
     char feels[24] = {};
     format_temp(feels, sizeof(feels), source.has_apparent_temperature, source.apparent_temperature);

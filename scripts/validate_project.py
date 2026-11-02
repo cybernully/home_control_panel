@@ -32,7 +32,7 @@ assert isinstance(cfg["media_shortcuts"],list) and len(cfg["media_shortcuts"])<=
 assert isinstance(cfg.get("media_favorites",[]),list) and len(cfg.get("media_favorites",[]))<=6
 assert all(len(room.get("status_slots",[]))==4 for room in cfg["rooms"])
 app=(root/"include/app_config.h").read_text()
-assert '#define APP_VERSION "2.0.2"' in app
+assert '#define APP_VERSION "2.0.3"' in app
 assert '#define PANEL_CONFIG_TEMP_PATH "/panel.tmp"' in app
 assert '#define PANEL_CONFIG_ROLLBACK_PATH "/panel.bak"' in app
 assert '#define WEB_CONFIG_BACKUP_MAX_BYTES (64U * 1024U)' in app
